@@ -44,14 +44,18 @@ header {
 }
 h1 { font-size: 1.2rem; margin: 0; }
 
-.block-controls { display: flex; gap: .4rem; align-items: center; }
+.block-controls { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; max-width: 100%; }
 .block-controls select {
   font: inherit;
   padding: .35rem .5rem;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: #fff;
-  max-width: 9rem;
+  /* No fixed width cap: a native select sizes to its widest option, so the
+   * chooser fits the longest block name rather than truncating it. max-width
+   * keeps a very long name from overflowing the row on narrow screens (it
+   * truncates instead, and the controls wrap). */
+  max-width: 100%;
 }
 
 .ghost {
