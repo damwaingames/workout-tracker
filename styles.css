@@ -165,7 +165,6 @@ nav.weeks {
   border-radius: 6px;
   white-space: nowrap;
 }
-.ex-meta { font-size: .72rem; color: var(--muted); }
 .info { background: none; border: none; color: var(--workout); font-size: .95rem; cursor: pointer; padding: 0 .2rem; }
 .remove {
   margin-left: auto;
@@ -258,7 +257,24 @@ textarea { width: 100%; resize: vertical; }
 .inline.block { display: block; }
 .inline.block input { width: 100%; margin-top: .35rem; }
 .inline input[type="number"] { width: 4.5rem; }
-.circuit-note { font-size: .75rem; color: var(--muted); }
+.circuit-note { font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.circuit-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .55rem 1rem;
+  margin-top: .6rem;
+  padding-top: .7rem;
+  border-top: 1px dashed var(--border);
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted);
+}
+.rounds-edit { display: flex; align-items: center; gap: .45rem; }
+.circuit-field-l { display: flex; align-items: center; gap: .35rem; }
+.circuit-field { width: 3.4rem; text-align: center; }
 .rest-note { font-size: .9rem; color: var(--muted); margin: 0 0 .6rem; }
 
 .add-zone { margin-top: .8rem; }
