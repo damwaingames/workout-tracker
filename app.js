@@ -409,27 +409,36 @@
   // link, and a create form whose fields differ per kind. data-picker (+ optional
   // data-day) drives the generic open/search/create handlers; only the catalogue,
   // row markup, and these form fields are kind-specific.
-  function pickerZone(kind, dayAttr, addLabel, searchPlaceholder, createLabel, submitLabel, formFields) {
-    return '<div class="add-zone" data-picker="' + kind + '"' + dayAttr + ">" +
-      '<button class="add-btn" type="button" data-action="picker-open">' + addLabel + "</button>" +
+  function pickerZone(o) {
+    const dayAttr = o.day != null ? ' data-day="' + o.day + '"' : "";
+    return '<div class="add-zone" data-picker="' + o.kind + '"' + dayAttr + ">" +
+      '<button class="add-btn" type="button" data-action="picker-open">' + o.addLabel + "</button>" +
       '<div class="picker" hidden>' +
-        '<input type="text" class="picker-search" placeholder="' + searchPlaceholder + '">' +
+        '<input type="text" class="picker-search" placeholder="' + o.searchPlaceholder + '">' +
         '<div class="picker-list"></div>' +
-        '<button class="link" type="button" data-action="picker-new-open">' + createLabel + "</button>" +
-        '<form class="picker-form" hidden>' + formFields +
-          '<div class="form-actions"><button type="submit">' + submitLabel + "</button>" +
+        '<button class="link" type="button" data-action="picker-new-open">' + o.createLabel + "</button>" +
+        '<form class="picker-form" hidden>' + o.formFields +
+          '<div class="form-actions"><button type="submit">' + o.submitLabel + "</button>" +
           '<button type="button" class="link" data-action="picker-new-cancel">Cancel</button></div>' +
         "</form>" +
       "</div></div>";
   }
 
   function renderAddZone(d) {
-    return pickerZone("exercise", ' data-day="' + d.day + '"', "＋ Add exercise", "Search exercises…", "＋ Create a new exercise", "Add to day",
-      '<input name="name" placeholder="Exercise name" required>' +
-      '<select name="type"><option value="strength">Strength — weight × reps</option><option value="circuit">Circuit — timed</option></select>' +
-      '<input name="setup" placeholder="How-to / setup (optional)">' +
-      '<input name="targetReps" placeholder="Target reps" value="8–12">' +
-      '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>');
+    return pickerZone({
+      kind: "exercise",
+      day: d.day,
+      addLabel: "＋ Add exercise",
+      searchPlaceholder: "Search exercises…",
+      createLabel: "＋ Create a new exercise",
+      submitLabel: "Add to day",
+      formFields:
+        '<input name="name" placeholder="Exercise name" required>' +
+        '<select name="type"><option value="strength">Strength — weight × reps</option><option value="circuit">Circuit — timed</option></select>' +
+        '<input name="setup" placeholder="How-to / setup (optional)">' +
+        '<input name="targetReps" placeholder="Target reps" value="8–12">' +
+        '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>',
+    });
   }
 
   function renderProgress() {
@@ -507,9 +516,16 @@
   }
 
   function renderMeasureAddZone() {
-    return pickerZone("measure", "", "＋ Add measurement", "Search measurements…", "＋ Create a new measurement", "Add",
-      '<input name="name" placeholder="Measurement name" required>' +
-      '<select name="unit"><option value="cm">cm</option><option value="kg">kg</option></select>');
+    return pickerZone({
+      kind: "measure",
+      addLabel: "＋ Add measurement",
+      searchPlaceholder: "Search measurements…",
+      createLabel: "＋ Create a new measurement",
+      submitLabel: "Add",
+      formFields:
+        '<input name="name" placeholder="Measurement name" required>' +
+        '<select name="unit"><option value="cm">cm</option><option value="kg">kg</option></select>',
+    });
   }
 
   // Live patcher for the BMI line (parallels renderVolumes): recomputes from the
