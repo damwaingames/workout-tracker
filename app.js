@@ -244,8 +244,12 @@
   function renderWeek() {
     const block = currentBlock();
     const wk = state.ui.week;
+    // In Edit mode the block name becomes an inline input; otherwise it's static.
+    const nameHtml = editing
+      ? '<input type="text" id="block-name-input" class="block-name-input" value="' + esc(block.name) + '" placeholder="Block name" aria-label="Block name" maxlength="40">'
+      : esc(block.name);
     document.getElementById("week-view").innerHTML =
-      '<p class="week-heading">' + esc(block.name) + " · Week " + wk + " of " + WEEKS +
+      '<p class="week-heading">' + nameHtml + " · Week " + wk + " of " + WEEKS +
       (editing ? ' <span class="edit-hint">— editing this block’s exercises</span>' : "") + "</p>" +
       block.days.map((d) => renderDay(block, d, wk)).join("");
     hydrate();
@@ -525,6 +529,16 @@
       return;
     }
     if (el.id === "notes-field") { state.notes = el.value; save(); return; }
+    if (el.id === "block-name-input") {
+      const block = currentBlock();
+      block.name = el.value;
+      save();
+      // Hand-patch the picker label instead of a full render (which would steal
+      // focus mid-type). Log keys use block.id, never the name, so nothing re-keys.
+      const opt = document.querySelector('#block-select option[value="' + block.id + '"]');
+      if (opt) opt.textContent = el.value;
+      return;
+    }
     if (el.id === "block-select") { state.ui.block = el.value; state.ui.week = 1; save(); render(); return; }
     if (el.classList.contains("picker-search")) {
       const p = el.closest(".picker");

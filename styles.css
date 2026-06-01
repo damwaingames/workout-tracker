@@ -105,6 +105,18 @@ nav.weeks {
   color: var(--muted);
 }
 .edit-hint { text-transform: none; letter-spacing: 0; color: var(--workout); }
+.block-name-input {
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+  padding: .15rem .4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  width: 11rem;
+  max-width: 60%;
+}
 
 .day {
   background: var(--card);
