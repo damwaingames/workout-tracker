@@ -6,7 +6,7 @@
   const MIN_SETS = 1, MAX_SETS = 6, DEFAULT_SETS = 2;
   // Human-facing release version (semver), surfaced in the footer. Bump on each
   // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-  const APP_VERSION = "1.1.0";
+  const APP_VERSION = "1.1.1";
 
   /* ---------------------------------------------------------------------- *
    * Seed data — straight from the training design doc.                     *
@@ -179,6 +179,11 @@
   function placement(type, id, sets) {
     return type === "strength" ? { id, sets: clampSets(sets) } : { id };
   }
+  // The exercise type a day accepts: strength days take strength exercises,
+  // every other non-rest day (recovery) takes circuits. The single source of the
+  // day-kind ↔ exercise-type rule, so the picker and the create form agree and a
+  // mismatched placement can't be built.
+  function kindType(kind) { return kind === "strength" ? "strength" : "circuit"; }
 
   function setLog(k, v) {
     if (v === "" || v === false || v == null) delete state.log[k];
@@ -425,19 +430,24 @@
   }
 
   function renderAddZone(d) {
+    // The day's kind fixes the exercise type, so there's no type picker: a
+    // strength day's form collects reps + sets, a recovery day's collects neither
+    // (circuits use fixed rounds). This is what stops a mismatched placement.
+    const strength = d.kind === "strength";
     return pickerZone({
       kind: "exercise",
       day: d.day,
-      addLabel: "＋ Add exercise",
-      searchPlaceholder: "Search exercises…",
-      createLabel: "＋ Create a new exercise",
+      addLabel: strength ? "＋ Add exercise" : "＋ Add move",
+      searchPlaceholder: strength ? "Search strength exercises…" : "Search circuit moves…",
+      createLabel: strength ? "＋ Create a new exercise" : "＋ Create a new move",
       submitLabel: "Add to day",
       formFields:
-        '<input name="name" placeholder="Exercise name" required>' +
-        '<select name="type"><option value="strength">Strength — weight × reps</option><option value="circuit">Circuit — timed</option></select>' +
+        '<input name="name" placeholder="' + (strength ? "Exercise" : "Move") + ' name" required>' +
         '<input name="setup" placeholder="How-to / setup (optional)">' +
-        '<input name="targetReps" placeholder="Target reps" value="8–12">' +
-        '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>',
+        (strength
+          ? '<input name="targetReps" placeholder="Target reps" value="8–12">' +
+            '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>'
+          : ""),
     });
   }
 
@@ -555,15 +565,16 @@
     if (nf) nf.value = state.notes || "";
   }
 
-  // Shared picker body: the catalogue minus already-chosen ids, name-filtered and
-  // sorted, rendered through a per-kind row builder (or the same "no matches" line).
-  function renderPickList(picker, catalogue, chosenIds, query, rowHtml) {
+  // Shared picker body: the catalogue minus already-chosen ids, optionally
+  // narrowed by `keep`, name-filtered and sorted, rendered through a per-kind row
+  // builder (or the same "no matches" line).
+  function renderPickList(picker, catalogue, chosenIds, query, rowHtml, keep) {
     const on = {};
     chosenIds.forEach((id) => (on[id] = true));
     const q = (query || "").trim().toLowerCase();
     const items = Object.keys(catalogue)
       .map((id) => catalogue[id])
-      .filter((x) => !on[x.id] && (!q || x.name.toLowerCase().indexOf(q) >= 0))
+      .filter((x) => !on[x.id] && (!keep || keep(x)) && (!q || x.name.toLowerCase().indexOf(q) >= 0))
       .sort((a, b) => a.name.localeCompare(b.name));
     picker.querySelector(".picker-list").innerHTML = items.length
       ? items.map(rowHtml).join("")
@@ -571,9 +582,13 @@
   }
 
   function populatePicker(picker, day, query) {
+    // Only offer exercises whose type matches the day's kind, so a circuit can't
+    // be added to a strength day (or vice versa).
+    const type = kindType(dayDef(day).kind);
     renderPickList(picker, state.library, dayDef(day).exercises.map((p) => p.id), query, (ex) =>
       '<button class="pick" type="button" data-action="add-ex" data-day="' + day + '" data-ex="' + ex.id + '">' +
-      esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>");
+      esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>",
+      (ex) => ex.type === type);
   }
 
   function populateMeasurePicker(picker, query) {
@@ -677,7 +692,9 @@
     const fd = new FormData(form);
     const name = String(fd.get("name") || "").trim();
     if (!name) return;
-    const type = fd.get("type") === "circuit" ? "circuit" : "strength";
+    // Type follows the day's kind, not a form field — so a created exercise is
+    // always valid for the day it's added to.
+    const type = kindType(dayDef(day).kind);
     const id = uniqueId(slugify(name), (x) => state.library[x]);
     const ex = { id, name, type };
     const setup = String(fd.get("setup") || "").trim();
