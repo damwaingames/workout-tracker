@@ -251,11 +251,12 @@
         rows +=
           '<div class="set"><span class="set-n">Set ' + (i + 1) + "</span>" +
           '<input type="number" inputmode="decimal" class="w" data-k="' + setKey(cell, exId, i, "w") + '" data-type="text" placeholder="' + (p && p.w ? esc(p.w) : "wt") + '">' +
+          '<span class="unit">kg</span>' +
           '<span class="x">×</span>' +
           '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" placeholder="' + (p && p.r ? esc(p.r) : "reps") + '"></div>';
       }
       const last = prev
-        ? '<div class="last">Last: ' + prev.map((s) => (s.w ? esc(s.w) + "×" : "") + (s.r ? esc(s.r) : "–")).join(", ") + "</div>"
+        ? '<div class="last">Last: ' + prev.map((s) => (s.w ? esc(s.w) + " kg × " : "") + (s.r ? esc(s.r) : "–")).join(", ") + "</div>"
         : "";
       const setsEdit = editing
         ? '<div class="sets-edit">Sets <button class="step" type="button" data-action="sets-dec" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Fewer sets">−</button>' +

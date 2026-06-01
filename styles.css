@@ -175,6 +175,7 @@ nav.weeks {
 .set { display: flex; align-items: center; gap: .4rem; }
 .set-n { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); width: 2.8rem; flex: 0 0 auto; }
 .set .x { color: var(--muted); }
+.set .unit { font-size: .72rem; color: var(--muted); flex: 0 0 auto; }
 .last { font-size: .72rem; color: var(--muted); margin-top: .35rem; }
 
 .sets-edit {
