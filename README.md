@@ -33,7 +33,20 @@ All data lives in `localStorage` on whichever device you use — there is no ser
 
 ## Updating
 
-Push to `main`; GitHub Pages redeploys automatically. Each release carries a semver version, shown in the footer (`vX.Y.Z`). When you change `index.html`, `styles.css`, or `app.js`, bump `APP_VERSION` in `app.js` and the matching `CACHE` in `sw.js` (kept in lockstep) so installed devices pick up the new version on next launch.
+Push to `main`; GitHub Pages redeploys automatically. Each release carries a semver version, shown in the footer (`vX.Y.Z`). When you change `index.html`, `styles.css`, or any of the JS modules, bump `APP_VERSION` in `constants.js` and the matching `CACHE` in `sw.js` (kept in lockstep) so installed devices pick up the new version on next launch. If you add a **new** JS module, also add it to `ASSETS` in `sw.js` — otherwise an offline launch serves an incomplete shell.
+
+## Code layout
+
+The app is plain ES modules (no build step), loaded from `index.html` via `<script type="module" src="./main.js">`:
+
+- `constants.js` — shared constants (`APP_VERSION`, bounds, `CIRCUIT_DEFAULTS`).
+- `helpers.js` — pure helpers: log-key grammar, clamps, formatting, circuit maths.
+- `state.js` — seed data, the mutable store (`state`/`editing` + setters), schema migrations, persistence, and the queries that read over the store.
+- `render.js` — turns the store into DOM (plus the focus-preserving live patchers).
+- `events.js` — click / submit / field handlers and the block & backup operations.
+- `main.js` — entry point: load, wire listeners, first render, register the service worker.
+
+Imports flow one way (`constants ← helpers ← state ← render ← events ← main`), so there are no circular dependencies.
 
 ## Icons
 

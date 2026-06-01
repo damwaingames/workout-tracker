@@ -1,13 +1,20 @@
 /* Service worker — offline app shell cache.
- * CACHE carries the app's semver (see APP_VERSION in app.js) — keep the two in
- * lockstep. Bumping it on each release busts the old cache on the next activate,
- * so phones pick up the new index.html / styles.css / app.js on next launch. */
-const CACHE = "workout-tracker-v1.2.0";
+ * CACHE carries the app's semver (see APP_VERSION in constants.js) — keep the two
+ * in lockstep. Bumping it on each release busts the old cache on the next activate,
+ * so phones pick up the new index.html / styles.css / JS modules on next launch. */
+const CACHE = "workout-tracker-v1.2.1";
 const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
-  "./app.js",
+  // The app is ES modules now — every module the browser fetches must be cached
+  // or an offline launch serves a stale/incomplete shell (entry first, then deps).
+  "./main.js",
+  "./events.js",
+  "./render.js",
+  "./state.js",
+  "./helpers.js",
+  "./constants.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
