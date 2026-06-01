@@ -4,9 +4,14 @@
   const WEEKS = 4;
   const STORAGE_KEY = "workout-tracker-v2";
   const MIN_SETS = 1, MAX_SETS = 6, DEFAULT_SETS = 2;
+  const MIN_ROUNDS = 1, MAX_ROUNDS = 6;
+  // A recovery day's circuit timing (all seconds, except rounds). These defaults
+  // reproduce the original hardcoded behaviour: 2 rounds, 1 min stations, 15 sec
+  // rest between stations, no rest between rounds.
+  const CIRCUIT_DEFAULTS = { rounds: 2, workSec: 60, restSec: 15, roundRestSec: 0 };
   // Human-facing release version (semver), surfaced in the footer. Bump on each
   // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-  const APP_VERSION = "1.1.1";
+  const APP_VERSION = "1.2.0";
 
   /* ---------------------------------------------------------------------- *
    * Seed data — straight from the training design doc.                     *
@@ -14,8 +19,10 @@
   function S(id, name, setup, targetReps) {
     return { id, name, type: "strength", setup, targetReps };
   }
+  // Circuit moves are just a name + type now — rounds and timing live on the day
+  // (the circuit), not the individual move.
   function C(id, name) {
-    return { id, name, type: "circuit", duration: "1 min", rest: "15 sec", rounds: 2 };
+    return { id, name, type: "circuit" };
   }
   // A catalogue is an {id → record} map; both the exercise library and the
   // measurement catalogue are built this way.
@@ -72,10 +79,12 @@
 
   function seedBlock(id, name) {
     // Sets live on each placement, not the exercise — the program's strength days
-    // all start at 2 sets; circuits carry none (they use rounds).
+    // all start at 2 sets; circuit placements carry none (rounds/timing live on
+    // the recovery day itself).
     const day = (n, kind, title, focus, ids) => ({
       day: n, kind, title, focus,
       exercises: ids.map((exId) => placement(kind, exId, DEFAULT_SETS)),
+      ...(kind === "recovery" ? { ...CIRCUIT_DEFAULTS } : {}),
     });
     return {
       id, name, createdAt: today(),
@@ -122,6 +131,7 @@
     if (!Array.isArray(s.tracked)) s.tracked = ["bodyweight"];
     if (!s.profile || typeof s.profile !== "object") s.profile = {};
     migrateSets(s);
+    migrateCircuit(s);
     if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
     if (typeof s.notes !== "string") s.notes = "";
     return s;
@@ -143,6 +153,27 @@
       });
     });
     Object.keys(s.library).forEach((id) => delete s.library[id].defaultSets);
+  }
+
+  // Circuit timing moved from the per-move library record onto the recovery day.
+  // Backfill the day-level fields for older saves; the defaults match the prior
+  // hardcoded behaviour. Additive + idempotent (a no-op once present).
+  function migrateCircuit(s) {
+    s.blocks.forEach((b) => {
+      (b.days || []).forEach((d) => {
+        if (d.kind !== "recovery") return;
+        if (typeof d.rounds !== "number") d.rounds = CIRCUIT_DEFAULTS.rounds;
+        if (typeof d.workSec !== "number") d.workSec = CIRCUIT_DEFAULTS.workSec;
+        if (typeof d.restSec !== "number") d.restSec = CIRCUIT_DEFAULTS.restSec;
+        if (typeof d.roundRestSec !== "number") d.roundRestSec = CIRCUIT_DEFAULTS.roundRestSec;
+      });
+    });
+    // Strip the retired per-move circuit fields (timing now lives on the day),
+    // mirroring how migrateSets cleaned up defaultSets.
+    Object.keys(s.library).forEach((id) => {
+      const ex = s.library[id];
+      delete ex.duration; delete ex.rest; delete ex.rounds;
+    });
   }
 
   function load() {
@@ -168,14 +199,15 @@
   function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
   function dayDef(day) { return currentBlock().days.find((d) => d.day === day); }
 
-  // Clamp a set count into [MIN_SETS, MAX_SETS]; non-numeric (missing) → DEFAULT_SETS.
-  // NB: 0 must clamp to MIN_SETS, so we can't use `|| DEFAULT_SETS` (0 is falsy).
-  function clampSets(n) {
+  // Round and clamp an int into [min, max]; non-numeric (missing) → fallback.
+  // NB: 0 must clamp to min, so we can't use `|| fallback` (0 is falsy).
+  function clampInt(n, min, max, fallback) {
     n = Math.round(n);
-    return Number.isFinite(n) ? Math.min(MAX_SETS, Math.max(MIN_SETS, n)) : DEFAULT_SETS;
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
   }
+  const clampSets = (n) => clampInt(n, MIN_SETS, MAX_SETS, DEFAULT_SETS);
   // The single place that knows a placement's shape: strength placements own a
-  // (clamped) set count; circuits use the library's rounds, so they carry none.
+  // (clamped) set count; circuit placements carry none (the day owns the timing).
   function placement(type, id, sets) {
     return type === "strength" ? { id, sets: clampSets(sets) } : { id };
   }
@@ -184,6 +216,46 @@
   // day-kind ↔ exercise-type rule, so the picker and the create form agree and a
   // mismatched placement can't be built.
   function kindType(kind) { return kind === "strength" ? "strength" : "circuit"; }
+
+  const clampRounds = (n) => clampInt(n, MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS.rounds);
+  const nonNegSec = (n) => { n = Math.round(+n); return Number.isFinite(n) && n > 0 ? n : 0; };
+  // A recovery day's circuit settings, normalised (defaults applied, types coerced).
+  // The single read-side accessor so the renderer and the time maths agree.
+  function circuitOf(d) {
+    return {
+      rounds: clampRounds(d.rounds),
+      workSec: nonNegSec(d.workSec),
+      restSec: nonNegSec(d.restSec),
+      roundRestSec: nonNegSec(d.roundRestSec),
+    };
+  }
+  // Estimated total seconds for a circuit. Rest sits strictly between stations
+  // within a round ((stations − 1) gaps) and between rounds ((rounds − 1) gaps),
+  // so the workout ends on a work interval — nothing trailing.
+  function circuitTime(stations, c) {
+    if (stations <= 0) return 0;
+    return c.rounds * stations * c.workSec +
+      c.rounds * (stations - 1) * c.restSec +
+      (c.rounds - 1) * c.roundRestSec;
+  }
+  // "90 sec" / "1 min" / "12 min 30 sec".
+  function fmtSecs(sec) {
+    sec = Math.round(sec);
+    if (sec < 60) return sec + " sec";
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return s ? m + " min " + s + " sec" : m + " min";
+  }
+  // The one-line circuit summary shown under a recovery day: structure + estimate.
+  function circuitSummary(d) {
+    const c = circuitOf(d);
+    const parts = [
+      c.rounds + " round" + (c.rounds === 1 ? "" : "s"),
+      fmtSecs(c.workSec) + " work",
+      fmtSecs(c.restSec) + " rest",
+    ];
+    if (c.roundRestSec > 0) parts.push(fmtSecs(c.roundRestSec) + " between rounds");
+    return parts.join(" · ") + " · ≈ " + fmtSecs(circuitTime(d.exercises.length, c));
+  }
 
   function setLog(k, v) {
     if (v === "" || v === false || v == null) delete state.log[k];
@@ -383,26 +455,51 @@
   }
 
   function renderRecovery(d, cell) {
+    const rounds = circuitOf(d).rounds; // how many R-checkboxes each station shows
     const moves = d.exercises.map((place) => {
       const exId = place.id;
       const ex = state.library[exId];
       if (!ex) return "";
-      const rounds = ex.rounds || 2;
       let checks = "";
       for (let r = 0; r < rounds; r++) {
         checks += '<label class="round"><input type="checkbox" data-k="' + roundKey(cell, exId, r) + '" data-type="check"> R' + (r + 1) + "</label>";
       }
       return '<div class="exercise circuit" data-ex="' + exId + '">' +
         '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
-        '<span class="ex-meta">' + esc(ex.duration || "1 min") + (ex.rest ? " · rest " + esc(ex.rest) : "") + "</span>" +
         (editing ? '<button class="remove" type="button" data-action="remove-exercise" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
         '</div><div class="rounds">' + checks + "</div></div>";
     }).join("");
     return moves +
+      (editing ? renderCircuitEdit(d) : "") +
       '<div class="recovery-meta">' +
         '<label class="inline">Energy (1–10)<input type="number" min="1" max="10" data-k="' + cell + '.energy" data-type="text"></label>' +
-        '<span class="circuit-note">Repeat the circuit twice — 10 min total.</span>' +
+        '<span class="circuit-note" data-circuit-cell="' + cell + '">' + esc(circuitSummary(d)) + "</span>" +
       "</div>";
+  }
+
+  // Edit-mode circuit controls: a rounds stepper (re-renders, since it changes
+  // the R-checkbox count) plus work / rest / round-rest second inputs (live patch).
+  function renderCircuitEdit(d) {
+    const c = circuitOf(d);
+    const secField = (field, label, val) =>
+      '<label class="circuit-field-l">' + label +
+      ' <input type="number" inputmode="numeric" min="0" class="circuit-field" data-day="' + d.day + '" data-field="' + field + '" value="' + val + '">s</label>';
+    return '<div class="circuit-edit">' +
+      '<div class="rounds-edit">Rounds ' +
+        '<button class="step" type="button" data-action="rounds-dec" data-day="' + d.day + '" aria-label="Fewer rounds">−</button>' +
+        '<span class="sets-count">' + c.rounds + "</span>" +
+        '<button class="step" type="button" data-action="rounds-inc" data-day="' + d.day + '" aria-label="More rounds">＋</button></div>' +
+      secField("workSec", "Work", c.workSec) +
+      secField("restSec", "Rest", c.restSec) +
+      secField("roundRestSec", "Round rest", c.roundRestSec) +
+      "</div>";
+  }
+
+  // Live-patch a recovery day's summary line when its work/rest seconds change,
+  // so the second input keeps focus mid-type (rounds re-render via the stepper).
+  function patchCircuitTime(d) {
+    const el = document.querySelector('[data-circuit-cell="' + cellKey(currentBlock().id, state.ui.week, d.day) + '"]');
+    if (el) el.textContent = circuitSummary(d);
   }
 
   function renderRest(cell) {
@@ -634,6 +731,16 @@
         }
         break;
       }
+      case "rounds-inc":
+      case "rounds-dec": {
+        const d = dayDef(day);
+        if (d) {
+          // Rounds change the R-checkbox count per station, so re-render fully.
+          d.rounds = clampRounds(circuitOf(d).rounds + (el.dataset.action === "rounds-inc" ? 1 : -1));
+          save(); render();
+        }
+        break;
+      }
       case "picker-open": {
         const zone = el.closest(".add-zone");
         const picker = zone.querySelector(".picker");
@@ -699,11 +806,9 @@
     const ex = { id, name, type };
     const setup = String(fd.get("setup") || "").trim();
     if (setup) ex.setup = setup;
-    if (type === "strength") {
-      ex.targetReps = String(fd.get("targetReps") || "").trim() || "8–12";
-    } else {
-      ex.duration = "1 min"; ex.rest = "15 sec"; ex.rounds = 2;
-    }
+    // Strength moves carry a rep target; circuit moves carry nothing extra
+    // (rounds/timing live on the recovery day).
+    if (type === "strength") ex.targetReps = String(fd.get("targetReps") || "").trim() || "8–12";
     state.library[id] = ex;
     // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0).
     dayDef(day).exercises.push(placement(type, id, parseFloat(fd.get("sets"))));
@@ -750,6 +855,11 @@
       if (zone) repopulate(zone, el.value);
       return;
     }
+    if (el.classList.contains("circuit-field")) {
+      const d = dayDef(Number(el.dataset.day));
+      if (d) { d[el.dataset.field] = nonNegSec(el.value); save(); patchCircuitTime(d); }
+      return;
+    }
     const k = el.dataset.k;
     if (!k) return;
     if (el.dataset.type === "check") {
@@ -781,7 +891,9 @@
     const id = uniqueId("b" + num, (x) => taken[x]);
     const nb = {
       id, name: "Block " + num, createdAt: today(),
-      days: src.days.map((d) => ({ day: d.day, kind: d.kind, title: d.title, focus: d.focus, exercises: d.exercises.map((p) => ({ ...p })) })),
+      // Spread the day so all its fields (incl. recovery circuit timing) carry
+      // over; only exercises need a deep copy so placements aren't shared.
+      days: src.days.map((d) => ({ ...d, exercises: d.exercises.map((p) => ({ ...p })) })),
     };
     state.blocks.push(nb);
     state.ui.block = id;
