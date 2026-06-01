@@ -153,6 +153,8 @@
     return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   }
 
+  function fmt(n) { return Math.round(n).toLocaleString(); }
+
   function readSets(blockId, wk, day, exId, sets) {
     const cell = cellKey(blockId, wk, day);
     return Array.from({ length: sets }, (_, i) => ({
@@ -185,10 +187,24 @@
     return best ? best.sets : null;
   }
 
+  // Training volume (tonnage) for one day: sum of weight × reps over every
+  // logged set. Only strength days carry load; circuits/rest contribute 0.
+  function dayVolume(block, wk, d) {
+    if (d.kind !== "strength") return 0;
+    let v = 0;
+    d.exercises.forEach((p) => {
+      readSets(block.id, wk, d.day, p.id, p.sets || 2).forEach((s) => {
+        const w = parseFloat(s.w), r = parseFloat(s.r);
+        if (w > 0 && r > 0) v += w * r;
+      });
+    });
+    return v;
+  }
+
   /* ---------------------------------------------------------------------- *
    * Render                                                                 *
    * ---------------------------------------------------------------------- */
-  function render() { renderHeader(); renderWeek(); renderProgress(); }
+  function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); }
 
   function renderHeader() {
     const sel = document.getElementById("block-select");
@@ -239,7 +255,7 @@
 
   function renderStrength(d, wk, cell) {
     const bi = currentBlockIndex();
-    return d.exercises.map((place) => {
+    const body = d.exercises.map((place) => {
       const exId = place.id;
       const ex = state.library[exId];
       if (!ex) return "";
@@ -274,6 +290,8 @@
         '<div class="sets">' + rows + "</div>" + last +
         "</div>";
     }).join("");
+    return body +
+      '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">0 kg</strong></div>';
   }
 
   function renderRecovery(d, cell) {
@@ -336,6 +354,28 @@
     }
     document.getElementById("progress").innerHTML =
       "<strong>" + weekDone + "</strong> / " + days + " this week · <strong>" + blockDone + "</strong> / " + (days * WEEKS) + " this block";
+  }
+
+  // Day volumes for the visible week, plus week and block tonnage totals.
+  // Updated live (not via re-render) when a weight/reps field changes.
+  function renderVolumes() {
+    const b = currentBlock();
+    const wk = state.ui.week;
+    let weekVol = 0, blockVol = 0;
+    for (let w = 1; w <= WEEKS; w++) {
+      b.days.forEach((d) => {
+        const v = dayVolume(b, w, d);
+        blockVol += v;
+        if (w === wk) {
+          weekVol += v;
+          const el = document.querySelector('[data-vol-cell="' + cellKey(b.id, w, d.day) + '"]');
+          if (el) el.textContent = fmt(v) + " kg";
+        }
+      });
+    }
+    const out = document.getElementById("volume");
+    if (out) out.innerHTML =
+      "Volume · <strong>" + fmt(weekVol) + " kg</strong> this week · <strong>" + fmt(blockVol) + " kg</strong> this block";
   }
 
   function hydrate() {
@@ -479,6 +519,7 @@
       if (k.slice(-5) === ".done") afterDone(el, k);
     } else {
       setLog(k, el.value);
+      if (el.classList.contains("w") || el.classList.contains("r")) renderVolumes();
     }
   }
 
@@ -489,6 +530,7 @@
     // hydrate() already owns both, so there's no separate path to keep in sync.
     renderWeek();
     renderProgress();
+    renderVolumes();
   }
 
   /* ---------------------------------------------------------------------- *

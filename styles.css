@@ -71,6 +71,8 @@ h1 { font-size: 1.2rem; margin: 0; }
 
 .progress { font-size: .85rem; color: var(--muted); margin: .6rem 0 0; font-variant-numeric: tabular-nums; }
 .progress strong { color: var(--workout); }
+.volume { font-size: .8rem; color: var(--muted); margin: .25rem 0 0; font-variant-numeric: tabular-nums; }
+.volume strong { color: var(--workout); }
 
 nav.weeks {
   display: flex;
@@ -177,6 +179,14 @@ nav.weeks {
 .set .x { color: var(--muted); }
 .set .unit { font-size: .72rem; color: var(--muted); flex: 0 0 auto; }
 .last { font-size: .72rem; color: var(--muted); margin-top: .35rem; }
+.day-volume {
+  margin-top: .75rem;
+  padding-top: .6rem;
+  border-top: 1px dashed var(--border);
+  font-size: .78rem;
+  color: var(--muted);
+}
+.day-volume strong { color: var(--text); font-variant-numeric: tabular-nums; }
 
 .sets-edit {
   display: flex;
