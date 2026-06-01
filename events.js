@@ -164,24 +164,23 @@ const fieldById = {
   },
 };
 
-// Field handlers keyed by class, tried in order once the id lookup misses.
-const fieldByClass = {
-  "picker-search"(el) {
-    const zone = el.closest(".add-zone");
-    if (zone) repopulate(zone, el.value);
-  },
-  "circuit-field"(el) {
-    const d = dayDef(Number(el.dataset.day));
-    if (d) { d[el.dataset.field] = nonNegSec(el.value); save(); patchCircuitTime(d); }
-  },
-};
+// Class-based field handlers. Kept as explicit checks rather than a map: a
+// classList can't be hashed, so a map would only dress up the same linear
+// contains() scan — unlike fieldById, which is a real O(1) lookup.
+function pickerSearch(el) {
+  const zone = el.closest(".add-zone");
+  if (zone) repopulate(zone, el.value);
+}
+function circuitField(el) {
+  const d = dayDef(Number(el.dataset.day));
+  if (d) { d[el.dataset.field] = nonNegSec(el.value); save(); patchCircuitTime(d); }
+}
 
 export function handleField(e) {
   const el = e.target;
   if (el.id && Object.prototype.hasOwnProperty.call(fieldById, el.id)) return fieldById[el.id](el);
-  for (const cls in fieldByClass) {
-    if (el.classList.contains(cls)) return fieldByClass[cls](el);
-  }
+  if (el.classList.contains("picker-search")) return pickerSearch(el);
+  if (el.classList.contains("circuit-field")) return circuitField(el);
   // Generic logged-field path: everything carrying data-k.
   const k = el.dataset.k;
   if (!k) return;
