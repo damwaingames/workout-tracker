@@ -51,6 +51,26 @@
     return lib;
   }
 
+  // Body-measurement catalogue. Bodyweight is the only mass (kg); circumferences
+  // are cm. The user tracks a subset (state.tracked) and can add their own.
+  function M(id, name, unit) { return { id, name, unit }; }
+  function seedMeasurements() {
+    const list = [
+      M("bodyweight", "Bodyweight", "kg"),
+      M("waist", "Waist", "cm"),
+      M("chest", "Chest", "cm"),
+      M("hips", "Hips", "cm"),
+      M("thigh", "Thigh", "cm"),
+      M("calf", "Calf", "cm"),
+      M("bicep", "Bicep", "cm"),
+      M("forearm", "Forearm", "cm"),
+      M("neck", "Neck", "cm"),
+    ];
+    const lib = {};
+    list.forEach((m) => (lib[m.id] = m));
+    return lib;
+  }
+
   function seedBlock(id, name) {
     // Sets live on each placement, not the exercise — the program's strength days
     // all start at 2 sets; circuits carry none (they use rounds).
@@ -73,7 +93,13 @@
   }
 
   function defaultState() {
-    return { version: 2, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")], log: {}, ui: { block: "b1", week: 1 }, notes: "" };
+    return {
+      version: 2, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")],
+      log: {}, ui: { block: "b1", week: 1 }, notes: "",
+      // Body stats: the measurement catalogue, the user's tracked subset, and a
+      // one-time profile (height → BMI). Weekly values live in `log` (measureKey).
+      measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
+    };
   }
 
   /* ---------------------------------------------------------------------- *
@@ -91,6 +117,11 @@
     if (!s || s.version !== 2 || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
     if (!s.log) s.log = {};
     if (!s.library) s.library = seedLibrary();
+    // Body stats are additive — older v2 saves predate them, so backfill the
+    // defaults rather than bumping the schema version (keeps old backups importable).
+    if (!s.measurements) s.measurements = seedMeasurements();
+    if (!Array.isArray(s.tracked)) s.tracked = ["bodyweight"];
+    if (!s.profile || typeof s.profile !== "object") s.profile = {};
     migrateSets(s);
     if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
     if (typeof s.notes !== "string") s.notes = "";
@@ -130,6 +161,10 @@
   // readers must build keys through these so the format stays authoritative.
   const setKey = (cell, exId, i, f) => cell + ".ex." + exId + ".s" + i + "." + f; // f: "w" | "r"
   const roundKey = (cell, exId, r) => cell + ".ex." + exId + ".r" + r;
+  // Weekly body measurement (one value per block/week/measurement). Shares
+  // state.log — the ".m." segment can't collide with a day's ".dN" cells, and
+  // the block.id prefix means deleteBlock's purge sweeps these up for free.
+  const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mId;
   function currentBlock() { return state.blocks.find((b) => b.id === state.ui.block) || state.blocks[0]; }
   function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
   function dayDef(day) { return currentBlock().days.find((d) => d.day === day); }
@@ -217,10 +252,37 @@
     return v;
   }
 
+  // Most recent earlier value of a measurement, scanning (block, week) like
+  // previousSets but without days — measurements are weekly, not per-day.
+  function previousMeasure(mId, curBlockIdx, curWeek) {
+    const rank = (bi, wk) => bi * (WEEKS + 1) + wk;
+    const cutoff = rank(curBlockIdx, curWeek);
+    let best = null;
+    state.blocks.forEach((block, bi) => {
+      for (let wk = 1; wk <= WEEKS; wk++) {
+        const order = rank(bi, wk);
+        if (order >= cutoff) continue;
+        const v = state.log[measureKey(block.id, wk, mId)];
+        if (v != null && v !== "" && (!best || order > best.order)) best = { order, value: v };
+      }
+    });
+    return best ? best.value : null;
+  }
+
+  // BMI for a week = bodyweight / height² (metric). Null unless both a stored
+  // height and that week's bodyweight are present.
+  function bmiFor(block, wk) {
+    const h = parseFloat(state.profile && state.profile.heightCm);
+    const w = parseFloat(state.log[measureKey(block.id, wk, "bodyweight")]);
+    if (!(h > 0) || !(w > 0)) return null;
+    const m = h / 100;
+    return w / (m * m);
+  }
+
   /* ---------------------------------------------------------------------- *
    * Render                                                                 *
    * ---------------------------------------------------------------------- */
-  function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); }
+  function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); }
 
   function renderHeader() {
     const sel = document.getElementById("block-select");
@@ -401,6 +463,67 @@
       "Volume · <strong>" + fmt(weekVol) + " kg</strong> this week · <strong>" + fmt(blockVol) + " kg</strong> this block";
   }
 
+  // The week's Measurements card: one value input per tracked measurement (with
+  // the previous reading as a ghost placeholder), an auto BMI, and a set-once
+  // height. Values use data-k/log like the workout grid; the live BMI patch
+  // (renderBmi) avoids a full render so a value input keeps focus mid-type.
+  function renderMeasurements() {
+    const card = document.getElementById("measurements-card");
+    if (!card) return;
+    const block = currentBlock();
+    const wk = state.ui.week;
+    const bi = currentBlockIndex();
+
+    const rows = state.tracked.map((mId) => {
+      const m = state.measurements[mId];
+      if (!m) return "";
+      const k = measureKey(block.id, wk, mId);
+      const val = state.log[k] != null ? state.log[k] : "";
+      const prev = previousMeasure(mId, bi, wk);
+      return '<div class="measure-row" data-m="' + mId + '">' +
+        '<span class="measure-name">' + esc(m.name) + "</span>" +
+        '<input type="number" inputmode="decimal" class="measure-val" data-k="' + k + '" data-type="text" value="' + esc(val) + '" placeholder="' + (prev != null ? esc(String(prev)) : "—") + '">' +
+        '<span class="unit">' + esc(m.unit) + "</span>" +
+        (editing ? '<button class="remove" type="button" data-action="m-remove" data-m="' + mId + '" aria-label="Remove">×</button>' : "") +
+        "</div>";
+    }).join("");
+
+    const heightVal = state.profile && state.profile.heightCm != null ? state.profile.heightCm : "";
+    card.innerHTML =
+      "<h2>Measurements</h2>" +
+      (rows || '<p class="muted small">No measurements tracked — hit Edit to add some.</p>') +
+      '<div class="bmi-line" id="bmi-line" hidden>BMI <strong id="bmi-value"></strong></div>' +
+      '<label class="inline measure-height">Height <input type="number" inputmode="decimal" min="0" id="height-input" value="' + esc(heightVal) + '" placeholder="height"> cm</label>' +
+      (editing ? renderMeasureAddZone() : "");
+    renderBmi();
+  }
+
+  function renderMeasureAddZone() {
+    return '<div class="add-zone measure-add">' +
+      '<button class="add-btn" type="button" data-action="m-add-open">＋ Add measurement</button>' +
+      '<div class="picker" hidden>' +
+        '<input type="text" class="picker-search measure-search" placeholder="Search measurements…">' +
+        '<div class="picker-list"></div>' +
+        '<button class="link" type="button" data-action="m-new-open">＋ Create a new measurement</button>' +
+        '<form class="new-measure-form" hidden>' +
+          '<input name="name" placeholder="Measurement name" required>' +
+          '<select name="unit"><option value="cm">cm</option><option value="kg">kg</option></select>' +
+          '<div class="form-actions"><button type="submit">Add</button><button type="button" class="link" data-action="m-new-cancel">Cancel</button></div>' +
+        "</form>" +
+      "</div></div>";
+  }
+
+  // Live patcher for the BMI line (parallels renderVolumes): recomputes from the
+  // current week's bodyweight + stored height and shows/hides accordingly.
+  function renderBmi() {
+    const line = document.getElementById("bmi-line");
+    if (!line) return;
+    const b = bmiFor(currentBlock(), state.ui.week);
+    const out = line.querySelector("#bmi-value");
+    if (b == null) { line.hidden = true; if (out) out.textContent = ""; }
+    else { line.hidden = false; if (out) out.textContent = b.toFixed(1); }
+  }
+
   function hydrate() {
     document.querySelectorAll("#week-view [data-k]").forEach((el) => {
       const k = el.dataset.k;
@@ -430,6 +553,23 @@
       ? items.map((ex) =>
           '<button class="pick" type="button" data-action="add-ex" data-day="' + day + '" data-ex="' + ex.id + '">' +
           esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>"
+        ).join("")
+      : '<p class="muted small">No matches — create a new one below.</p>';
+  }
+
+  function populateMeasurePicker(picker, query) {
+    const list = picker.querySelector(".picker-list");
+    const on = {};
+    state.tracked.forEach((id) => (on[id] = true));
+    const q = (query || "").trim().toLowerCase();
+    const items = Object.keys(state.measurements)
+      .map((id) => state.measurements[id])
+      .filter((m) => !on[m.id] && (!q || m.name.toLowerCase().indexOf(q) >= 0))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    list.innerHTML = items.length
+      ? items.map((m) =>
+          '<button class="pick" type="button" data-action="m-add" data-m="' + m.id + '">' +
+          esc(m.name) + ' <span class="tag">' + esc(m.unit) + "</span></button>"
         ).join("")
       : '<p class="muted small">No matches — create a new one below.</p>';
   }
@@ -492,12 +632,48 @@
         if (link) link.hidden = false;
         break;
       }
+      case "m-add-open": {
+        const picker = el.closest(".measure-add").querySelector(".picker");
+        picker.hidden = !picker.hidden;
+        if (!picker.hidden) {
+          populateMeasurePicker(picker, "");
+          const s = picker.querySelector(".picker-search");
+          if (s) s.focus();
+        }
+        break;
+      }
+      case "m-add": {
+        const id = el.dataset.m;
+        if (state.measurements[id] && state.tracked.indexOf(id) < 0) state.tracked.push(id);
+        save(); render(); break;
+      }
+      case "m-remove": {
+        state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
+        save(); render(); break;
+      }
+      case "m-new-open": {
+        const picker = el.closest(".picker");
+        picker.querySelector(".new-measure-form").hidden = false;
+        el.hidden = true;
+        const n = picker.querySelector('[name="name"]');
+        if (n) n.focus();
+        break;
+      }
+      case "m-new-cancel": {
+        const form = el.closest(".new-measure-form");
+        form.hidden = true; form.reset();
+        const link = el.closest(".picker").querySelector('[data-action="m-new-open"]');
+        if (link) link.hidden = false;
+        break;
+      }
       case "export": exportBackup(); break;
       case "reset": resetAll(); break;
     }
   }
 
   function handleSubmit(e) {
+    const mform = e.target.closest(".new-measure-form");
+    if (mform) { e.preventDefault(); return addNewMeasurement(mform); }
     const form = e.target.closest(".new-ex-form");
     if (!form) return;
     e.preventDefault();
@@ -521,6 +697,17 @@
     save(); render();
   }
 
+  function addNewMeasurement(form) {
+    const fd = new FormData(form);
+    const name = String(fd.get("name") || "").trim();
+    if (!name) return;
+    const unit = fd.get("unit") === "kg" ? "kg" : "cm";
+    const id = uniqueId(slugify(name), (x) => state.measurements[x]);
+    state.measurements[id] = M(id, name, unit);
+    if (state.tracked.indexOf(id) < 0) state.tracked.push(id);
+    save(); render();
+  }
+
   function handleField(e) {
     const el = e.target;
     if (el.id === "import-input") {
@@ -540,6 +727,16 @@
       return;
     }
     if (el.id === "block-select") { state.ui.block = el.value; state.ui.week = 1; save(); render(); return; }
+    if (el.id === "height-input") {
+      const v = parseFloat(el.value);
+      state.profile.heightCm = Number.isFinite(v) && v > 0 ? v : null;
+      save(); renderBmi(); return;
+    }
+    if (el.classList.contains("measure-search")) {
+      const p = el.closest(".picker");
+      if (p) populateMeasurePicker(p, el.value);
+      return;
+    }
     if (el.classList.contains("picker-search")) {
       const p = el.closest(".picker");
       if (p) populatePicker(p, Number(el.dataset.day), el.value);
@@ -553,6 +750,7 @@
     } else {
       setLog(k, el.value);
       if (el.classList.contains("w") || el.classList.contains("r")) renderVolumes();
+      else if (el.classList.contains("measure-val")) renderBmi();
     }
   }
 

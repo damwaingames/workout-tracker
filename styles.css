@@ -298,7 +298,7 @@ textarea { width: 100%; resize: vertical; }
   cursor: pointer;
 }
 
-.notes-card {
+.notes-card, .measurements-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -306,7 +306,24 @@ textarea { width: 100%; resize: vertical; }
   margin-top: 1.5rem;
   box-shadow: var(--shadow);
 }
-.notes-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
+.notes-card h2, .measurements-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
+
+.measure-row { display: flex; align-items: center; gap: .5rem; padding: .45rem 0; border-top: 1px solid #f0f1f4; }
+.measure-row:first-of-type { border-top: none; }
+.measure-name { flex: 1 1 auto; min-width: 0; font-size: .92rem; }
+.measure-val { width: 5rem; text-align: center; flex: 0 0 auto; }
+.measure-row .unit { font-size: .72rem; color: var(--muted); flex: 0 0 auto; }
+.bmi-line {
+  margin-top: .6rem;
+  padding-top: .6rem;
+  border-top: 1px dashed var(--border);
+  font-size: .8rem;
+  color: var(--muted);
+}
+.bmi-line strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.measure-height { margin-top: .7rem; }
+.measure-height input { width: 5rem; }
+.measure-add { margin-top: .8rem; }
 
 footer { margin-top: 2rem; }
 .utils { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
