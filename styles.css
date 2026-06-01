@@ -283,8 +283,12 @@ textarea { width: 100%; resize: vertical; }
 }
 .pick:hover { border-color: var(--workout); }
 .pick .tag { color: var(--muted); font-size: .7rem; }
-.new-ex-form { display: flex; flex-direction: column; gap: .45rem; margin-top: .55rem; padding-top: .55rem; border-top: 1px solid var(--border); }
-.new-ex-form input, .new-ex-form select { width: 100%; }
+.picker-form { display: flex; flex-direction: column; gap: .45rem; margin-top: .55rem; padding-top: .55rem; border-top: 1px solid var(--border); }
+/* The display:flex above outweighs the UA [hidden]{display:none} (equal
+ * specificity, author wins), so make hidden authoritative or the create form
+ * shows before "Create new" is clicked. */
+.picker-form[hidden] { display: none; }
+.picker-form input, .picker-form select { width: 100%; }
 .sets-field { font-size: .85rem; color: var(--muted); display: flex; align-items: center; gap: .45rem; }
 .sets-field input { width: 4rem; }
 .form-actions { display: flex; gap: .6rem; align-items: center; }
@@ -323,7 +327,6 @@ textarea { width: 100%; resize: vertical; }
 .bmi-line strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .measure-height { margin-top: .7rem; }
 .measure-height input { width: 5rem; }
-.measure-add { margin-top: .8rem; }
 
 footer { margin-top: 2rem; }
 .utils { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }

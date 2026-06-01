@@ -17,6 +17,9 @@
   function C(id, name) {
     return { id, name, type: "circuit", duration: "1 min", rest: "15 sec", rounds: 2 };
   }
+  // A catalogue is an {id → record} map; both the exercise library and the
+  // measurement catalogue are built this way.
+  function keyById(list) { const o = {}; list.forEach((x) => (o[x.id] = x)); return o; }
 
   function seedLibrary() {
     const list = [
@@ -46,9 +49,7 @@
       C("quad-stretch", "Quad Stretch"),
       C("childs-pose-or-seated-torso-twist", "Child's Pose or Seated Torso Twist"),
     ];
-    const lib = {};
-    list.forEach((e) => (lib[e.id] = e));
-    return lib;
+    return keyById(list);
   }
 
   // Body-measurement catalogue. Bodyweight is the only mass (kg); circumferences
@@ -66,9 +67,7 @@
       M("forearm", "Forearm", "cm"),
       M("neck", "Neck", "cm"),
     ];
-    const lib = {};
-    list.forEach((m) => (lib[m.id] = m));
-    return lib;
+    return keyById(list);
   }
 
   function seedBlock(id, name) {
@@ -406,22 +405,31 @@
       '<label class="inline block">How your joints / knees feel<input type="text" data-k="' + cell + '.joints" data-type="text" placeholder="e.g. knees happy, left wrist a little tight"></label>';
   }
 
-  function renderAddZone(d) {
-    return '<div class="add-zone">' +
-      '<button class="add-btn" type="button" data-action="add-open" data-day="' + d.day + '">＋ Add exercise</button>' +
+  // Shared picker chrome — an add button, search box, result list, a create-new
+  // link, and a create form whose fields differ per kind. data-picker (+ optional
+  // data-day) drives the generic open/search/create handlers; only the catalogue,
+  // row markup, and these form fields are kind-specific.
+  function pickerZone(kind, dayAttr, addLabel, searchPlaceholder, createLabel, submitLabel, formFields) {
+    return '<div class="add-zone" data-picker="' + kind + '"' + dayAttr + ">" +
+      '<button class="add-btn" type="button" data-action="picker-open">' + addLabel + "</button>" +
       '<div class="picker" hidden>' +
-        '<input type="text" class="picker-search" data-day="' + d.day + '" placeholder="Search exercises…">' +
+        '<input type="text" class="picker-search" placeholder="' + searchPlaceholder + '">' +
         '<div class="picker-list"></div>' +
-        '<button class="link" type="button" data-action="new-ex-open" data-day="' + d.day + '">＋ Create a new exercise</button>' +
-        '<form class="new-ex-form" data-day="' + d.day + '" hidden>' +
-          '<input name="name" placeholder="Exercise name" required>' +
-          '<select name="type"><option value="strength">Strength — weight × reps</option><option value="circuit">Circuit — timed</option></select>' +
-          '<input name="setup" placeholder="How-to / setup (optional)">' +
-          '<input name="targetReps" placeholder="Target reps" value="8–12">' +
-          '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>' +
-          '<div class="form-actions"><button type="submit">Add to day</button><button type="button" class="link" data-action="new-ex-cancel">Cancel</button></div>' +
+        '<button class="link" type="button" data-action="picker-new-open">' + createLabel + "</button>" +
+        '<form class="picker-form" hidden>' + formFields +
+          '<div class="form-actions"><button type="submit">' + submitLabel + "</button>" +
+          '<button type="button" class="link" data-action="picker-new-cancel">Cancel</button></div>' +
         "</form>" +
       "</div></div>";
+  }
+
+  function renderAddZone(d) {
+    return pickerZone("exercise", ' data-day="' + d.day + '"', "＋ Add exercise", "Search exercises…", "＋ Create a new exercise", "Add to day",
+      '<input name="name" placeholder="Exercise name" required>' +
+      '<select name="type"><option value="strength">Strength — weight × reps</option><option value="circuit">Circuit — timed</option></select>' +
+      '<input name="setup" placeholder="How-to / setup (optional)">' +
+      '<input name="targetReps" placeholder="Target reps" value="8–12">' +
+      '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>');
   }
 
   function renderProgress() {
@@ -482,7 +490,7 @@
       const prev = previousMeasure(mId, bi, wk);
       return '<div class="measure-row" data-m="' + mId + '">' +
         '<span class="measure-name">' + esc(m.name) + "</span>" +
-        '<input type="number" inputmode="decimal" class="measure-val" data-k="' + k + '" data-type="text" value="' + esc(val) + '" placeholder="' + (prev != null ? esc(String(prev)) : "—") + '">' +
+        '<input type="number" inputmode="decimal" class="measure-val" data-k="' + k + '" data-type="text" aria-label="' + esc(m.name) + " (" + esc(m.unit) + ')" value="' + esc(val) + '" placeholder="' + (prev != null ? esc(String(prev)) : "—") + '">' +
         '<span class="unit">' + esc(m.unit) + "</span>" +
         (editing ? '<button class="remove" type="button" data-action="m-remove" data-m="' + mId + '" aria-label="Remove">×</button>' : "") +
         "</div>";
@@ -499,18 +507,9 @@
   }
 
   function renderMeasureAddZone() {
-    return '<div class="add-zone measure-add">' +
-      '<button class="add-btn" type="button" data-action="m-add-open">＋ Add measurement</button>' +
-      '<div class="picker" hidden>' +
-        '<input type="text" class="picker-search measure-search" placeholder="Search measurements…">' +
-        '<div class="picker-list"></div>' +
-        '<button class="link" type="button" data-action="m-new-open">＋ Create a new measurement</button>' +
-        '<form class="new-measure-form" hidden>' +
-          '<input name="name" placeholder="Measurement name" required>' +
-          '<select name="unit"><option value="cm">cm</option><option value="kg">kg</option></select>' +
-          '<div class="form-actions"><button type="submit">Add</button><button type="button" class="link" data-action="m-new-cancel">Cancel</button></div>' +
-        "</form>" +
-      "</div></div>";
+    return pickerZone("measure", "", "＋ Add measurement", "Search measurements…", "＋ Create a new measurement", "Add",
+      '<input name="name" placeholder="Measurement name" required>' +
+      '<select name="unit"><option value="cm">cm</option><option value="kg">kg</option></select>');
   }
 
   // Live patcher for the BMI line (parallels renderVolumes): recomputes from the
@@ -519,7 +518,7 @@
     const line = document.getElementById("bmi-line");
     if (!line) return;
     const b = bmiFor(currentBlock(), state.ui.week);
-    const out = line.querySelector("#bmi-value");
+    const out = document.getElementById("bmi-value");
     if (b == null) { line.hidden = true; if (out) out.textContent = ""; }
     else { line.hidden = false; if (out) out.textContent = b.toFixed(1); }
   }
@@ -540,38 +539,40 @@
     if (nf) nf.value = state.notes || "";
   }
 
-  function populatePicker(picker, day, query) {
-    const list = picker.querySelector(".picker-list");
+  // Shared picker body: the catalogue minus already-chosen ids, name-filtered and
+  // sorted, rendered through a per-kind row builder (or the same "no matches" line).
+  function renderPickList(picker, catalogue, chosenIds, query, rowHtml) {
     const on = {};
-    dayDef(day).exercises.forEach((p) => (on[p.id] = true));
+    chosenIds.forEach((id) => (on[id] = true));
     const q = (query || "").trim().toLowerCase();
-    const items = Object.keys(state.library)
-      .map((id) => state.library[id])
-      .filter((ex) => !on[ex.id] && (!q || ex.name.toLowerCase().indexOf(q) >= 0))
+    const items = Object.keys(catalogue)
+      .map((id) => catalogue[id])
+      .filter((x) => !on[x.id] && (!q || x.name.toLowerCase().indexOf(q) >= 0))
       .sort((a, b) => a.name.localeCompare(b.name));
-    list.innerHTML = items.length
-      ? items.map((ex) =>
-          '<button class="pick" type="button" data-action="add-ex" data-day="' + day + '" data-ex="' + ex.id + '">' +
-          esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>"
-        ).join("")
+    picker.querySelector(".picker-list").innerHTML = items.length
+      ? items.map(rowHtml).join("")
       : '<p class="muted small">No matches — create a new one below.</p>';
   }
 
+  function populatePicker(picker, day, query) {
+    renderPickList(picker, state.library, dayDef(day).exercises.map((p) => p.id), query, (ex) =>
+      '<button class="pick" type="button" data-action="add-ex" data-day="' + day + '" data-ex="' + ex.id + '">' +
+      esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>");
+  }
+
   function populateMeasurePicker(picker, query) {
-    const list = picker.querySelector(".picker-list");
-    const on = {};
-    state.tracked.forEach((id) => (on[id] = true));
-    const q = (query || "").trim().toLowerCase();
-    const items = Object.keys(state.measurements)
-      .map((id) => state.measurements[id])
-      .filter((m) => !on[m.id] && (!q || m.name.toLowerCase().indexOf(q) >= 0))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    list.innerHTML = items.length
-      ? items.map((m) =>
-          '<button class="pick" type="button" data-action="m-add" data-m="' + m.id + '">' +
-          esc(m.name) + ' <span class="tag">' + esc(m.unit) + "</span></button>"
-        ).join("")
-      : '<p class="muted small">No matches — create a new one below.</p>';
+    renderPickList(picker, state.measurements, state.tracked, query, (m) =>
+      '<button class="pick" type="button" data-action="m-add" data-m="' + m.id + '">' +
+      esc(m.name) + ' <span class="tag">' + esc(m.unit) + "</span></button>");
+  }
+
+  // Re-render a picker's list by its kind, so the generic open/search chrome
+  // needn't know which catalogue it's driving.
+  function repopulate(zone, query) {
+    const picker = zone.querySelector(".picker");
+    if (!picker) return;
+    if (zone.dataset.picker === "measure") populateMeasurePicker(picker, query);
+    else populatePicker(picker, Number(zone.dataset.day), query);
   }
 
   /* ---------------------------------------------------------------------- *
@@ -602,45 +603,36 @@
         }
         break;
       }
-      case "add-open": {
-        const picker = el.closest(".add-zone").querySelector(".picker");
+      case "picker-open": {
+        const zone = el.closest(".add-zone");
+        const picker = zone.querySelector(".picker");
         picker.hidden = !picker.hidden;
         if (!picker.hidden) {
-          populatePicker(picker, day, "");
+          repopulate(zone, "");
           const s = picker.querySelector(".picker-search");
           if (s) s.focus();
         }
+        break;
+      }
+      case "picker-new-open": {
+        const picker = el.closest(".picker");
+        picker.querySelector(".picker-form").hidden = false;
+        el.hidden = true;
+        const n = picker.querySelector('[name="name"]');
+        if (n) n.focus();
+        break;
+      }
+      case "picker-new-cancel": {
+        const form = el.closest(".picker-form");
+        form.hidden = true; form.reset();
+        const link = el.closest(".picker").querySelector('[data-action="picker-new-open"]');
+        if (link) link.hidden = false;
         break;
       }
       case "add-ex": {
         const ex = state.library[el.dataset.ex];
         dayDef(day).exercises.push(placement(ex && ex.type, el.dataset.ex, DEFAULT_SETS));
         save(); render(); break;
-      }
-      case "new-ex-open": {
-        const picker = el.closest(".picker");
-        picker.querySelector(".new-ex-form").hidden = false;
-        el.hidden = true;
-        const n = picker.querySelector('[name="name"]');
-        if (n) n.focus();
-        break;
-      }
-      case "new-ex-cancel": {
-        const form = el.closest(".new-ex-form");
-        form.hidden = true; form.reset();
-        const link = el.closest(".picker").querySelector('[data-action="new-ex-open"]');
-        if (link) link.hidden = false;
-        break;
-      }
-      case "m-add-open": {
-        const picker = el.closest(".measure-add").querySelector(".picker");
-        picker.hidden = !picker.hidden;
-        if (!picker.hidden) {
-          populateMeasurePicker(picker, "");
-          const s = picker.querySelector(".picker-search");
-          if (s) s.focus();
-        }
-        break;
       }
       case "m-add": {
         const id = el.dataset.m;
@@ -651,33 +643,21 @@
         state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
         save(); render(); break;
       }
-      case "m-new-open": {
-        const picker = el.closest(".picker");
-        picker.querySelector(".new-measure-form").hidden = false;
-        el.hidden = true;
-        const n = picker.querySelector('[name="name"]');
-        if (n) n.focus();
-        break;
-      }
-      case "m-new-cancel": {
-        const form = el.closest(".new-measure-form");
-        form.hidden = true; form.reset();
-        const link = el.closest(".picker").querySelector('[data-action="m-new-open"]');
-        if (link) link.hidden = false;
-        break;
-      }
       case "export": exportBackup(); break;
       case "reset": resetAll(); break;
     }
   }
 
   function handleSubmit(e) {
-    const mform = e.target.closest(".new-measure-form");
-    if (mform) { e.preventDefault(); return addNewMeasurement(mform); }
-    const form = e.target.closest(".new-ex-form");
+    const form = e.target.closest(".picker-form");
     if (!form) return;
     e.preventDefault();
-    const day = Number(form.dataset.day);
+    const zone = form.closest(".add-zone");
+    if (zone && zone.dataset.picker === "measure") return addNewMeasurement(form);
+    addNewExercise(form, zone ? Number(zone.dataset.day) : NaN);
+  }
+
+  function addNewExercise(form, day) {
     const fd = new FormData(form);
     const name = String(fd.get("name") || "").trim();
     if (!name) return;
@@ -732,14 +712,9 @@
       state.profile.heightCm = Number.isFinite(v) && v > 0 ? v : null;
       save(); renderBmi(); return;
     }
-    if (el.classList.contains("measure-search")) {
-      const p = el.closest(".picker");
-      if (p) populateMeasurePicker(p, el.value);
-      return;
-    }
     if (el.classList.contains("picker-search")) {
-      const p = el.closest(".picker");
-      if (p) populatePicker(p, Number(el.dataset.day), el.value);
+      const zone = el.closest(".add-zone");
+      if (zone) repopulate(zone, el.value);
       return;
     }
     const k = el.dataset.k;
