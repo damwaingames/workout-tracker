@@ -71,6 +71,8 @@ h1 { font-size: 1.2rem; margin: 0; }
 
 .progress { font-size: .85rem; color: var(--muted); margin: .6rem 0 0; font-variant-numeric: tabular-nums; }
 .progress strong { color: var(--workout); }
+.volume { font-size: .8rem; color: var(--muted); margin: .25rem 0 0; font-variant-numeric: tabular-nums; }
+.volume strong { color: var(--workout); }
 
 nav.weeks {
   display: flex;
@@ -175,7 +177,41 @@ nav.weeks {
 .set { display: flex; align-items: center; gap: .4rem; }
 .set-n { font-size: .7rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); width: 2.8rem; flex: 0 0 auto; }
 .set .x { color: var(--muted); }
+.set .unit { font-size: .72rem; color: var(--muted); flex: 0 0 auto; }
 .last { font-size: .72rem; color: var(--muted); margin-top: .35rem; }
+.day-volume {
+  margin-top: .75rem;
+  padding-top: .6rem;
+  border-top: 1px dashed var(--border);
+  font-size: .78rem;
+  color: var(--muted);
+}
+.day-volume strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.sets-edit {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin-top: .55rem;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted);
+}
+.step {
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--workout);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.step:hover { border-color: var(--workout); }
+.sets-count { min-width: 1.1rem; text-align: center; font-size: .9rem; color: var(--text); font-variant-numeric: tabular-nums; }
 
 input[type="text"], input[type="number"], input[type="date"], textarea, select {
   font: inherit;

@@ -1,7 +1,7 @@
 /* Service worker — offline app shell cache.
  * Bump CACHE whenever you change index.html / styles.css / app.js so phones
  * pick up the new version on next launch. */
-const CACHE = "workout-tracker-v2-1";
+const CACHE = "workout-tracker-v2-2";
 const ASSETS = [
   "./",
   "./index.html",
