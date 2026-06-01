@@ -168,6 +168,12 @@
         if (typeof d.roundRestSec !== "number") d.roundRestSec = CIRCUIT_DEFAULTS.roundRestSec;
       });
     });
+    // Strip the retired per-move circuit fields (timing now lives on the day),
+    // mirroring how migrateSets cleaned up defaultSets.
+    Object.keys(s.library).forEach((id) => {
+      const ex = s.library[id];
+      delete ex.duration; delete ex.rest; delete ex.rounds;
+    });
   }
 
   function load() {
@@ -193,12 +199,13 @@
   function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
   function dayDef(day) { return currentBlock().days.find((d) => d.day === day); }
 
-  // Clamp a set count into [MIN_SETS, MAX_SETS]; non-numeric (missing) → DEFAULT_SETS.
-  // NB: 0 must clamp to MIN_SETS, so we can't use `|| DEFAULT_SETS` (0 is falsy).
-  function clampSets(n) {
+  // Round and clamp an int into [min, max]; non-numeric (missing) → fallback.
+  // NB: 0 must clamp to min, so we can't use `|| fallback` (0 is falsy).
+  function clampInt(n, min, max, fallback) {
     n = Math.round(n);
-    return Number.isFinite(n) ? Math.min(MAX_SETS, Math.max(MIN_SETS, n)) : DEFAULT_SETS;
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
   }
+  const clampSets = (n) => clampInt(n, MIN_SETS, MAX_SETS, DEFAULT_SETS);
   // The single place that knows a placement's shape: strength placements own a
   // (clamped) set count; circuit placements carry none (the day owns the timing).
   function placement(type, id, sets) {
@@ -210,10 +217,7 @@
   // mismatched placement can't be built.
   function kindType(kind) { return kind === "strength" ? "strength" : "circuit"; }
 
-  function clampRounds(n) {
-    n = Math.round(n);
-    return Number.isFinite(n) ? Math.min(MAX_ROUNDS, Math.max(MIN_ROUNDS, n)) : CIRCUIT_DEFAULTS.rounds;
-  }
+  const clampRounds = (n) => clampInt(n, MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS.rounds);
   const nonNegSec = (n) => { n = Math.round(+n); return Number.isFinite(n) && n > 0 ? n : 0; };
   // A recovery day's circuit settings, normalised (defaults applied, types coerced).
   // The single read-side accessor so the renderer and the time maths agree.
