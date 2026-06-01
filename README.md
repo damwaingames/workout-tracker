@@ -32,7 +32,7 @@ All data lives in `localStorage` on whichever device you use — there is no ser
 
 ## Updating
 
-Push to `main`; GitHub Pages redeploys automatically. When you change `index.html`, `styles.css`, or `app.js`, bump the `CACHE` constant in `sw.js` so installed devices pick up the new version on next launch.
+Push to `main`; GitHub Pages redeploys automatically. Each release carries a semver version, shown in the footer (`vX.Y.Z`). When you change `index.html`, `styles.css`, or `app.js`, bump `APP_VERSION` in `app.js` and the matching `CACHE` in `sw.js` (kept in lockstep) so installed devices pick up the new version on next launch.
 
 ## Icons
 

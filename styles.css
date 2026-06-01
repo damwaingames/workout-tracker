@@ -302,6 +302,7 @@ footer { margin-top: 2rem; }
 .muted { color: var(--muted); }
 .small { font-size: .82rem; }
 footer .muted { margin-top: .85rem; line-height: 1.5; }
+.version-tag { margin-top: .5rem; opacity: .7; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 520px) {
   h1 { font-size: 1.05rem; }

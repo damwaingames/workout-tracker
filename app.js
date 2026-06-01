@@ -4,6 +4,9 @@
   const WEEKS = 4;
   const STORAGE_KEY = "workout-tracker-v2";
   const MIN_SETS = 1, MAX_SETS = 6, DEFAULT_SETS = 2;
+  // Human-facing release version (semver), surfaced in the footer. Bump on each
+  // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
+  const APP_VERSION = "1.1.0";
 
   /* ---------------------------------------------------------------------- *
    * Seed data — straight from the training design doc.                     *
@@ -633,6 +636,8 @@
   document.getElementById("import-input").addEventListener("change", handleField);
   render();
   hydrateNotes();
+  const versionTag = document.getElementById("version-tag");
+  if (versionTag) versionTag.textContent = "v" + APP_VERSION;
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
