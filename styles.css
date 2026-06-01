@@ -177,6 +177,31 @@ nav.weeks {
 .set .x { color: var(--muted); }
 .last { font-size: .72rem; color: var(--muted); margin-top: .35rem; }
 
+.sets-edit {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  margin-top: .55rem;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted);
+}
+.step {
+  width: 1.7rem;
+  height: 1.7rem;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--workout);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.step:hover { border-color: var(--workout); }
+.sets-count { min-width: 1.1rem; text-align: center; font-size: .9rem; color: var(--text); font-variant-numeric: tabular-nums; }
+
 input[type="text"], input[type="number"], input[type="date"], textarea, select {
   font: inherit;
   color: var(--text);

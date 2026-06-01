@@ -7,8 +7,8 @@
   /* ---------------------------------------------------------------------- *
    * Seed data — straight from the training design doc.                     *
    * ---------------------------------------------------------------------- */
-  function S(id, name, setup, targetReps, defaultSets) {
-    return { id, name, type: "strength", setup, targetReps, defaultSets: defaultSets || 2 };
+  function S(id, name, setup, targetReps) {
+    return { id, name, type: "strength", setup, targetReps };
   }
   function C(id, name) {
     return { id, name, type: "circuit", duration: "1 min", rest: "15 sec", rounds: 2 };
@@ -48,16 +48,22 @@
   }
 
   function seedBlock(id, name) {
+    // Sets live on each placement, not the exercise — the program's strength days
+    // all start at 2 sets; circuits carry none (they use rounds).
+    const day = (n, kind, title, focus, ids) => ({
+      day: n, kind, title, focus,
+      exercises: ids.map((exId) => (kind === "strength" ? { id: exId, sets: 2 } : { id: exId })),
+    });
     return {
       id, name, createdAt: today(),
       days: [
-        { day: 1, kind: "strength", title: "Workout A", focus: "Squat & Row", exerciseIds: ["goblet-squats", "bent-over-rows", "banded-clamshells", "bicep-curls", "wrist-curls"] },
-        { day: 2, kind: "recovery", title: "Recovery A", focus: "Cardio Flush", exerciseIds: ["high-knees", "wall-press-ups", "glute-squeezes", "calf-raises", "chest-opener-stretch"] },
-        { day: 3, kind: "strength", title: "Workout B", focus: "Hinge & Press", exerciseIds: ["dumbbell-rdls", "floor-chest-presses", "glute-bridges", "overhead-shoulder-presses", "crunches"] },
-        { day: 4, kind: "recovery", title: "Recovery B", focus: "Glute & Core Activation", exerciseIds: ["banded-hip-abductions", "hollow-body-holds", "glute-squeezes", "calf-raises", "seated-forward-fold-stretch"] },
-        { day: 5, kind: "strength", title: "Workout C", focus: "Sumo & Accessory", exerciseIds: ["sumo-squats", "dumbbell-lateral-raises", "donkey-kicks", "dumbbell-tricep-extensions", "wrist-extensions"] },
-        { day: 6, kind: "recovery", title: "Recovery C", focus: "Mobility & Length", exerciseIds: ["high-knees", "wall-press-ups", "banded-hip-abductions", "quad-stretch", "childs-pose-or-seated-torso-twist"] },
-        { day: 7, kind: "rest", title: "Rest Day", focus: "Complete Decompression", exerciseIds: [] },
+        day(1, "strength", "Workout A", "Squat & Row", ["goblet-squats", "bent-over-rows", "banded-clamshells", "bicep-curls", "wrist-curls"]),
+        day(2, "recovery", "Recovery A", "Cardio Flush", ["high-knees", "wall-press-ups", "glute-squeezes", "calf-raises", "chest-opener-stretch"]),
+        day(3, "strength", "Workout B", "Hinge & Press", ["dumbbell-rdls", "floor-chest-presses", "glute-bridges", "overhead-shoulder-presses", "crunches"]),
+        day(4, "recovery", "Recovery B", "Glute & Core Activation", ["banded-hip-abductions", "hollow-body-holds", "glute-squeezes", "calf-raises", "seated-forward-fold-stretch"]),
+        day(5, "strength", "Workout C", "Sumo & Accessory", ["sumo-squats", "dumbbell-lateral-raises", "donkey-kicks", "dumbbell-tricep-extensions", "wrist-extensions"]),
+        day(6, "recovery", "Recovery C", "Mobility & Length", ["high-knees", "wall-press-ups", "banded-hip-abductions", "quad-stretch", "childs-pose-or-seated-torso-twist"]),
+        day(7, "rest", "Rest Day", "Complete Decompression", []),
       ],
     };
   }
@@ -81,9 +87,28 @@
     if (!s || s.version !== 2 || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
     if (!s.log) s.log = {};
     if (!s.library) s.library = seedLibrary();
+    migrateSets(s);
     if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
     if (typeof s.notes !== "string") s.notes = "";
     return s;
+  }
+
+  // Sets moved off the library record (defaultSets) onto each day's placement:
+  // exerciseIds[] → exercises[{ id, sets }]. Idempotent — a no-op once migrated.
+  function migrateSets(s) {
+    s.blocks.forEach((b) => {
+      (b.days || []).forEach((d) => {
+        if (!Array.isArray(d.exercises)) {
+          const ids = Array.isArray(d.exerciseIds) ? d.exerciseIds : [];
+          d.exercises = ids.map((id) => {
+            const ex = s.library[id];
+            return ex && ex.type === "strength" ? { id, sets: ex.defaultSets || 2 } : { id };
+          });
+        }
+        delete d.exerciseIds;
+      });
+    });
+    Object.keys(s.library).forEach((id) => delete s.library[id].defaultSets);
   }
 
   function load() {
@@ -97,6 +122,10 @@
    * Helpers                                                                *
    * ---------------------------------------------------------------------- */
   const cellKey = (blockId, wk, day) => blockId + ".w" + wk + ".d" + day;
+  // The log-key grammar lives here and nowhere else — renderers (data-k) and
+  // readers must build keys through these so the format stays authoritative.
+  const setKey = (cell, exId, i, f) => cell + ".ex." + exId + ".s" + i + "." + f; // f: "w" | "r"
+  const roundKey = (cell, exId, r) => cell + ".ex." + exId + ".r" + r;
   function currentBlock() { return state.blocks.find((b) => b.id === state.ui.block) || state.blocks[0]; }
   function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
   function dayDef(day) { return currentBlock().days.find((d) => d.day === day); }
@@ -108,10 +137,10 @@
   }
 
   function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
-  function uniqueId(base) {
+  function uniqueId(base, has) {
     base = base || "exercise";
     let id = base, n = 2;
-    while (state.library[id]) id = base + "-" + n++;
+    while (has(id)) id = base + "-" + n++;
     return id;
   }
   function nextBlockNumber() {
@@ -127,32 +156,29 @@
   function readSets(blockId, wk, day, exId, sets) {
     const cell = cellKey(blockId, wk, day);
     return Array.from({ length: sets }, (_, i) => ({
-      w: state.log[cell + ".ex." + exId + ".s" + i + ".w"] || "",
-      r: state.log[cell + ".ex." + exId + ".s" + i + ".r"] || "",
+      w: state.log[setKey(cell, exId, i, "w")] || "",
+      r: state.log[setKey(cell, exId, i, "r")] || "",
     }));
   }
 
   // The most recent earlier logged instance of an exercise — last week within a
   // block, or the previous block's last occurrence at a block boundary.
   function previousSets(exId, curBlockIdx, curWeek, curDay) {
-    const ex = state.library[exId];
-    if (!ex) return null;
-    const sets = ex.defaultSets || 2;
+    if (!state.library[exId]) return null;
+    // A single monotonic rank over (block, week, day) — day ≤ 7 so *8 never
+    // collides. Used both to filter "earlier than the cursor" and to pick the latest.
+    const rank = (bi, wk, day) => (bi * (WEEKS + 1) + wk) * 8 + day;
+    const cutoff = rank(curBlockIdx, curWeek, curDay);
     let best = null;
     state.blocks.forEach((block, bi) => {
       block.days.forEach((d) => {
-        if (d.exerciseIds.indexOf(exId) < 0) return;
+        const p = d.exercises.find((x) => x.id === exId);
+        if (!p) return;
         for (let wk = 1; wk <= WEEKS; wk++) {
-          const before =
-            bi < curBlockIdx ||
-            (bi === curBlockIdx && wk < curWeek) ||
-            (bi === curBlockIdx && wk === curWeek && d.day < curDay);
-          if (!before) continue;
-          const s = readSets(block.id, wk, d.day, exId, sets);
-          if (s.some((x) => x.w || x.r)) {
-            const order = bi * 1000 + wk * 10 + d.day;
-            if (!best || order > best.order) best = { order, sets: s };
-          }
+          const order = rank(bi, wk, d.day);
+          if (order >= cutoff) continue;
+          const s = readSets(block.id, wk, d.day, exId, p.sets || 2);
+          if (s.some((x) => x.w || x.r) && (!best || order > best.order)) best = { order, sets: s };
         }
       });
     });
@@ -213,22 +239,28 @@
 
   function renderStrength(d, wk, cell) {
     const bi = currentBlockIndex();
-    return d.exerciseIds.map((exId) => {
+    return d.exercises.map((place) => {
+      const exId = place.id;
       const ex = state.library[exId];
       if (!ex) return "";
-      const sets = ex.defaultSets || 2;
+      const sets = place.sets || 2;
       const prev = previousSets(exId, bi, wk, d.day);
       let rows = "";
       for (let i = 0; i < sets; i++) {
         const p = prev && prev[i];
         rows +=
           '<div class="set"><span class="set-n">Set ' + (i + 1) + "</span>" +
-          '<input type="number" inputmode="decimal" class="w" data-k="' + cell + ".ex." + exId + ".s" + i + '.w" data-type="text" placeholder="' + (p && p.w ? esc(p.w) : "wt") + '">' +
+          '<input type="number" inputmode="decimal" class="w" data-k="' + setKey(cell, exId, i, "w") + '" data-type="text" placeholder="' + (p && p.w ? esc(p.w) : "wt") + '">' +
           '<span class="x">×</span>' +
-          '<input type="number" inputmode="numeric" class="r" data-k="' + cell + ".ex." + exId + ".s" + i + '.r" data-type="text" placeholder="' + (p && p.r ? esc(p.r) : "reps") + '"></div>';
+          '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" placeholder="' + (p && p.r ? esc(p.r) : "reps") + '"></div>';
       }
       const last = prev
         ? '<div class="last">Last: ' + prev.map((s) => (s.w ? esc(s.w) + "×" : "") + (s.r ? esc(s.r) : "–")).join(", ") + "</div>"
+        : "";
+      const setsEdit = editing
+        ? '<div class="sets-edit">Sets <button class="step" type="button" data-action="sets-dec" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Fewer sets">−</button>' +
+          '<span class="sets-count">' + sets + "</span>" +
+          '<button class="step" type="button" data-action="sets-inc" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="More sets">＋</button></div>'
         : "";
       return '<div class="exercise" data-ex="' + exId + '">' +
         '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
@@ -237,19 +269,21 @@
         (editing ? '<button class="remove" type="button" data-action="remove-exercise" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
         "</div>" +
         (ex.setup ? '<div class="setup">' + esc(ex.setup) + "</div>" : "") +
+        setsEdit +
         '<div class="sets">' + rows + "</div>" + last +
         "</div>";
     }).join("");
   }
 
   function renderRecovery(d, cell) {
-    const moves = d.exerciseIds.map((exId) => {
+    const moves = d.exercises.map((place) => {
+      const exId = place.id;
       const ex = state.library[exId];
       if (!ex) return "";
       const rounds = ex.rounds || 2;
       let checks = "";
       for (let r = 0; r < rounds; r++) {
-        checks += '<label class="round"><input type="checkbox" data-k="' + cell + ".ex." + exId + ".r" + r + '" data-type="check"> R' + (r + 1) + "</label>";
+        checks += '<label class="round"><input type="checkbox" data-k="' + roundKey(cell, exId, r) + '" data-type="check"> R' + (r + 1) + "</label>";
       }
       return '<div class="exercise circuit" data-ex="' + exId + '">' +
         '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
@@ -289,9 +323,10 @@
 
   function renderProgress() {
     const b = currentBlock();
+    const days = b.days.length;
     let weekDone = 0, blockDone = 0;
     for (let wk = 1; wk <= WEEKS; wk++) {
-      for (let i = 0; i < b.days.length; i++) {
+      for (let i = 0; i < days; i++) {
         if (state.log[cellKey(b.id, wk, b.days[i].day) + ".done"]) {
           blockDone++;
           if (wk === state.ui.week) weekDone++;
@@ -299,7 +334,7 @@
       }
     }
     document.getElementById("progress").innerHTML =
-      "<strong>" + weekDone + "</strong> / 7 this week · <strong>" + blockDone + "</strong> / 28 this block";
+      "<strong>" + weekDone + "</strong> / " + days + " this week · <strong>" + blockDone + "</strong> / " + (days * WEEKS) + " this block";
   }
 
   function hydrate() {
@@ -321,7 +356,7 @@
   function populatePicker(picker, day, query) {
     const list = picker.querySelector(".picker-list");
     const on = {};
-    dayDef(day).exerciseIds.forEach((id) => (on[id] = true));
+    dayDef(day).exercises.forEach((p) => (on[p.id] = true));
     const q = (query || "").trim().toLowerCase();
     const items = Object.keys(state.library)
       .map((id) => state.library[id])
@@ -351,8 +386,17 @@
       case "toggle-setup": el.closest(".exercise").classList.toggle("open"); break;
       case "remove-exercise": {
         const d = dayDef(day);
-        d.exerciseIds = d.exerciseIds.filter((id) => id !== el.dataset.ex);
+        d.exercises = d.exercises.filter((p) => p.id !== el.dataset.ex);
         save(); render(); break;
+      }
+      case "sets-inc":
+      case "sets-dec": {
+        const p = dayDef(day).exercises.find((x) => x.id === el.dataset.ex);
+        if (p) {
+          p.sets = Math.min(6, Math.max(1, (p.sets || 2) + (el.dataset.action === "sets-inc" ? 1 : -1)));
+          save(); render();
+        }
+        break;
       }
       case "add-open": {
         const picker = el.closest(".add-zone").querySelector(".picker");
@@ -364,7 +408,11 @@
         }
         break;
       }
-      case "add-ex": dayDef(day).exerciseIds.push(el.dataset.ex); save(); render(); break;
+      case "add-ex": {
+        const ex = state.library[el.dataset.ex];
+        dayDef(day).exercises.push(ex && ex.type === "strength" ? { id: ex.id, sets: 2 } : { id: el.dataset.ex });
+        save(); render(); break;
+      }
       case "new-ex-open": {
         const picker = el.closest(".picker");
         picker.querySelector(".new-ex-form").hidden = false;
@@ -394,18 +442,18 @@
     const name = String(fd.get("name") || "").trim();
     if (!name) return;
     const type = fd.get("type") === "circuit" ? "circuit" : "strength";
-    const id = uniqueId(slugify(name));
+    const id = uniqueId(slugify(name), (x) => state.library[x]);
     const ex = { id, name, type };
     const setup = String(fd.get("setup") || "").trim();
     if (setup) ex.setup = setup;
     if (type === "strength") {
       ex.targetReps = String(fd.get("targetReps") || "").trim() || "8–12";
-      ex.defaultSets = Math.min(6, Math.max(1, Number(fd.get("sets")) || 2));
     } else {
       ex.duration = "1 min"; ex.rest = "15 sec"; ex.rounds = 2;
     }
     state.library[id] = ex;
-    dayDef(day).exerciseIds.push(id);
+    const sets = Math.min(6, Math.max(1, Number(fd.get("sets")) || 2));
+    dayDef(day).exercises.push(type === "strength" ? { id, sets } : { id });
     save(); render();
   }
 
@@ -435,13 +483,10 @@
 
   function afterDone(el, k) {
     const cell = k.slice(0, -5);
-    if (el.checked && !state.log[cell + ".date"]) {
-      setLog(cell + ".date", today());
-      const di = document.querySelector('[data-k="' + cell + '.date"]');
-      if (di) di.value = state.log[cell + ".date"];
-    }
-    const card = el.closest("[data-cell]");
-    if (card) card.classList.toggle("is-done", el.checked);
+    if (el.checked && !state.log[cell + ".date"]) setLog(cell + ".date", today());
+    // Re-render rather than hand-patch the date input and is-done class —
+    // hydrate() already owns both, so there's no separate path to keep in sync.
+    renderWeek();
     renderProgress();
   }
 
@@ -451,13 +496,12 @@
   function newBlock() {
     const src = currentBlock();
     const num = nextBlockNumber();
-    let id = "b" + num;
     const taken = {};
     state.blocks.forEach((b) => (taken[b.id] = true));
-    while (taken[id]) id += "x";
+    const id = uniqueId("b" + num, (x) => taken[x]);
     const nb = {
       id, name: "Block " + num, createdAt: today(),
-      days: src.days.map((d) => ({ day: d.day, kind: d.kind, title: d.title, focus: d.focus, exerciseIds: d.exerciseIds.slice() })),
+      days: src.days.map((d) => ({ day: d.day, kind: d.kind, title: d.title, focus: d.focus, exercises: d.exercises.map((p) => ({ ...p })) })),
     };
     state.blocks.push(nb);
     state.ui.block = id;
@@ -492,15 +536,26 @@
   function importBackup(file) {
     const r = new FileReader();
     r.onload = function () {
+      let data;
       try {
-        const data = JSON.parse(r.result);
-        if (!data || typeof data !== "object" || !Array.isArray(data.blocks) || !data.blocks.length) throw new Error("bad");
-        state = normalise(data);
-        editing = false;
-        save(); render(); hydrateNotes();
+        data = JSON.parse(r.result);
       } catch (err) {
         window.alert("Could not read that backup file.");
+        return;
       }
+      if (!data || typeof data !== "object" || !Array.isArray(data.blocks) || !data.blocks.length) {
+        window.alert("Could not read that backup file.");
+        return;
+      }
+      // Gate on version explicitly: normalise() resets unknown input to defaults,
+      // so without this an incompatible backup would silently wipe current data.
+      if (data.version !== 2) {
+        window.alert("That backup is from an incompatible version — not importing. Your current data is unchanged.");
+        return;
+      }
+      state = normalise(data);
+      editing = false;
+      save(); render(); hydrateNotes();
     };
     r.readAsText(file);
   }
@@ -519,7 +574,9 @@
   document.addEventListener("click", handleClick);
   document.addEventListener("submit", handleSubmit);
   document.addEventListener("input", handleField);
-  document.addEventListener("change", handleField);
+  // File inputs don't fire "input" — bind the importer's change directly so every
+  // other field is handled once (via "input") rather than twice (input + change).
+  document.getElementById("import-input").addEventListener("change", handleField);
   render();
   hydrateNotes();
 

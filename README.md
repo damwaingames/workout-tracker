@@ -9,7 +9,7 @@ A personal, client-side **4-week full-body & glute training tracker**, installab
 - **Strength days** — log every set as **weight × reps**; the previous session's numbers appear as a ghost placeholder so you always know what to beat. Each exercise carries its own rep target and a tap-to-expand how-to.
 - **Recovery days** — tap through each circuit move (two rounds) and log an energy score.
 - **Repeatable blocks** — each block is one 4-week run. **＋ Block** clones the program so you keep all history; progression carries across the boundary.
-- **Editable exercise library** — add, create, or remove exercises per day in **Edit** mode; new exercises are saved for reuse in future blocks.
+- **Editable exercise library** — in **Edit** mode, add, create, remove, or set how many sets each exercise gets per day; new exercises are saved for reuse in future blocks.
 - **Offline** — works without a connection once installed; everything is stored in your browser's `localStorage`.
 
 ## Run locally
