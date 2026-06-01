@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Workout Tracker</title>
+<meta name="description" content="Personal 4-week full-body & glute training tracker.">
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#4f46e5">
+<link rel="apple-touch-icon" href="./icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Workout">
+<link rel="stylesheet" href="./styles.css">
+<script src="./app.js" defer></script>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="topbar">
+      <h1>Workout Tracker</h1>
+      <div class="block-controls">
+        <select id="block-select" aria-label="Select training block"></select>
+        <button data-action="new-block" class="ghost" title="Start a new 4-week block">＋ Block</button>
+        <button data-action="edit-block" id="edit-toggle" class="ghost">Edit</button>
+      </div>
+    </div>
+    <div class="progress" id="progress"></div>
+    <nav class="weeks" id="week-nav"></nav>
+  </header>
+
+  <main id="week-view"></main>
+
+  <section class="notes-card">
+    <h2>Progress / mood notes</h2>
+    <textarea id="notes-field" rows="5" placeholder="How the program's going — mood, energy, anything worth remembering."></textarea>
+  </section>
+
+  <footer>
+    <div class="utils">
+      <button data-action="export" class="ghost">Export backup</button>
+      <label class="import-label ghost">Import backup<input type="file" id="import-input" accept="application/json" hidden></label>
+      <button data-action="reset" class="ghost danger">Reset all</button>
+    </div>
+    <p class="muted small">Saves automatically to this device. Hit <strong>Edit</strong> to add, create, or remove exercises and start new blocks. Export a backup now and then so a browser-data wipe can't lose your history.</p>
+  </footer>
+</div>
+</body>
+</html>
