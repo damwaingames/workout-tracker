@@ -105,6 +105,18 @@ nav.weeks {
   color: var(--muted);
 }
 .edit-hint { text-transform: none; letter-spacing: 0; color: var(--workout); }
+.block-name-input {
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+  padding: .15rem .4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  width: 11rem;
+  max-width: 60%;
+}
 
 .day {
   background: var(--card);
@@ -271,8 +283,12 @@ textarea { width: 100%; resize: vertical; }
 }
 .pick:hover { border-color: var(--workout); }
 .pick .tag { color: var(--muted); font-size: .7rem; }
-.new-ex-form { display: flex; flex-direction: column; gap: .45rem; margin-top: .55rem; padding-top: .55rem; border-top: 1px solid var(--border); }
-.new-ex-form input, .new-ex-form select { width: 100%; }
+.picker-form { display: flex; flex-direction: column; gap: .45rem; margin-top: .55rem; padding-top: .55rem; border-top: 1px solid var(--border); }
+/* The display:flex above outweighs the UA [hidden]{display:none} (equal
+ * specificity, author wins), so make hidden authoritative or the create form
+ * shows before "Create new" is clicked. */
+.picker-form[hidden] { display: none; }
+.picker-form input, .picker-form select { width: 100%; }
 .sets-field { font-size: .85rem; color: var(--muted); display: flex; align-items: center; gap: .45rem; }
 .sets-field input { width: 4rem; }
 .form-actions { display: flex; gap: .6rem; align-items: center; }
@@ -286,7 +302,7 @@ textarea { width: 100%; resize: vertical; }
   cursor: pointer;
 }
 
-.notes-card {
+.notes-card, .measurements-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -294,7 +310,23 @@ textarea { width: 100%; resize: vertical; }
   margin-top: 1.5rem;
   box-shadow: var(--shadow);
 }
-.notes-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
+.notes-card h2, .measurements-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
+
+.measure-row { display: flex; align-items: center; gap: .5rem; padding: .45rem 0; border-top: 1px solid #f0f1f4; }
+.measure-row:first-of-type { border-top: none; }
+.measure-name { flex: 1 1 auto; min-width: 0; font-size: .92rem; }
+.measure-val { width: 5rem; text-align: center; flex: 0 0 auto; }
+.measure-row .unit { font-size: .72rem; color: var(--muted); flex: 0 0 auto; }
+.bmi-line {
+  margin-top: .6rem;
+  padding-top: .6rem;
+  border-top: 1px dashed var(--border);
+  font-size: .8rem;
+  color: var(--muted);
+}
+.bmi-line strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.measure-height { margin-top: .7rem; }
+.measure-height input { width: 5rem; }
 
 footer { margin-top: 2rem; }
 .utils { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
@@ -302,6 +334,7 @@ footer { margin-top: 2rem; }
 .muted { color: var(--muted); }
 .small { font-size: .82rem; }
 footer .muted { margin-top: .85rem; line-height: 1.5; }
+.version-tag { margin-top: .5rem; opacity: .7; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 520px) {
   h1 { font-size: 1.05rem; }

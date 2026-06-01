@@ -4,6 +4,9 @@
   const WEEKS = 4;
   const STORAGE_KEY = "workout-tracker-v2";
   const MIN_SETS = 1, MAX_SETS = 6, DEFAULT_SETS = 2;
+  // Human-facing release version (semver), surfaced in the footer. Bump on each
+  // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
+  const APP_VERSION = "1.1.0";
 
   /* ---------------------------------------------------------------------- *
    * Seed data — straight from the training design doc.                     *
@@ -14,6 +17,9 @@
   function C(id, name) {
     return { id, name, type: "circuit", duration: "1 min", rest: "15 sec", rounds: 2 };
   }
+  // A catalogue is an {id → record} map; both the exercise library and the
+  // measurement catalogue are built this way.
+  function keyById(list) { const o = {}; list.forEach((x) => (o[x.id] = x)); return o; }
 
   function seedLibrary() {
     const list = [
@@ -43,9 +49,25 @@
       C("quad-stretch", "Quad Stretch"),
       C("childs-pose-or-seated-torso-twist", "Child's Pose or Seated Torso Twist"),
     ];
-    const lib = {};
-    list.forEach((e) => (lib[e.id] = e));
-    return lib;
+    return keyById(list);
+  }
+
+  // Body-measurement catalogue. Bodyweight is the only mass (kg); circumferences
+  // are cm. The user tracks a subset (state.tracked) and can add their own.
+  function M(id, name, unit) { return { id, name, unit }; }
+  function seedMeasurements() {
+    const list = [
+      M("bodyweight", "Bodyweight", "kg"),
+      M("waist", "Waist", "cm"),
+      M("chest", "Chest", "cm"),
+      M("hips", "Hips", "cm"),
+      M("thigh", "Thigh", "cm"),
+      M("calf", "Calf", "cm"),
+      M("bicep", "Bicep", "cm"),
+      M("forearm", "Forearm", "cm"),
+      M("neck", "Neck", "cm"),
+    ];
+    return keyById(list);
   }
 
   function seedBlock(id, name) {
@@ -70,7 +92,13 @@
   }
 
   function defaultState() {
-    return { version: 2, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")], log: {}, ui: { block: "b1", week: 1 }, notes: "" };
+    return {
+      version: 2, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")],
+      log: {}, ui: { block: "b1", week: 1 }, notes: "",
+      // Body stats: the measurement catalogue, the user's tracked subset, and a
+      // one-time profile (height → BMI). Weekly values live in `log` (measureKey).
+      measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
+    };
   }
 
   /* ---------------------------------------------------------------------- *
@@ -88,6 +116,11 @@
     if (!s || s.version !== 2 || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
     if (!s.log) s.log = {};
     if (!s.library) s.library = seedLibrary();
+    // Body stats are additive — older v2 saves predate them, so backfill the
+    // defaults rather than bumping the schema version (keeps old backups importable).
+    if (!s.measurements) s.measurements = seedMeasurements();
+    if (!Array.isArray(s.tracked)) s.tracked = ["bodyweight"];
+    if (!s.profile || typeof s.profile !== "object") s.profile = {};
     migrateSets(s);
     if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
     if (typeof s.notes !== "string") s.notes = "";
@@ -127,6 +160,10 @@
   // readers must build keys through these so the format stays authoritative.
   const setKey = (cell, exId, i, f) => cell + ".ex." + exId + ".s" + i + "." + f; // f: "w" | "r"
   const roundKey = (cell, exId, r) => cell + ".ex." + exId + ".r" + r;
+  // Weekly body measurement (one value per block/week/measurement). Shares
+  // state.log — the ".m." segment can't collide with a day's ".dN" cells, and
+  // the block.id prefix means deleteBlock's purge sweeps these up for free.
+  const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mId;
   function currentBlock() { return state.blocks.find((b) => b.id === state.ui.block) || state.blocks[0]; }
   function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
   function dayDef(day) { return currentBlock().days.find((d) => d.day === day); }
@@ -214,10 +251,37 @@
     return v;
   }
 
+  // Most recent earlier value of a measurement, scanning (block, week) like
+  // previousSets but without days — measurements are weekly, not per-day.
+  function previousMeasure(mId, curBlockIdx, curWeek) {
+    const rank = (bi, wk) => bi * (WEEKS + 1) + wk;
+    const cutoff = rank(curBlockIdx, curWeek);
+    let best = null;
+    state.blocks.forEach((block, bi) => {
+      for (let wk = 1; wk <= WEEKS; wk++) {
+        const order = rank(bi, wk);
+        if (order >= cutoff) continue;
+        const v = state.log[measureKey(block.id, wk, mId)];
+        if (v != null && v !== "" && (!best || order > best.order)) best = { order, value: v };
+      }
+    });
+    return best ? best.value : null;
+  }
+
+  // BMI for a week = bodyweight / height² (metric). Null unless both a stored
+  // height and that week's bodyweight are present.
+  function bmiFor(block, wk) {
+    const h = parseFloat(state.profile && state.profile.heightCm);
+    const w = parseFloat(state.log[measureKey(block.id, wk, "bodyweight")]);
+    if (!(h > 0) || !(w > 0)) return null;
+    const m = h / 100;
+    return w / (m * m);
+  }
+
   /* ---------------------------------------------------------------------- *
    * Render                                                                 *
    * ---------------------------------------------------------------------- */
-  function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); }
+  function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); }
 
   function renderHeader() {
     const sel = document.getElementById("block-select");
@@ -241,8 +305,12 @@
   function renderWeek() {
     const block = currentBlock();
     const wk = state.ui.week;
+    // In Edit mode the block name becomes an inline input; otherwise it's static.
+    const nameHtml = editing
+      ? '<input type="text" id="block-name-input" class="block-name-input" value="' + esc(block.name) + '" placeholder="Block name" aria-label="Block name" maxlength="40">'
+      : esc(block.name);
     document.getElementById("week-view").innerHTML =
-      '<p class="week-heading">' + esc(block.name) + " · Week " + wk + " of " + WEEKS +
+      '<p class="week-heading">' + nameHtml + " · Week " + wk + " of " + WEEKS +
       (editing ? ' <span class="edit-hint">— editing this block’s exercises</span>' : "") + "</p>" +
       block.days.map((d) => renderDay(block, d, wk)).join("");
     hydrate();
@@ -337,22 +405,40 @@
       '<label class="inline block">How your joints / knees feel<input type="text" data-k="' + cell + '.joints" data-type="text" placeholder="e.g. knees happy, left wrist a little tight"></label>';
   }
 
-  function renderAddZone(d) {
-    return '<div class="add-zone">' +
-      '<button class="add-btn" type="button" data-action="add-open" data-day="' + d.day + '">＋ Add exercise</button>' +
+  // Shared picker chrome — an add button, search box, result list, a create-new
+  // link, and a create form whose fields differ per kind. data-picker (+ optional
+  // data-day) drives the generic open/search/create handlers; only the catalogue,
+  // row markup, and these form fields are kind-specific.
+  function pickerZone(o) {
+    const dayAttr = o.day != null ? ' data-day="' + o.day + '"' : "";
+    return '<div class="add-zone" data-picker="' + o.kind + '"' + dayAttr + ">" +
+      '<button class="add-btn" type="button" data-action="picker-open">' + o.addLabel + "</button>" +
       '<div class="picker" hidden>' +
-        '<input type="text" class="picker-search" data-day="' + d.day + '" placeholder="Search exercises…">' +
+        '<input type="text" class="picker-search" placeholder="' + o.searchPlaceholder + '">' +
         '<div class="picker-list"></div>' +
-        '<button class="link" type="button" data-action="new-ex-open" data-day="' + d.day + '">＋ Create a new exercise</button>' +
-        '<form class="new-ex-form" data-day="' + d.day + '" hidden>' +
-          '<input name="name" placeholder="Exercise name" required>' +
-          '<select name="type"><option value="strength">Strength — weight × reps</option><option value="circuit">Circuit — timed</option></select>' +
-          '<input name="setup" placeholder="How-to / setup (optional)">' +
-          '<input name="targetReps" placeholder="Target reps" value="8–12">' +
-          '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>' +
-          '<div class="form-actions"><button type="submit">Add to day</button><button type="button" class="link" data-action="new-ex-cancel">Cancel</button></div>' +
+        '<button class="link" type="button" data-action="picker-new-open">' + o.createLabel + "</button>" +
+        '<form class="picker-form" hidden>' + o.formFields +
+          '<div class="form-actions"><button type="submit">' + o.submitLabel + "</button>" +
+          '<button type="button" class="link" data-action="picker-new-cancel">Cancel</button></div>' +
         "</form>" +
       "</div></div>";
+  }
+
+  function renderAddZone(d) {
+    return pickerZone({
+      kind: "exercise",
+      day: d.day,
+      addLabel: "＋ Add exercise",
+      searchPlaceholder: "Search exercises…",
+      createLabel: "＋ Create a new exercise",
+      submitLabel: "Add to day",
+      formFields:
+        '<input name="name" placeholder="Exercise name" required>' +
+        '<select name="type"><option value="strength">Strength — weight × reps</option><option value="circuit">Circuit — timed</option></select>' +
+        '<input name="setup" placeholder="How-to / setup (optional)">' +
+        '<input name="targetReps" placeholder="Target reps" value="8–12">' +
+        '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>',
+    });
   }
 
   function renderProgress() {
@@ -394,6 +480,65 @@
       "Volume · <strong>" + fmt(weekVol) + " kg</strong> this week · <strong>" + fmt(blockVol) + " kg</strong> this block";
   }
 
+  // The week's Measurements card: one value input per tracked measurement (with
+  // the previous reading as a ghost placeholder), an auto BMI, and a set-once
+  // height. Values use data-k/log like the workout grid; the live BMI patch
+  // (renderBmi) avoids a full render so a value input keeps focus mid-type.
+  function renderMeasurements() {
+    const card = document.getElementById("measurements-card");
+    if (!card) return;
+    const block = currentBlock();
+    const wk = state.ui.week;
+    const bi = currentBlockIndex();
+
+    const rows = state.tracked.map((mId) => {
+      const m = state.measurements[mId];
+      if (!m) return "";
+      const k = measureKey(block.id, wk, mId);
+      const val = state.log[k] != null ? state.log[k] : "";
+      const prev = previousMeasure(mId, bi, wk);
+      return '<div class="measure-row" data-m="' + mId + '">' +
+        '<span class="measure-name">' + esc(m.name) + "</span>" +
+        '<input type="number" inputmode="decimal" class="measure-val" data-k="' + k + '" data-type="text" aria-label="' + esc(m.name) + " (" + esc(m.unit) + ')" value="' + esc(val) + '" placeholder="' + (prev != null ? esc(String(prev)) : "—") + '">' +
+        '<span class="unit">' + esc(m.unit) + "</span>" +
+        (editing ? '<button class="remove" type="button" data-action="m-remove" data-m="' + mId + '" aria-label="Remove">×</button>' : "") +
+        "</div>";
+    }).join("");
+
+    const heightVal = state.profile && state.profile.heightCm != null ? state.profile.heightCm : "";
+    card.innerHTML =
+      "<h2>Measurements</h2>" +
+      (rows || '<p class="muted small">No measurements tracked — hit Edit to add some.</p>') +
+      '<div class="bmi-line" id="bmi-line" hidden>BMI <strong id="bmi-value"></strong></div>' +
+      '<label class="inline measure-height">Height <input type="number" inputmode="decimal" min="0" id="height-input" value="' + esc(heightVal) + '" placeholder="height"> cm</label>' +
+      (editing ? renderMeasureAddZone() : "");
+    renderBmi();
+  }
+
+  function renderMeasureAddZone() {
+    return pickerZone({
+      kind: "measure",
+      addLabel: "＋ Add measurement",
+      searchPlaceholder: "Search measurements…",
+      createLabel: "＋ Create a new measurement",
+      submitLabel: "Add",
+      formFields:
+        '<input name="name" placeholder="Measurement name" required>' +
+        '<select name="unit"><option value="cm">cm</option><option value="kg">kg</option></select>',
+    });
+  }
+
+  // Live patcher for the BMI line (parallels renderVolumes): recomputes from the
+  // current week's bodyweight + stored height and shows/hides accordingly.
+  function renderBmi() {
+    const line = document.getElementById("bmi-line");
+    if (!line) return;
+    const b = bmiFor(currentBlock(), state.ui.week);
+    const out = document.getElementById("bmi-value");
+    if (b == null) { line.hidden = true; if (out) out.textContent = ""; }
+    else { line.hidden = false; if (out) out.textContent = b.toFixed(1); }
+  }
+
   function hydrate() {
     document.querySelectorAll("#week-view [data-k]").forEach((el) => {
       const k = el.dataset.k;
@@ -410,21 +555,40 @@
     if (nf) nf.value = state.notes || "";
   }
 
-  function populatePicker(picker, day, query) {
-    const list = picker.querySelector(".picker-list");
+  // Shared picker body: the catalogue minus already-chosen ids, name-filtered and
+  // sorted, rendered through a per-kind row builder (or the same "no matches" line).
+  function renderPickList(picker, catalogue, chosenIds, query, rowHtml) {
     const on = {};
-    dayDef(day).exercises.forEach((p) => (on[p.id] = true));
+    chosenIds.forEach((id) => (on[id] = true));
     const q = (query || "").trim().toLowerCase();
-    const items = Object.keys(state.library)
-      .map((id) => state.library[id])
-      .filter((ex) => !on[ex.id] && (!q || ex.name.toLowerCase().indexOf(q) >= 0))
+    const items = Object.keys(catalogue)
+      .map((id) => catalogue[id])
+      .filter((x) => !on[x.id] && (!q || x.name.toLowerCase().indexOf(q) >= 0))
       .sort((a, b) => a.name.localeCompare(b.name));
-    list.innerHTML = items.length
-      ? items.map((ex) =>
-          '<button class="pick" type="button" data-action="add-ex" data-day="' + day + '" data-ex="' + ex.id + '">' +
-          esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>"
-        ).join("")
+    picker.querySelector(".picker-list").innerHTML = items.length
+      ? items.map(rowHtml).join("")
       : '<p class="muted small">No matches — create a new one below.</p>';
+  }
+
+  function populatePicker(picker, day, query) {
+    renderPickList(picker, state.library, dayDef(day).exercises.map((p) => p.id), query, (ex) =>
+      '<button class="pick" type="button" data-action="add-ex" data-day="' + day + '" data-ex="' + ex.id + '">' +
+      esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>");
+  }
+
+  function populateMeasurePicker(picker, query) {
+    renderPickList(picker, state.measurements, state.tracked, query, (m) =>
+      '<button class="pick" type="button" data-action="m-add" data-m="' + m.id + '">' +
+      esc(m.name) + ' <span class="tag">' + esc(m.unit) + "</span></button>");
+  }
+
+  // Re-render a picker's list by its kind, so the generic open/search chrome
+  // needn't know which catalogue it's driving.
+  function repopulate(zone, query) {
+    const picker = zone.querySelector(".picker");
+    if (!picker) return;
+    if (zone.dataset.picker === "measure") populateMeasurePicker(picker, query);
+    else populatePicker(picker, Number(zone.dataset.day), query);
   }
 
   /* ---------------------------------------------------------------------- *
@@ -455,14 +619,30 @@
         }
         break;
       }
-      case "add-open": {
-        const picker = el.closest(".add-zone").querySelector(".picker");
+      case "picker-open": {
+        const zone = el.closest(".add-zone");
+        const picker = zone.querySelector(".picker");
         picker.hidden = !picker.hidden;
         if (!picker.hidden) {
-          populatePicker(picker, day, "");
+          repopulate(zone, "");
           const s = picker.querySelector(".picker-search");
           if (s) s.focus();
         }
+        break;
+      }
+      case "picker-new-open": {
+        const picker = el.closest(".picker");
+        picker.querySelector(".picker-form").hidden = false;
+        el.hidden = true;
+        const n = picker.querySelector('[name="name"]');
+        if (n) n.focus();
+        break;
+      }
+      case "picker-new-cancel": {
+        const form = el.closest(".picker-form");
+        form.hidden = true; form.reset();
+        const link = el.closest(".picker").querySelector('[data-action="picker-new-open"]');
+        if (link) link.hidden = false;
         break;
       }
       case "add-ex": {
@@ -470,20 +650,14 @@
         dayDef(day).exercises.push(placement(ex && ex.type, el.dataset.ex, DEFAULT_SETS));
         save(); render(); break;
       }
-      case "new-ex-open": {
-        const picker = el.closest(".picker");
-        picker.querySelector(".new-ex-form").hidden = false;
-        el.hidden = true;
-        const n = picker.querySelector('[name="name"]');
-        if (n) n.focus();
-        break;
+      case "m-add": {
+        const id = el.dataset.m;
+        if (state.measurements[id] && state.tracked.indexOf(id) < 0) state.tracked.push(id);
+        save(); render(); break;
       }
-      case "new-ex-cancel": {
-        const form = el.closest(".new-ex-form");
-        form.hidden = true; form.reset();
-        const link = el.closest(".picker").querySelector('[data-action="new-ex-open"]');
-        if (link) link.hidden = false;
-        break;
+      case "m-remove": {
+        state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
+        save(); render(); break;
       }
       case "export": exportBackup(); break;
       case "reset": resetAll(); break;
@@ -491,10 +665,15 @@
   }
 
   function handleSubmit(e) {
-    const form = e.target.closest(".new-ex-form");
+    const form = e.target.closest(".picker-form");
     if (!form) return;
     e.preventDefault();
-    const day = Number(form.dataset.day);
+    const zone = form.closest(".add-zone");
+    if (zone && zone.dataset.picker === "measure") return addNewMeasurement(form);
+    addNewExercise(form, zone ? Number(zone.dataset.day) : NaN);
+  }
+
+  function addNewExercise(form, day) {
     const fd = new FormData(form);
     const name = String(fd.get("name") || "").trim();
     if (!name) return;
@@ -514,6 +693,17 @@
     save(); render();
   }
 
+  function addNewMeasurement(form) {
+    const fd = new FormData(form);
+    const name = String(fd.get("name") || "").trim();
+    if (!name) return;
+    const unit = fd.get("unit") === "kg" ? "kg" : "cm";
+    const id = uniqueId(slugify(name), (x) => state.measurements[x]);
+    state.measurements[id] = M(id, name, unit);
+    if (state.tracked.indexOf(id) < 0) state.tracked.push(id);
+    save(); render();
+  }
+
   function handleField(e) {
     const el = e.target;
     if (el.id === "import-input") {
@@ -522,10 +712,25 @@
       return;
     }
     if (el.id === "notes-field") { state.notes = el.value; save(); return; }
+    if (el.id === "block-name-input") {
+      const block = currentBlock();
+      block.name = el.value;
+      save();
+      // Hand-patch the picker label instead of a full render (which would steal
+      // focus mid-type). Log keys use block.id, never the name, so nothing re-keys.
+      const opt = document.querySelector('#block-select option[value="' + block.id + '"]');
+      if (opt) opt.textContent = el.value;
+      return;
+    }
     if (el.id === "block-select") { state.ui.block = el.value; state.ui.week = 1; save(); render(); return; }
+    if (el.id === "height-input") {
+      const v = parseFloat(el.value);
+      state.profile.heightCm = Number.isFinite(v) && v > 0 ? v : null;
+      save(); renderBmi(); return;
+    }
     if (el.classList.contains("picker-search")) {
-      const p = el.closest(".picker");
-      if (p) populatePicker(p, Number(el.dataset.day), el.value);
+      const zone = el.closest(".add-zone");
+      if (zone) repopulate(zone, el.value);
       return;
     }
     const k = el.dataset.k;
@@ -536,6 +741,7 @@
     } else {
       setLog(k, el.value);
       if (el.classList.contains("w") || el.classList.contains("r")) renderVolumes();
+      else if (el.classList.contains("measure-val")) renderBmi();
     }
   }
 
@@ -633,6 +839,8 @@
   document.getElementById("import-input").addEventListener("change", handleField);
   render();
   hydrateNotes();
+  const versionTag = document.getElementById("version-tag");
+  if (versionTag) versionTag.textContent = "v" + APP_VERSION;
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", function () {
