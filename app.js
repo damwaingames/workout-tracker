@@ -3,6 +3,7 @@
 
   const WEEKS = 4;
   const STORAGE_KEY = "workout-tracker-v2";
+  const MIN_SETS = 1, MAX_SETS = 6, DEFAULT_SETS = 2;
 
   /* ---------------------------------------------------------------------- *
    * Seed data — straight from the training design doc.                     *
@@ -52,7 +53,7 @@
     // all start at 2 sets; circuits carry none (they use rounds).
     const day = (n, kind, title, focus, ids) => ({
       day: n, kind, title, focus,
-      exercises: ids.map((exId) => (kind === "strength" ? { id: exId, sets: 2 } : { id: exId })),
+      exercises: ids.map((exId) => placement(kind, exId, DEFAULT_SETS)),
     });
     return {
       id, name, createdAt: today(),
@@ -102,7 +103,7 @@
           const ids = Array.isArray(d.exerciseIds) ? d.exerciseIds : [];
           d.exercises = ids.map((id) => {
             const ex = s.library[id];
-            return ex && ex.type === "strength" ? { id, sets: ex.defaultSets || 2 } : { id };
+            return placement(ex && ex.type, id, ex && ex.defaultSets);
           });
         }
         delete d.exerciseIds;
@@ -129,6 +130,18 @@
   function currentBlock() { return state.blocks.find((b) => b.id === state.ui.block) || state.blocks[0]; }
   function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
   function dayDef(day) { return currentBlock().days.find((d) => d.day === day); }
+
+  // Clamp a set count into [MIN_SETS, MAX_SETS]; non-numeric (missing) → DEFAULT_SETS.
+  // NB: 0 must clamp to MIN_SETS, so we can't use `|| DEFAULT_SETS` (0 is falsy).
+  function clampSets(n) {
+    n = Math.round(n);
+    return Number.isFinite(n) ? Math.min(MAX_SETS, Math.max(MIN_SETS, n)) : DEFAULT_SETS;
+  }
+  // The single place that knows a placement's shape: strength placements own a
+  // (clamped) set count; circuits use the library's rounds, so they carry none.
+  function placement(type, id, sets) {
+    return type === "strength" ? { id, sets: clampSets(sets) } : { id };
+  }
 
   function setLog(k, v) {
     if (v === "" || v === false || v == null) delete state.log[k];
@@ -179,7 +192,7 @@
         for (let wk = 1; wk <= WEEKS; wk++) {
           const order = rank(bi, wk, d.day);
           if (order >= cutoff) continue;
-          const s = readSets(block.id, wk, d.day, exId, p.sets || 2);
+          const s = readSets(block.id, wk, d.day, exId, p.sets || DEFAULT_SETS);
           if (s.some((x) => x.w || x.r) && (!best || order > best.order)) best = { order, sets: s };
         }
       });
@@ -193,7 +206,7 @@
     if (d.kind !== "strength") return 0;
     let v = 0;
     d.exercises.forEach((p) => {
-      readSets(block.id, wk, d.day, p.id, p.sets || 2).forEach((s) => {
+      readSets(block.id, wk, d.day, p.id, p.sets || DEFAULT_SETS).forEach((s) => {
         const w = parseFloat(s.w), r = parseFloat(s.r);
         if (w > 0 && r > 0) v += w * r;
       });
@@ -259,7 +272,7 @@
       const exId = place.id;
       const ex = state.library[exId];
       if (!ex) return "";
-      const sets = place.sets || 2;
+      const sets = place.sets || DEFAULT_SETS;
       const prev = previousSets(exId, bi, wk, d.day);
       let rows = "";
       for (let i = 0; i < sets; i++) {
@@ -290,8 +303,10 @@
         '<div class="sets">' + rows + "</div>" + last +
         "</div>";
     }).join("");
+    // Compute the day's volume inline so a fresh render is already correct;
+    // renderVolumes() only re-patches this during live (keystroke) edits.
     return body +
-      '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">0 kg</strong></div>';
+      '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(dayVolume(currentBlock(), wk, d)) + " kg</strong></div>";
   }
 
   function renderRecovery(d, cell) {
@@ -334,7 +349,7 @@
           '<select name="type"><option value="strength">Strength — weight × reps</option><option value="circuit">Circuit — timed</option></select>' +
           '<input name="setup" placeholder="How-to / setup (optional)">' +
           '<input name="targetReps" placeholder="Target reps" value="8–12">' +
-          '<label class="sets-field">Sets <input name="sets" type="number" min="1" max="6" value="2"></label>' +
+          '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>' +
           '<div class="form-actions"><button type="submit">Add to day</button><button type="button" class="link" data-action="new-ex-cancel">Cancel</button></div>' +
         "</form>" +
       "</div></div>";
@@ -356,8 +371,9 @@
       "<strong>" + weekDone + "</strong> / " + days + " this week · <strong>" + blockDone + "</strong> / " + (days * WEEKS) + " this block";
   }
 
-  // Day volumes for the visible week, plus week and block tonnage totals.
-  // Updated live (not via re-render) when a weight/reps field changes.
+  // The focus-preserving live updater: re-patches the visible week's day volumes
+  // plus the week/block totals without a re-render, so a weight/reps input keeps
+  // focus mid-edit. Full renders already emit correct day volumes via renderStrength.
   function renderVolumes() {
     const b = currentBlock();
     const wk = state.ui.week;
@@ -434,7 +450,7 @@
       case "sets-dec": {
         const p = dayDef(day).exercises.find((x) => x.id === el.dataset.ex);
         if (p) {
-          p.sets = Math.min(6, Math.max(1, (p.sets || 2) + (el.dataset.action === "sets-inc" ? 1 : -1)));
+          p.sets = clampSets((p.sets || DEFAULT_SETS) + (el.dataset.action === "sets-inc" ? 1 : -1));
           save(); render();
         }
         break;
@@ -451,7 +467,7 @@
       }
       case "add-ex": {
         const ex = state.library[el.dataset.ex];
-        dayDef(day).exercises.push(ex && ex.type === "strength" ? { id: ex.id, sets: 2 } : { id: el.dataset.ex });
+        dayDef(day).exercises.push(placement(ex && ex.type, el.dataset.ex, DEFAULT_SETS));
         save(); render(); break;
       }
       case "new-ex-open": {
@@ -493,8 +509,8 @@
       ex.duration = "1 min"; ex.rest = "15 sec"; ex.rounds = 2;
     }
     state.library[id] = ex;
-    const sets = Math.min(6, Math.max(1, Number(fd.get("sets")) || 2));
-    dayDef(day).exercises.push(type === "strength" ? { id, sets } : { id });
+    // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0).
+    dayDef(day).exercises.push(placement(type, id, parseFloat(fd.get("sets"))));
     save(); render();
   }
 
@@ -526,11 +542,9 @@
   function afterDone(el, k) {
     const cell = k.slice(0, -5);
     if (el.checked && !state.log[cell + ".date"]) setLog(cell + ".date", today());
-    // Re-render rather than hand-patch the date input and is-done class —
-    // hydrate() already owns both, so there's no separate path to keep in sync.
-    renderWeek();
-    renderProgress();
-    renderVolumes();
+    // Full re-render: the date stamp + is-done styling flow through hydrate()
+    // rather than a separate hand-patch path. Nothing is focused after a tick.
+    render();
   }
 
   /* ---------------------------------------------------------------------- *
@@ -582,11 +596,8 @@
       let data;
       try {
         data = JSON.parse(r.result);
+        if (!data || typeof data !== "object" || !Array.isArray(data.blocks) || !data.blocks.length) throw new Error("bad");
       } catch (err) {
-        window.alert("Could not read that backup file.");
-        return;
-      }
-      if (!data || typeof data !== "object" || !Array.isArray(data.blocks) || !data.blocks.length) {
         window.alert("Could not read that backup file.");
         return;
       }
