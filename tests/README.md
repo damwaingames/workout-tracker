@@ -5,6 +5,21 @@ Each `verify-*.mjs` is a standalone script that drives real events against the l
 asserts behaviour **plus** zero `console.error` / `pageerror`. This is **dev-only tooling** — it
 has no effect on the deployed app (which still has no build step).
 
+`harness.mjs` owns the shared lifecycle — browser launch, console/error capture, the check tally,
+and the pass/fail exit — so each script is just its own assertions:
+
+```js
+import { verify } from "./harness.mjs";
+verify(async ({ page, ck, ls, reset }) => {
+  await reset();                                  // fresh load (wipes storage, reloads)
+  ck("nutrition card present", await page.isVisible("#nutrition-card"));
+  // …only the assertions that make this script different…
+});
+```
+
+`verify()` does its own launch + `process.exit`, so a script still runs standalone against any
+origin (see below); the runner just spawns each file.
+
 ## Setup
 
 ```bash
@@ -65,4 +80,8 @@ WT_URL=https://damwaingames.github.io/workout-tracker/ node verify-version.mjs
   or update the scripts in lockstep.
 - **Fresh load gotcha:** `localStorage` is `null` until the first `save()`, and `normalise()` backfills
   migrations in memory until the next save — so assert against the **DOM** for pre-save state, not storage.
-- Adding a feature? Add a `verify-<feature>.mjs` next to these; `run.mjs` picks it up automatically.
+- Adding a feature? Drop a `verify-<feature>.mjs` next to these — wrap the body in `verify(...)` from
+  `harness.mjs` and use the `{ page, ck, ls, reset, key }` it hands you. `run.mjs` discovers the file
+  automatically (it globs `verify-*.mjs`, so `harness.mjs` itself is never run as a script).
+- `STORAGE_KEY` and `APP_VERSION` come from `../constants.js` (via the harness / `verify-version`), so
+  neither is hand-copied in the suite — there's nothing to bump here on a release.

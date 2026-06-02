@@ -10,7 +10,7 @@ import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join, normalize, extname } from "node:path";
+import { dirname, join, normalize, extname, sep } from "node:path";
 
 const testsDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = dirname(testsDir);
@@ -33,9 +33,10 @@ const server = createServer((req, res) => {
   try {
     let urlPath = decodeURIComponent(new URL(req.url, "http://x").pathname);
     if (urlPath.endsWith("/")) urlPath += "index.html";
-    // Resolve inside the repo root; reject anything that escapes it.
+    // Resolve inside the repo root; reject anything that escapes it. The trailing
+    // separator stops a sibling like `<repoRoot>-evil` from matching the prefix.
     const filePath = normalize(join(repoRoot, urlPath));
-    if (!filePath.startsWith(repoRoot) || !statSync(filePath).isFile()) {
+    if (!filePath.startsWith(repoRoot + sep) || !statSync(filePath).isFile()) {
       res.writeHead(404).end("not found");
       return;
     }
