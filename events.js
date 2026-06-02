@@ -13,7 +13,7 @@ import {
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M,
 } from "./state.js";
 import {
-  render, renderBmi, renderVolumes, patchCircuitTime, repopulate, hydrateNotes,
+  render, renderBmi, renderVolumes, renderNutritionTotals, patchCircuitTime, repopulate, hydrateNotes,
 } from "./render.js";
 
 /* ---------------------------------------------------------------------- *
@@ -191,6 +191,7 @@ export function handleField(e) {
     setLog(k, el.value);
     if (el.classList.contains("w") || el.classList.contains("r")) renderVolumes();
     else if (el.classList.contains("measure-val")) renderBmi();
+    else if (el.classList.contains("nut-val")) renderNutritionTotals();
   }
 }
 

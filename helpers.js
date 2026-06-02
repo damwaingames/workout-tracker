@@ -22,6 +22,11 @@ export const roundKey = (cell, exId, r) => cell + ".ex." + exId + ".r" + r;
 // state.log — the ".m." segment can't collide with a day's ".dN" cells, and
 // the block.id prefix means deleteBlock's purge sweeps these up for free.
 export const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mId;
+// Daily nutrition value — one per block/week/day/field, hung off the same day
+// cell as .done/.date/.energy. The ".nut." segment is distinct from those, so
+// it shares the cell without collision, and the block.id prefix means deleteBlock
+// sweeps it up too. (cell already encodes block/week/day via cellKey.)
+export const nutKey = (cell, field) => cell + ".nut." + field;
 
 // Round and clamp an int into [min, max]; non-numeric (missing) → fallback.
 // NB: 0 must clamp to min, so we can't use `|| fallback` (0 is falsy).

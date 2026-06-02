@@ -10,6 +10,7 @@ A personal, client-side **4-week full-body & glute training tracker**, installab
 - **Volume tracking** — each strength day totals its tonnage (sum of weight × reps over all sets), rolled up to week and block totals shown in the header.
 - **Recovery days** — a configurable circuit: set the **rounds**, **work** per station, **rest** between stations, and **rest** between rounds (seconds), and the estimated total workout time is calculated for you. Tap through each move's rounds and log an energy score.
 - **Body stats** — a weekly Measurements card tracks bodyweight (kg) and any circumferences you add (waist, chest, hips, etc.) per block/week, with the previous reading shown as a ghost and BMI auto-computed once you set your height.
+- **Nutrition** — a daily grid for logging calories (kcal) and carbs / fat / protein (g), copied from whatever app you track in, with running week and block totals and an average kcal/day.
 - **Repeatable blocks** — each block is one 4-week run. **＋ Block** clones the program so you keep all history; progression carries across the boundary. Rename the current block in **Edit** mode.
 - **Editable library** — in **Edit** mode, add or create exercises and moves, remove them, or adjust how many sets a strength exercise gets. The picker matches the day: strength days offer strength exercises, recovery days offer circuit moves. New entries are saved for reuse in future blocks.
 - **Offline** — works without a connection once installed; everything is stored in your browser's `localStorage`.

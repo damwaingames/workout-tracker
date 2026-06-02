@@ -322,7 +322,7 @@ textarea { width: 100%; resize: vertical; }
   cursor: pointer;
 }
 
-.notes-card, .measurements-card {
+.notes-card, .measurements-card, .nutrition-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -330,7 +330,7 @@ textarea { width: 100%; resize: vertical; }
   margin-top: 1.5rem;
   box-shadow: var(--shadow);
 }
-.notes-card h2, .measurements-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
+.notes-card h2, .measurements-card h2, .nutrition-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
 
 .measure-row { display: flex; align-items: center; gap: .5rem; padding: .45rem 0; border-top: 1px solid #f0f1f4; }
 .measure-row:first-of-type { border-top: none; }
@@ -347,6 +347,40 @@ textarea { width: 100%; resize: vertical; }
 .bmi-line strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .measure-height { margin-top: .7rem; }
 .measure-height input { width: 5rem; }
+
+/* Nutrition card: a day-label column + one column per nutrient, shared by the
+ * input rows and the total rows so figures line up under their headers. */
+.nut-grid { display: flex; flex-direction: column; }
+.nut-row {
+  display: grid;
+  grid-template-columns: 2.6rem repeat(4, 1fr);
+  gap: .4rem;
+  align-items: center;
+  padding: .25rem 0;
+}
+.nut-day { font-size: .8rem; color: var(--muted); }
+.nut-head { padding-bottom: .15rem; }
+.nut-col-h {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  font-size: .7rem;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--muted);
+  line-height: 1.15;
+}
+.nut-col-h small { font-size: .62rem; text-transform: none; letter-spacing: 0; }
+.nut-val { width: 100%; min-width: 0; text-align: center; padding: .35rem .2rem; font-size: .92rem; -moz-appearance: textfield; }
+/* Hide the number spinner so a 4-digit kcal value isn't clipped in the narrow
+ * grid column (mobile Safari shows none anyway; this covers desktop/Chromium). */
+.nut-val::-webkit-outer-spin-button, .nut-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.nut-total { border-top: 1px dashed var(--border); margin-top: .2rem; padding-top: .5rem; }
+.nut-total + .nut-total { border-top: none; margin-top: 0; padding-top: .15rem; }
+.nut-total .nut-day { color: var(--text); font-weight: 600; }
+.nut-col { text-align: center; font-size: .8rem; color: var(--text); font-variant-numeric: tabular-nums; }
+.nut-avg { margin-top: .55rem; font-variant-numeric: tabular-nums; }
 
 footer { margin-top: 2rem; }
 .utils { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
