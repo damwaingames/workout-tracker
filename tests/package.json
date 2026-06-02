@@ -1,0 +1,14 @@
+{
+  "name": "workout-tracker-tests",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end verification harness (Playwright) for the Workout Tracker PWA. Dev-only — not part of the deployed app.",
+  "scripts": {
+    "test": "node run.mjs",
+    "postinstall": "playwright install chromium"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}
