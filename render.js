@@ -3,18 +3,18 @@
  * entry points (render + the focus-preserving live patchers) are what events.js
  * calls after a mutation. */
 
-import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS } from "./constants.js";
+import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS } from "./constants.js";
 import {
-  cellKey, setKey, roundKey, measureKey,
+  cellKey, setKey, roundKey, measureKey, nutKey,
   circuitOf, circuitSummary, kindType, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, dayDef,
-  previousSets, dayVolume, previousMeasure, bmiFor,
+  previousSets, dayVolume, previousMeasure, bmiFor, nutritionTotals,
 } from "./state.js";
 
-export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); }
+export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderNutrition(); }
 
 function renderHeader() {
   const sel = document.getElementById("block-select");
@@ -300,6 +300,68 @@ export function renderBmi() {
   const out = document.getElementById("bmi-value");
   if (b == null) { line.hidden = true; if (out) out.textContent = ""; }
   else { line.hidden = false; if (out) out.textContent = b.toFixed(1); }
+}
+
+// The Nutrition card: a 7-day grid of plain number inputs (calories + the three
+// macros) the user copies from their tracking app, with Week and Block total
+// rows and an avg kcal/day line. Values use data-k/log like the workout grid;
+// the totals live-patch (renderNutritionTotals) avoids a full render so an input
+// keeps focus mid-type, exactly like renderVolumes/renderBmi.
+function renderNutrition() {
+  const card = document.getElementById("nutrition-card");
+  if (!card) return;
+  const block = currentBlock();
+  const wk = state.ui.week;
+
+  const head = '<div class="nut-row nut-head"><span class="nut-day"></span>' +
+    NUTRIENTS.map((n) => '<span class="nut-col-h">' + esc(n.head) + "<small>" + esc(n.unit) + "</small></span>").join("") +
+    "</div>";
+
+  const rows = block.days.map((d) => {
+    const cell = cellKey(block.id, wk, d.day);
+    return '<div class="nut-row">' +
+      '<span class="nut-day">Day ' + d.day + "</span>" +
+      NUTRIENTS.map((n) => {
+        const k = nutKey(cell, n.id);
+        const val = state.log[k] != null ? state.log[k] : "";
+        return '<input type="number" inputmode="decimal" min="0" class="nut-val" data-k="' + k + '" data-type="text" aria-label="Day ' + d.day + " " + esc(n.label) + " (" + esc(n.unit) + ')" value="' + esc(val) + '">';
+      }).join("") +
+      "</div>";
+  }).join("");
+
+  const totalRow = (label, scope) =>
+    '<div class="nut-row nut-total">' +
+    '<span class="nut-day">' + label + "</span>" +
+    NUTRIENTS.map((n) => '<span class="nut-col" data-nut-total="' + scope + "-" + n.id + '"></span>').join("") +
+    "</div>";
+
+  card.innerHTML =
+    "<h2>Nutrition</h2>" +
+    '<div class="nut-grid">' + head + rows + totalRow("Week", "week") + totalRow("Block", "block") + "</div>" +
+    '<p class="nut-avg muted small" id="nut-avg"></p>';
+  renderNutritionTotals();
+}
+
+// Live-patch the Nutrition card's Week/Block total cells + the avg kcal/day line
+// from the current log, leaving the inputs (and focus) untouched.
+export function renderNutritionTotals() {
+  const card = document.getElementById("nutrition-card");
+  if (!card) return;
+  const block = currentBlock();
+  const allWeeks = Array.from({ length: WEEKS }, (_, i) => i + 1);
+  const week = nutritionTotals(block, [state.ui.week]);
+  const all = nutritionTotals(block, allWeeks);
+  [["week", week], ["block", all]].forEach(([scope, t]) =>
+    NUTRIENTS.forEach((n) => {
+      const el = card.querySelector('[data-nut-total="' + scope + "-" + n.id + '"]');
+      if (el) el.textContent = fmt(t[n.id]);
+    })
+  );
+  const avg = document.getElementById("nut-avg");
+  if (avg) {
+    const perDay = (t) => (t.kcalDays ? fmt(t.kcal / t.kcalDays) + " kcal/day" : "—");
+    avg.textContent = "Avg " + perDay(week) + " this week · " + perDay(all) + " this block";
+  }
 }
 
 function hydrate() {

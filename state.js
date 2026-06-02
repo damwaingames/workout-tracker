@@ -9,10 +9,10 @@
  * for the importer). Property mutation (state.log[k] = …) works from anywhere. */
 
 import {
-  WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS,
+  WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS,
 } from "./constants.js";
 import {
-  today, cellKey, setKey, measureKey, placement,
+  today, cellKey, setKey, measureKey, nutKey, placement,
 } from "./helpers.js";
 
 /* ---------------------------------------------------------------------- *
@@ -273,4 +273,26 @@ export function bmiFor(block, wk) {
   if (!(h > 0) || !(w > 0)) return null;
   const m = h / 100;
   return w / (m * m);
+}
+
+// Summed nutrition over a set of weeks (one week for the week total, all of them
+// for the block total) — every day of each week, every field. `kcalDays` counts
+// days that logged calories, so the headline avg kcal/day divides by days the
+// user actually recorded rather than the full 7×N (parallels dayVolume's scan).
+export function nutritionTotals(block, weeks) {
+  // Derive the accumulator from NUTRIENTS so the nutrient set has one source of
+  // truth — adding a field there can't silently skip it here.
+  const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
+  let kcalDays = 0;
+  weeks.forEach((wk) => {
+    block.days.forEach((d) => {
+      const cell = cellKey(block.id, wk, d.day);
+      NUTRIENTS.forEach((n) => {
+        const v = parseFloat(state.log[nutKey(cell, n.id)]);
+        if (v > 0) sum[n.id] += v;
+      });
+      if (parseFloat(state.log[nutKey(cell, "kcal")]) > 0) kcalDays++;
+    });
+  });
+  return { ...sum, kcalDays };
 }
