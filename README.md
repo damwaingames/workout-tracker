@@ -49,6 +49,18 @@ The app is plain ES modules (no build step), loaded from `index.html` via `<scri
 
 Imports flow one way (`constants ← helpers ← state ← render ← events ← main`), so there are no circular dependencies.
 
+## Tests
+
+End-to-end checks (Playwright) live in [`tests/`](tests/) and drive real events against the live DOM, asserting behaviour plus zero console errors. Dev-only — they don't affect the deployed app.
+
+```bash
+cd tests
+npm install     # installs Playwright + Chromium
+npm test        # serves the app on a temp port and runs every verify-*.mjs
+```
+
+See [`tests/README.md`](tests/README.md) for running a single script or pointing the suite at the live deploy.
+
 ## Icons
 
 Regenerate the app icons with:
