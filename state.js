@@ -280,7 +280,9 @@ export function bmiFor(block, wk) {
 // days that logged calories, so the headline avg kcal/day divides by days the
 // user actually recorded rather than the full 7×N (parallels dayVolume's scan).
 export function nutritionTotals(block, weeks) {
-  const sum = { kcal: 0, carb: 0, fat: 0, protein: 0 };
+  // Derive the accumulator from NUTRIENTS so the nutrient set has one source of
+  // truth — adding a field there can't silently skip it here.
+  const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
   let kcalDays = 0;
   weeks.forEach((wk) => {
     block.days.forEach((d) => {
