@@ -81,7 +81,7 @@ function seedLibrary() {
   // Banded moves take their load from a resistance band, not free weight (across
   // both day kinds). They log a band tier (defaulting to `defaultBand`) plus reps,
   // and their tonnage is band kg × reps × the loading-mode rep factor. `banded` is
-  // what render/dayVolume branch on; `defaultBand` just pre-selects a sensible tier
+  // what render/dayLoad branch on; `defaultBand` just pre-selects a sensible tier
   // the user can change per session.
   const band = (id, tier) => { lib[id].banded = true; lib[id].defaultBand = tier; };
   band("banded-clamshells", "light");
@@ -267,6 +267,20 @@ export function setLog(k, v) {
   save();
 }
 
+// The log is a flat {key: value} map, so the *shape* a key holds lives with these
+// readers, not at each call site. logList owns the one structured shape — a class
+// list stored under a cell — returning the stored array or an empty one.
+export function logList(k) { return Array.isArray(state.log[k]) ? state.log[k] : []; }
+
+// Purge every log key belonging to a block. The cell-key grammar guarantees every
+// day / measure / nutrition / class / band key is hung off a `block.id`-prefixed
+// cell, so one prefix sweep collects them all — the invariant the key-grammar
+// comments promise, made executable in one named place. No save(): unlike setLog
+// (a per-field edit), this is a sub-step of deleteBlock, which saves once at the end.
+export function purgeBlockLog(blockId) {
+  Object.keys(state.log).forEach((k) => { if (k.indexOf(blockId + ".") === 0) delete state.log[k]; });
+}
+
 export function nextBlockNumber() {
   let max = 0;
   state.blocks.forEach((b) => { const m = /(\d+)/.exec(b.name || ""); if (m) max = Math.max(max, +m[1]); });
@@ -320,31 +334,37 @@ function bandedReps(cell, d, p) {
   return total;
 }
 
-// Training volume (tonnage) for one day. Free-weight strength sets contribute
-// weight × reps, scaled by the loading mode (per-side doubles reps, two-dumbbell
-// doubles weight). Banded moves contribute band kg × summed reps — and because a
-// band can sit on a recovery day, circuits now carry load too. Rest days are 0.
-export function dayVolume(block, wk, d) {
-  if (d.kind === "rest") return 0;
+// Training load for one day: the tonnage `total` plus `loadBearing` — whether the
+// day carries load at all. These are two facts the number alone can't express: a
+// recovery day becomes load-bearing the moment it holds a banded move, before any
+// reps are logged (so `total` is still 0 but the day-volume line should already
+// show). Strength days are always load-bearing; a recovery day becomes so once a
+// banded move is placed; rest days never are. Free-weight sets contribute
+// weight × reps scaled by the loading mode (per-side doubles reps, two-dumbbell
+// doubles weight); banded moves contribute band kg × summed reps × the per-side
+// factor. Render reads both facts here instead of re-deriving the banded predicate.
+export function dayLoad(block, wk, d) {
+  if (d.kind === "rest") return { total: 0, loadBearing: false };
   const cell = cellKey(block.id, wk, d.day);
-  let v = 0;
+  let total = 0, loadBearing = d.kind === "strength";
   d.exercises.forEach((p) => {
     const ex = state.library[p.id];
     if (!ex) return;
     if (ex.banded) {
+      loadBearing = true; // a placed banded move makes the day count, reps or not
       // Band kg × reps; per-side still doubles the reps (the only loading-mode axis
       // that applies to a band — there's no second band for two-dumbbell's weight).
       const kg = bandKg(bandFor(ex, state.log[bandKey(cell, p.id)]));
-      if (kg > 0) v += kg * loadMode(ex).rMult * bandedReps(cell, d, p);
+      if (kg > 0) total += kg * loadMode(ex).rMult * bandedReps(cell, d, p);
     } else if (d.kind === "strength") {
       const m = loadMode(ex);
       readSets(block.id, wk, d.day, p.id, p.sets || DEFAULT_SETS).forEach((s) => {
         const w = parseFloat(s.w), r = parseFloat(s.r);
-        if (w > 0 && r > 0) v += w * m.wMult * r * m.rMult;
+        if (w > 0 && r > 0) total += w * m.wMult * r * m.rMult;
       });
     }
   });
-  return v;
+  return { total, loadBearing };
 }
 
 // Most recent earlier value of a measurement, scanning (block, week) like
@@ -377,7 +397,7 @@ export function bmiFor(block, wk) {
 // Summed nutrition over a set of weeks (one week for the week total, all of them
 // for the block total) — every day of each week, every field. `kcalDays` counts
 // days that logged calories, so the headline avg kcal/day divides by days the
-// user actually recorded rather than the full 7×N (parallels dayVolume's scan).
+// user actually recorded rather than the full 7×N (parallels dayLoad's scan).
 export function nutritionTotals(block, weeks) {
   // Derive the accumulator from NUTRIENTS so the nutrient set has one source of
   // truth — adding a field there can't silently skip it here.
@@ -420,9 +440,7 @@ export function classTotals(block, weeks) {
   weeks.forEach((wk) => {
     const kg = weekBodyweight(block, wk);
     block.days.forEach((d) => {
-      const list = state.log[classesKey(cellKey(block.id, wk, d.day))];
-      if (!Array.isArray(list)) return;
-      list.forEach((c) => {
+      logList(classesKey(cellKey(block.id, wk, d.day))).forEach((c) => {
         const m = parseFloat(c.mins);
         if (m > 0) { mins += m; kcal += kcalBurn(classRate(c.type), m, kg); }
       });

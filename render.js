@@ -11,8 +11,8 @@ import {
 import {
   state, editing,
   currentBlock, currentBlockIndex, dayDef,
-  previousSets, dayVolume, previousMeasure, bmiFor, nutritionTotals,
-  classTotals, weekBodyweight, classRate,
+  previousSets, dayLoad, previousMeasure, bmiFor, nutritionTotals,
+  classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
 
 export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderNutrition(); renderClassTotal(); }
@@ -79,7 +79,7 @@ function renderDay(block, d, wk, kg) {
 // activity (shown in both modes), not part of the day template. `kg` is the
 // week's bodyweight, used (with the type's rate) to estimate each class's burn.
 function renderClasses(cell, kg) {
-  const list = Array.isArray(state.log[classesKey(cell)]) ? state.log[classesKey(cell)] : [];
+  const list = logList(classesKey(cell));
   const items = list.map((c, i) => {
     const kcal = kcalBurn(classRate(c.type), parseFloat(c.mins), kg);
     return '<li class="class-item"><span class="class-text">' +
@@ -186,17 +186,17 @@ function renderStrength(d, wk, cell) {
       if (banded) {
         rows +=
           '<div class="set banded"><span class="set-n">Set ' + (i + 1) + "</span>" +
-          '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" placeholder="reps">' +
+          '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" data-refresh="volumes" placeholder="reps">' +
           '<span class="unit">' + repsLabel(m) + "</span></div>";
         continue;
       }
       const p = prev && prev[i];
       rows +=
         '<div class="set"><span class="set-n">Set ' + (i + 1) + "</span>" +
-        '<input type="number" inputmode="decimal" class="w" data-k="' + setKey(cell, exId, i, "w") + '" data-type="text" placeholder="' + (p && p.w ? esc(p.w) : "wt") + '">' +
+        '<input type="number" inputmode="decimal" class="w" data-k="' + setKey(cell, exId, i, "w") + '" data-type="text" data-refresh="volumes" placeholder="' + (p && p.w ? esc(p.w) : "wt") + '">' +
         '<span class="unit">' + esc(m.wUnit || "kg") + "</span>" +
         '<span class="x">×</span>' +
-        '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" placeholder="' + (p && p.r ? esc(p.r) : "reps") + '">' +
+        '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" data-refresh="volumes" placeholder="' + (p && p.r ? esc(p.r) : "reps") + '">' +
         (m.rUnit ? '<span class="unit">' + esc(m.rUnit) + "</span>" : "") +
         "</div>";
     }
@@ -224,16 +224,14 @@ function renderStrength(d, wk, cell) {
       '<div class="sets">' + rows + "</div>" + last +
       "</div>";
   }).join("");
-  // Compute the day's volume inline so a fresh render is already correct;
-  // renderVolumes() only re-patches this during live (keystroke) edits.
-  return body + volumeLine(cell, dayVolume(currentBlock(), wk, d));
+  // Compute the day's load inline so a fresh render is already correct;
+  // renderVolumes() only re-patches the total during live (keystroke) edits.
+  const { total, loadBearing } = dayLoad(currentBlock(), wk, d);
+  return body + (loadBearing ? volumeLine(cell, total) : "");
 }
 
 function renderRecovery(d, wk, cell) {
   const rounds = circuitOf(d).rounds; // rounds drive the checkbox / reps count per move
-  // A banded move turns this recovery day into a tonnage-bearing one (mirrors the
-  // predicate dayVolume walks), so it gets a day-volume line below.
-  const hasBand = d.exercises.some((p) => { const ex = state.library[p.id]; return ex && ex.banded; });
   const moves = d.exercises.map((place) => {
     const exId = place.id;
     const ex = state.library[exId];
@@ -246,7 +244,7 @@ function renderRecovery(d, wk, cell) {
       let reps = "";
       for (let r = 0; r < rounds; r++) {
         reps += '<label class="round"><span class="round-n">R' + (r + 1) + "</span>" +
-          '<input type="number" inputmode="numeric" class="round-rep" data-k="' + roundRepKey(cell, exId, r) + '" data-type="text" placeholder="' + repsLabel(m) + '"></label>';
+          '<input type="number" inputmode="numeric" class="round-rep" data-k="' + roundRepKey(cell, exId, r) + '" data-type="text" data-refresh="volumes" placeholder="' + repsLabel(m) + '"></label>';
       }
       inner = bandPicker(cell, exId, ex) + '<div class="rounds reps">' + reps + "</div>";
     } else {
@@ -263,9 +261,10 @@ function renderRecovery(d, wk, cell) {
       (editing ? '<div class="sets-edit">' + loadingEdit(d, ex) + "</div>" : "") +
       inner + "</div>";
   }).join("");
-  // Recovery days are usually load-free; only show a day-volume line once a banded
-  // move makes one contribute (so pure-cardio days stay uncluttered).
-  const volLine = hasBand ? volumeLine(cell, dayVolume(currentBlock(), wk, d)) : "";
+  // Recovery days are usually load-free; the day-volume line shows only once a
+  // banded move makes the day load-bearing (so pure-cardio days stay uncluttered).
+  const { total, loadBearing } = dayLoad(currentBlock(), wk, d);
+  const volLine = loadBearing ? volumeLine(cell, total) : "";
   return moves +
     (editing ? renderCircuitEdit(d) : "") +
     volLine +
@@ -371,7 +370,7 @@ export function renderVolumes() {
   let weekVol = 0, blockVol = 0;
   for (let w = 1; w <= WEEKS; w++) {
     b.days.forEach((d) => {
-      const v = dayVolume(b, w, d);
+      const v = dayLoad(b, w, d).total;
       blockVol += v;
       if (w === wk) {
         weekVol += v;
@@ -404,7 +403,7 @@ function renderMeasurements() {
     const prev = previousMeasure(mId, bi, wk);
     return '<div class="measure-row" data-m="' + mId + '">' +
       '<span class="measure-name">' + esc(m.name) + "</span>" +
-      '<input type="number" inputmode="decimal" class="measure-val" data-k="' + k + '" data-type="text" aria-label="' + esc(m.name) + " (" + esc(m.unit) + ')" value="' + esc(val) + '" placeholder="' + (prev != null ? esc(String(prev)) : "—") + '">' +
+      '<input type="number" inputmode="decimal" class="measure-val" data-k="' + k + '" data-type="text" data-refresh="bmi" aria-label="' + esc(m.name) + " (" + esc(m.unit) + ')" value="' + esc(val) + '" placeholder="' + (prev != null ? esc(String(prev)) : "—") + '">' +
       '<span class="unit">' + esc(m.unit) + "</span>" +
       (editing ? '<button class="remove" type="button" data-action="m-remove" data-m="' + mId + '" aria-label="Remove">×</button>' : "") +
       "</div>";
@@ -466,7 +465,7 @@ function renderNutrition() {
       NUTRIENTS.map((n) => {
         const k = nutKey(cell, n.id);
         const val = state.log[k] != null ? state.log[k] : "";
-        return '<input type="number" inputmode="decimal" min="0" class="nut-val" data-k="' + k + '" data-type="text" aria-label="Day ' + d.day + " " + esc(n.label) + " (" + esc(n.unit) + ')" value="' + esc(val) + '">';
+        return '<input type="number" inputmode="decimal" min="0" class="nut-val" data-k="' + k + '" data-type="text" data-refresh="nutrition" aria-label="Day ' + d.day + " " + esc(n.label) + " (" + esc(n.unit) + ')" value="' + esc(val) + '">';
       }).join("") +
       "</div>";
   }).join("");
