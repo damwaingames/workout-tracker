@@ -67,7 +67,17 @@ verify(async ({ page, ck, ls, reset, key }) => {
   ck("toggled exercise now shows a band picker", await page.$(`${ex(D1, "goblet-squats")} select.band-pick`));
   await page.uncheck(`${ex(D1, "goblet-squats")} .banded-toggle`);
   await page.waitForTimeout(60);
-  ck("toggling off clears banded", (await lib())["goblet-squats"].banded == null);
+  ck("toggling off stores banded:false (not deleted)", (await lib())["goblet-squats"].banded === false);
+
+  // ---- Un-banding a SEEDED move must survive a reload: it's stored false (not
+  //      deleted), else the backfill migration would re-band it behind the user. ----
+  await page.uncheck(`${CLAM} .banded-toggle`);
+  await page.waitForTimeout(60);
+  ck("un-band seeded move stores false", (await lib())["banded-clamshells"].banded === false);
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(120);
+  ck("after reload, seeded move stays un-banded (no band picker)", (await page.$(`${CLAM} select.band-pick`)) === null);
+  ck("after reload, seeded move shows weight inputs again", (await page.$$(`${CLAM} .set .w`)).length > 0);
 
   // ---- Backfill migration: a legacy save with no banded flags re-derives them ----
   await page.evaluate((k) => {

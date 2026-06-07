@@ -3,7 +3,7 @@
  * The store reassignments (setState/setEditing) all funnel through state.js —
  * an importer can read `state`/`editing` but can't reassign the binding here. */
 
-import { DEFAULT_SETS } from "./constants.js";
+import { DEFAULT_SETS, DEFAULT_BAND } from "./constants.js";
 import {
   placement, clampSets, clampRounds, circuitOf, kindType,
   nonNegSec, slugify, uniqueId, today, bandKey,
@@ -164,9 +164,10 @@ const fieldById = {
   },
 };
 
-// Class-based field handlers. Kept as explicit checks rather than a map: a
-// classList can't be hashed, so a map would only dress up the same linear
-// contains() scan — unlike fieldById, which is a real O(1) lookup.
+// Handlers dispatched by a data-fh tag (the element keeps its class for styling
+// and selection). data-fh is hashable, so fieldByName below is a real O(1) lookup
+// like fieldById — mirroring handleClick's data-action switch — rather than a
+// classList scan that grows a branch per field type.
 function pickerSearch(el) {
   const zone = el.closest(".add-zone");
   if (zone) repopulate(zone, el.value);
@@ -197,26 +198,34 @@ function bandPickField(el) {
 function bandedToggleField(el) {
   const ex = state.library[el.dataset.ex];
   if (!ex) return;
-  if (el.checked) { ex.banded = true; if (!ex.defaultBand) ex.defaultBand = "medium"; }
-  else delete ex.banded;
+  // Store false verbatim rather than deleting — an absent flag reads as "never
+  // chosen" to migrateExerciseLoading, which would re-band a seeded move on the
+  // next load. false ≠ null, so the migration leaves the user's choice alone, and
+  // both dayVolume and the renderer treat false exactly like not-banded.
+  if (el.checked) { ex.banded = true; if (!ex.defaultBand) ex.defaultBand = DEFAULT_BAND; }
+  else ex.banded = false;
   save(); render();
 }
 function bandDefaultField(el) {
   const ex = state.library[el.dataset.ex];
   if (ex) { ex.defaultBand = el.value; save(); render(); }
 }
+const fieldByName = {
+  "picker-search": pickerSearch,
+  "circuit-field": circuitField,
+  "load-mode": loadModeField,
+  // Band selects/toggles carry no data-k (logged out-of-band so hydrate can't
+  // blank an unlogged default), so they're dispatched here, ahead of data-k.
+  "band-pick": bandPickField,
+  "banded-toggle": bandedToggleField,
+  "band-default": bandDefaultField,
+};
 
 export function handleField(e) {
   const el = e.target;
   if (el.id && Object.prototype.hasOwnProperty.call(fieldById, el.id)) return fieldById[el.id](el);
-  if (el.classList.contains("picker-search")) return pickerSearch(el);
-  if (el.classList.contains("circuit-field")) return circuitField(el);
-  if (el.classList.contains("load-mode")) return loadModeField(el);
-  // Band selects carry no data-k (logged out-of-band so hydrate can't blank an
-  // unlogged default) — dispatch them before the generic data-k path.
-  if (el.classList.contains("band-pick")) return bandPickField(el);
-  if (el.classList.contains("banded-toggle")) return bandedToggleField(el);
-  if (el.classList.contains("band-default")) return bandDefaultField(el);
+  const fh = el.dataset.fh;
+  if (fh && Object.prototype.hasOwnProperty.call(fieldByName, fh)) return fieldByName[fh](el);
   // Generic logged-field path: everything carrying data-k.
   const k = el.dataset.k;
   if (!k) return;

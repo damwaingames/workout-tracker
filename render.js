@@ -74,7 +74,7 @@ function renderDay(block, d, wk) {
 function bandPicker(cell, exId, ex) {
   const cur = bandFor(ex, state.log[bandKey(cell, exId)]);
   return '<label class="band-pick-l">Band ' +
-    '<select class="band-pick" data-cell="' + cell + '" data-ex="' + exId + '" aria-label="Band for ' + esc(ex.name) + '">' +
+    '<select class="band-pick" data-fh="band-pick" data-cell="' + cell + '" data-ex="' + exId + '" aria-label="Band for ' + esc(ex.name) + '">' +
     BANDS.map((b) => '<option value="' + b.id + '"' + (b.id === cur ? " selected" : "") + ">" + esc(b.label) + " (" + b.kg + " kg)</option>").join("") +
     "</select></label>";
 }
@@ -83,15 +83,21 @@ function bandPicker(cell, exId, ex) {
 // default-band picker (when banded) or the free-weight tonnage mode (strength
 // only). Circuit moves get just the toggle + default band — they carry no mode.
 function loadingEdit(d, ex) {
-  const toggle = '<label class="banded-edit"><input type="checkbox" class="banded-toggle" data-ex="' + ex.id + '"' + (ex.banded ? " checked" : "") + "> Banded</label>";
+  const toggle = '<label class="banded-edit"><input type="checkbox" class="banded-toggle" data-fh="banded-toggle" data-ex="' + ex.id + '"' + (ex.banded ? " checked" : "") + "> Banded</label>";
   if (ex.banded) {
-    return toggle + '<label class="load-edit">Default <select class="band-default" data-ex="' + ex.id + '" aria-label="Default band for ' + esc(ex.name) + '">' +
+    return toggle + '<label class="load-edit">Default <select class="band-default" data-fh="band-default" data-ex="' + ex.id + '" aria-label="Default band for ' + esc(ex.name) + '">' +
       BANDS.map((b) => '<option value="' + b.id + '"' + (b.id === (ex.defaultBand || "") ? " selected" : "") + ">" + esc(b.label) + "</option>").join("") + "</select></label>";
   }
   if (d.kind !== "strength") return toggle;
   const m = loadMode(ex);
-  return toggle + '<label class="load-edit">Tonnage <select class="load-mode" data-ex="' + ex.id + '" aria-label="How ' + esc(ex.name) + ' counts toward tonnage">' +
+  return toggle + '<label class="load-edit">Tonnage <select class="load-mode" data-fh="load-mode" data-ex="' + ex.id + '" aria-label="How ' + esc(ex.name) + ' counts toward tonnage">' +
     LOAD_MODES.map((lm) => '<option value="' + lm.id + '"' + (lm.id === m.id ? " selected" : "") + ">" + esc(lm.label) + "</option>").join("") + "</select></label>";
+}
+
+// The day's tonnage line. One source for the markup, since renderVolumes patches
+// the inner <strong> (by data-vol-cell) during live edits — both day kinds emit it.
+function volumeLine(cell, v) {
+  return '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(v) + " kg</strong></div>";
 }
 
 function renderStrength(d, wk, cell) {
@@ -149,13 +155,14 @@ function renderStrength(d, wk, cell) {
   }).join("");
   // Compute the day's volume inline so a fresh render is already correct;
   // renderVolumes() only re-patches this during live (keystroke) edits.
-  return body +
-    '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(dayVolume(currentBlock(), wk, d)) + " kg</strong></div>";
+  return body + volumeLine(cell, dayVolume(currentBlock(), wk, d));
 }
 
 function renderRecovery(d, wk, cell) {
   const rounds = circuitOf(d).rounds; // rounds drive the checkbox / reps count per move
-  let hasBand = false; // a banded move turns this recovery day into a tonnage-bearing one
+  // A banded move turns this recovery day into a tonnage-bearing one (mirrors the
+  // predicate dayVolume walks), so it gets a day-volume line below.
+  const hasBand = d.exercises.some((p) => { const ex = state.library[p.id]; return ex && ex.banded; });
   const moves = d.exercises.map((place) => {
     const exId = place.id;
     const ex = state.library[exId];
@@ -164,7 +171,6 @@ function renderRecovery(d, wk, cell) {
     if (ex.banded) {
       // Banded circuit move: a per-session band + a reps input for each round
       // (replacing the bare completion checkboxes), so it can feed tonnage.
-      hasBand = true;
       let reps = "";
       for (let r = 0; r < rounds; r++) {
         reps += '<label class="round"><span class="round-n">R' + (r + 1) + "</span>" +
@@ -187,9 +193,7 @@ function renderRecovery(d, wk, cell) {
   }).join("");
   // Recovery days are usually load-free; only show a day-volume line once a banded
   // move makes one contribute (so pure-cardio days stay uncluttered).
-  const volLine = hasBand
-    ? '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(dayVolume(currentBlock(), wk, d)) + " kg</strong></div>"
-    : "";
+  const volLine = hasBand ? volumeLine(cell, dayVolume(currentBlock(), wk, d)) : "";
   return moves +
     (editing ? renderCircuitEdit(d) : "") +
     volLine +
@@ -205,7 +209,7 @@ function renderCircuitEdit(d) {
   const c = circuitOf(d);
   const secField = (field, label, val) =>
     '<label class="circuit-field-l">' + label +
-    ' <input type="number" inputmode="numeric" min="0" class="circuit-field" data-day="' + d.day + '" data-field="' + field + '" value="' + val + '">s</label>';
+    ' <input type="number" inputmode="numeric" min="0" class="circuit-field" data-fh="circuit-field" data-day="' + d.day + '" data-field="' + field + '" value="' + val + '">s</label>';
   return '<div class="circuit-edit">' +
     '<div class="rounds-edit">Rounds ' +
       '<button class="step" type="button" data-action="rounds-dec" data-day="' + d.day + '" aria-label="Fewer rounds">−</button>' +
@@ -238,7 +242,7 @@ function pickerZone(o) {
   return '<div class="add-zone" data-picker="' + o.kind + '"' + dayAttr + ">" +
     '<button class="add-btn" type="button" data-action="picker-open">' + o.addLabel + "</button>" +
     '<div class="picker" hidden>' +
-      '<input type="text" class="picker-search" placeholder="' + o.searchPlaceholder + '">' +
+      '<input type="text" class="picker-search" data-fh="picker-search" placeholder="' + o.searchPlaceholder + '">' +
       '<div class="picker-list"></div>' +
       '<button class="link" type="button" data-action="picker-new-open">' + o.createLabel + "</button>" +
       '<form class="picker-form" hidden>' + o.formFields +

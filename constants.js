@@ -47,6 +47,9 @@ export const BANDS = [
   { id: "heavy", label: "Heavy", kg: 10 },
   { id: "x-heavy", label: "X-Heavy", kg: 12 },
 ];
+// The neutral starting band when a move is first marked banded — the middle tier,
+// derived so the "sensible default" lives in one place rather than as a literal.
+export const DEFAULT_BAND = BANDS[Math.floor(BANDS.length / 2)].id;
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
