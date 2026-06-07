@@ -3,10 +3,10 @@
  * entry points (render + the focus-preserving live patchers) are what events.js
  * calls after a mutation. */
 
-import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS } from "./constants.js";
+import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
-  cellKey, setKey, roundKey, measureKey, nutKey,
-  circuitOf, circuitSummary, kindType, esc, fmt,
+  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey,
+  circuitOf, circuitSummary, kindType, loadMode, bandFor, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
@@ -53,7 +53,7 @@ function renderDay(block, d, wk) {
   const cell = cellKey(block.id, wk, d.day);
   let body;
   if (d.kind === "strength") body = renderStrength(d, wk, cell);
-  else if (d.kind === "recovery") body = renderRecovery(d, cell);
+  else if (d.kind === "recovery") body = renderRecovery(d, wk, cell);
   else body = renderRest(cell);
 
   return '<div class="day ' + d.kind + '" data-cell="' + cell + '">' +
@@ -67,6 +67,33 @@ function renderDay(block, d, wk) {
     "</div>";
 }
 
+// The per-session band picker for a banded move (logged via bandKey, so it gets
+// no data-k — hydrate would blank an unlogged select; we pre-select the resolved
+// tier here and let the band-pick handler persist changes). Shown on both day
+// kinds, above the move's reps.
+function bandPicker(cell, exId, ex) {
+  const cur = bandFor(ex, state.log[bandKey(cell, exId)]);
+  return '<label class="band-pick-l">Band ' +
+    '<select class="band-pick" data-cell="' + cell + '" data-ex="' + exId + '" aria-label="Band for ' + esc(ex.name) + '">' +
+    BANDS.map((b) => '<option value="' + b.id + '"' + (b.id === cur ? " selected" : "") + ">" + esc(b.label) + " (" + b.kg + " kg)</option>").join("") +
+    "</select></label>";
+}
+
+// Edit-mode loading controls for one exercise: a Banded toggle, then either the
+// default-band picker (when banded) or the free-weight tonnage mode (strength
+// only). Circuit moves get just the toggle + default band — they carry no mode.
+function loadingEdit(d, ex) {
+  const toggle = '<label class="banded-edit"><input type="checkbox" class="banded-toggle" data-ex="' + ex.id + '"' + (ex.banded ? " checked" : "") + "> Banded</label>";
+  if (ex.banded) {
+    return toggle + '<label class="load-edit">Default <select class="band-default" data-ex="' + ex.id + '" aria-label="Default band for ' + esc(ex.name) + '">' +
+      BANDS.map((b) => '<option value="' + b.id + '"' + (b.id === (ex.defaultBand || "") ? " selected" : "") + ">" + esc(b.label) + "</option>").join("") + "</select></label>";
+  }
+  if (d.kind !== "strength") return toggle;
+  const m = loadMode(ex);
+  return toggle + '<label class="load-edit">Tonnage <select class="load-mode" data-ex="' + ex.id + '" aria-label="How ' + esc(ex.name) + ' counts toward tonnage">' +
+    LOAD_MODES.map((lm) => '<option value="' + lm.id + '"' + (lm.id === m.id ? " selected" : "") + ">" + esc(lm.label) + "</option>").join("") + "</select></label>";
+}
+
 function renderStrength(d, wk, cell) {
   const bi = currentBlockIndex();
   const body = d.exercises.map((place) => {
@@ -74,24 +101,39 @@ function renderStrength(d, wk, cell) {
     const ex = state.library[exId];
     if (!ex) return "";
     const sets = place.sets || DEFAULT_SETS;
-    const prev = previousSets(exId, bi, wk, d.day);
+    const banded = !!ex.banded; // banded moves log a band + reps, not weight × reps
+    const m = loadMode(ex); // free-weight tonnage multipliers + per-mode labels
+    const prev = banded ? null : previousSets(exId, bi, wk, d.day);
     let rows = "";
     for (let i = 0; i < sets; i++) {
+      if (banded) {
+        rows +=
+          '<div class="set banded"><span class="set-n">Set ' + (i + 1) + "</span>" +
+          '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" placeholder="reps">' +
+          '<span class="unit">reps</span></div>';
+        continue;
+      }
       const p = prev && prev[i];
       rows +=
         '<div class="set"><span class="set-n">Set ' + (i + 1) + "</span>" +
         '<input type="number" inputmode="decimal" class="w" data-k="' + setKey(cell, exId, i, "w") + '" data-type="text" placeholder="' + (p && p.w ? esc(p.w) : "wt") + '">' +
-        '<span class="unit">kg</span>' +
+        '<span class="unit">' + esc(m.wUnit || "kg") + "</span>" +
         '<span class="x">×</span>' +
-        '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" placeholder="' + (p && p.r ? esc(p.r) : "reps") + '"></div>';
+        '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" placeholder="' + (p && p.r ? esc(p.r) : "reps") + '">' +
+        (m.rUnit ? '<span class="unit">' + esc(m.rUnit) + "</span>" : "") +
+        "</div>";
     }
     const last = prev
       ? '<div class="last">Last: ' + prev.map((s) => (s.w ? esc(s.w) + " kg × " : "") + (s.r ? esc(s.r) : "–")).join(", ") + "</div>"
       : "";
+    const bandRow = banded ? bandPicker(cell, exId, ex) : ""; // the per-session band selector
     const setsEdit = editing
       ? '<div class="sets-edit">Sets <button class="step" type="button" data-action="sets-dec" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Fewer sets">−</button>' +
         '<span class="sets-count">' + sets + "</span>" +
-        '<button class="step" type="button" data-action="sets-inc" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="More sets">＋</button></div>'
+        '<button class="step" type="button" data-action="sets-inc" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="More sets">＋</button>' +
+        // How this exercise is loaded (band vs free weight, and its tonnage mode) —
+        // a property of the exercise, so it persists on the library record.
+        loadingEdit(d, ex) + "</div>"
       : "";
     return '<div class="exercise" data-ex="' + exId + '">' +
       '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
@@ -101,6 +143,7 @@ function renderStrength(d, wk, cell) {
       "</div>" +
       (ex.setup ? '<div class="setup">' + esc(ex.setup) + "</div>" : "") +
       setsEdit +
+      bandRow +
       '<div class="sets">' + rows + "</div>" + last +
       "</div>";
   }).join("");
@@ -110,23 +153,46 @@ function renderStrength(d, wk, cell) {
     '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(dayVolume(currentBlock(), wk, d)) + " kg</strong></div>";
 }
 
-function renderRecovery(d, cell) {
-  const rounds = circuitOf(d).rounds; // how many R-checkboxes each station shows
+function renderRecovery(d, wk, cell) {
+  const rounds = circuitOf(d).rounds; // rounds drive the checkbox / reps count per move
+  let hasBand = false; // a banded move turns this recovery day into a tonnage-bearing one
   const moves = d.exercises.map((place) => {
     const exId = place.id;
     const ex = state.library[exId];
     if (!ex) return "";
-    let checks = "";
-    for (let r = 0; r < rounds; r++) {
-      checks += '<label class="round"><input type="checkbox" data-k="' + roundKey(cell, exId, r) + '" data-type="check"> R' + (r + 1) + "</label>";
+    let inner;
+    if (ex.banded) {
+      // Banded circuit move: a per-session band + a reps input for each round
+      // (replacing the bare completion checkboxes), so it can feed tonnage.
+      hasBand = true;
+      let reps = "";
+      for (let r = 0; r < rounds; r++) {
+        reps += '<label class="round"><span class="round-n">R' + (r + 1) + "</span>" +
+          '<input type="number" inputmode="numeric" class="round-rep" data-k="' + roundRepKey(cell, exId, r) + '" data-type="text" placeholder="reps"></label>';
+      }
+      inner = bandPicker(cell, exId, ex) + '<div class="rounds reps">' + reps + "</div>";
+    } else {
+      let checks = "";
+      for (let r = 0; r < rounds; r++) {
+        checks += '<label class="round"><input type="checkbox" data-k="' + roundKey(cell, exId, r) + '" data-type="check"> R' + (r + 1) + "</label>";
+      }
+      inner = '<div class="rounds">' + checks + "</div>";
     }
     return '<div class="exercise circuit" data-ex="' + exId + '">' +
       '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
       (editing ? '<button class="remove" type="button" data-action="remove-exercise" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
-      '</div><div class="rounds">' + checks + "</div></div>";
+      "</div>" +
+      (editing ? '<div class="sets-edit">' + loadingEdit(d, ex) + "</div>" : "") +
+      inner + "</div>";
   }).join("");
+  // Recovery days are usually load-free; only show a day-volume line once a banded
+  // move makes one contribute (so pure-cardio days stay uncluttered).
+  const volLine = hasBand
+    ? '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(dayVolume(currentBlock(), wk, d)) + " kg</strong></div>"
+    : "";
   return moves +
     (editing ? renderCircuitEdit(d) : "") +
+    volLine +
     '<div class="recovery-meta">' +
       '<label class="inline">Energy (1–10)<input type="number" min="1" max="10" data-k="' + cell + '.energy" data-type="text"></label>' +
       '<span class="circuit-note" data-circuit-cell="' + cell + '">' + esc(circuitSummary(d)) + "</span>" +

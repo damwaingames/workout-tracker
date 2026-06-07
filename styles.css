@@ -206,6 +206,7 @@ nav.weeks {
 .sets-edit {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: .45rem;
   margin-top: .55rem;
   font-size: .7rem;
@@ -213,6 +214,12 @@ nav.weeks {
   letter-spacing: .03em;
   color: var(--muted);
 }
+/* Loading-mode picker sits inline after the sets stepper; the divider gives the
+   two edit controls a little visual separation when the row doesn't wrap. */
+.load-edit { display: inline-flex; align-items: center; gap: .35rem; padding-left: .55rem; border-left: 1px solid var(--border); }
+.load-edit select { font-size: .75rem; padding: .2rem .3rem; }
+.banded-edit { display: inline-flex; align-items: center; gap: .3rem; padding-left: .55rem; border-left: 1px solid var(--border); }
+.banded-edit input { width: 1rem; height: 1rem; }
 .step {
   width: 1.7rem;
   height: 1.7rem;
@@ -240,9 +247,19 @@ input[type="text"], input[type="number"], input[type="date"], textarea, select {
 input:focus, textarea:focus, select:focus { outline: 2px solid var(--workout); outline-offset: -1px; border-color: var(--workout); }
 textarea { width: 100%; resize: vertical; }
 
-.rounds { display: flex; gap: 1.1rem; margin-top: .5rem; }
+.rounds { display: flex; flex-wrap: wrap; gap: 1.1rem; margin-top: .5rem; }
 .round { display: flex; align-items: center; gap: .35rem; font-size: .85rem; cursor: pointer; }
-.round input { width: 1.05rem; height: 1.05rem; cursor: pointer; }
+.round input[type="checkbox"] { width: 1.05rem; height: 1.05rem; cursor: pointer; }
+/* Banded circuit move: per-round reps replace the bare checkboxes. */
+.rounds.reps { gap: .55rem; }
+.rounds.reps .round { flex-direction: column; gap: .15rem; }
+.rounds.reps .round-n { font-size: .68rem; color: var(--muted); }
+.round input.round-rep { width: 3.2rem; text-align: center; }
+
+/* Band picker (per session) + its reps-only strength sets. */
+.band-pick-l { display: flex; align-items: center; gap: .4rem; margin-top: .5rem; font-size: .78rem; color: var(--muted); }
+.band-pick { font-size: .8rem; padding: .2rem .3rem; }
+.set.banded .r { margin-left: auto; }
 
 .recovery-meta {
   display: flex;

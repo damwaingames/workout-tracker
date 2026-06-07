@@ -5,7 +5,7 @@
 
 import {
   MIN_SETS, MAX_SETS, DEFAULT_SETS,
-  MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS,
+  MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS, LOAD_MODES, BANDS,
 } from "./constants.js";
 
 export function today() {
@@ -18,6 +18,11 @@ export function today() {
 export const cellKey = (blockId, wk, day) => blockId + ".w" + wk + ".d" + day;
 export const setKey = (cell, exId, i, f) => cell + ".ex." + exId + ".s" + i + "." + f; // f: "w" | "r"
 export const roundKey = (cell, exId, r) => cell + ".ex." + exId + ".r" + r;
+// Banded moves: the chosen band tier for one exercise on one day cell (".band",
+// distinct from ".sN"/".rN"), plus per-round reps for a banded circuit move
+// (".rr" + r — separate from the ".r" + r round checkbox of a normal circuit).
+export const bandKey = (cell, exId) => cell + ".ex." + exId + ".band";
+export const roundRepKey = (cell, exId, r) => cell + ".ex." + exId + ".rr" + r;
 // Weekly body measurement (one value per block/week/measurement). Shares
 // state.log — the ".m." segment can't collide with a day's ".dN" cells, and
 // the block.id prefix means deleteBlock's purge sweeps these up for free.
@@ -48,6 +53,23 @@ export function placement(type, id, sets) {
 // day-kind ↔ exercise-type rule, so the picker and the create form agree and a
 // mismatched placement can't be built.
 export function kindType(kind) { return kind === "strength" ? "strength" : "circuit"; }
+
+// The loading-mode record for an exercise (default standard). An absent/unknown
+// `ex.loadMode` resolves to the first LOAD_MODES entry. Pure — both the renderer
+// (input labels) and dayVolume (the tonnage multipliers) read through this, so
+// they can't disagree on what a mode means.
+const LOAD_MODE_BY_ID = Object.fromEntries(LOAD_MODES.map((m) => [m.id, m]));
+export function loadMode(ex) {
+  return (ex && LOAD_MODE_BY_ID[ex.loadMode]) || LOAD_MODES[0];
+}
+
+// Band helpers — pure, so the renderer (picker + labels) and dayVolume (the kg
+// that feeds tonnage) read bands the same way. The chosen tier for a session is
+// the logged value, falling back to the exercise's default; bandKg turns a tier
+// id into its approximate kg (0 when unset/unknown, so it contributes no load).
+const BAND_BY_ID = Object.fromEntries(BANDS.map((b) => [b.id, b]));
+export function bandFor(ex, logged) { return logged || (ex && ex.defaultBand) || ""; }
+export function bandKg(id) { const b = BAND_BY_ID[id]; return b ? b.kg : 0; }
 
 // A recovery day's circuit settings, normalised (defaults applied, types coerced).
 // The single read-side accessor so the renderer and the time maths agree.

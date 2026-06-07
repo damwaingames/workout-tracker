@@ -6,7 +6,7 @@
 import { DEFAULT_SETS } from "./constants.js";
 import {
   placement, clampSets, clampRounds, circuitOf, kindType,
-  nonNegSec, slugify, uniqueId, today,
+  nonNegSec, slugify, uniqueId, today, bandKey,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog,
@@ -175,12 +175,48 @@ function circuitField(el) {
   const d = dayDef(Number(el.dataset.day));
   if (d) { d[el.dataset.field] = nonNegSec(el.value); save(); patchCircuitTime(d); }
 }
+// Loading mode lives on the library record (not the placement), so changing it
+// here updates the exercise everywhere it appears; a full render relabels its
+// inputs and recomputes every affected day/week/block volume.
+function loadModeField(el) {
+  const ex = state.library[el.dataset.ex];
+  if (!ex) return;
+  ex.loadMode = el.value; // store the choice verbatim — incl. "standard", so the backfill migration won't re-touch it
+  save(); render();
+}
+// The per-session band choice is a logged value (one per cell + exercise), so
+// it's editable on any week/block — including past ones — like a weight is. Only
+// the volumes need patching; the picker already shows the new value.
+function bandPickField(el) {
+  setLog(bandKey(el.dataset.cell, el.dataset.ex), el.value);
+  renderVolumes();
+}
+// The Banded flag and default band live on the library record (apply everywhere
+// the exercise is placed), so both re-render: toggling swaps the whole logging UI
+// for that exercise; the default changes what unlogged sessions assume.
+function bandedToggleField(el) {
+  const ex = state.library[el.dataset.ex];
+  if (!ex) return;
+  if (el.checked) { ex.banded = true; if (!ex.defaultBand) ex.defaultBand = "medium"; }
+  else delete ex.banded;
+  save(); render();
+}
+function bandDefaultField(el) {
+  const ex = state.library[el.dataset.ex];
+  if (ex) { ex.defaultBand = el.value; save(); render(); }
+}
 
 export function handleField(e) {
   const el = e.target;
   if (el.id && Object.prototype.hasOwnProperty.call(fieldById, el.id)) return fieldById[el.id](el);
   if (el.classList.contains("picker-search")) return pickerSearch(el);
   if (el.classList.contains("circuit-field")) return circuitField(el);
+  if (el.classList.contains("load-mode")) return loadModeField(el);
+  // Band selects carry no data-k (logged out-of-band so hydrate can't blank an
+  // unlogged default) — dispatch them before the generic data-k path.
+  if (el.classList.contains("band-pick")) return bandPickField(el);
+  if (el.classList.contains("banded-toggle")) return bandedToggleField(el);
+  if (el.classList.contains("band-default")) return bandDefaultField(el);
   // Generic logged-field path: everything carrying data-k.
   const k = el.dataset.k;
   if (!k) return;
@@ -189,7 +225,8 @@ export function handleField(e) {
     if (k.slice(-5) === ".done") afterDone(el, k);
   } else {
     setLog(k, el.value);
-    if (el.classList.contains("w") || el.classList.contains("r")) renderVolumes();
+    // "round-rep" = a banded circuit move's per-round reps, which feed tonnage.
+    if (el.classList.contains("w") || el.classList.contains("r") || el.classList.contains("round-rep")) renderVolumes();
     else if (el.classList.contains("measure-val")) renderBmi();
     else if (el.classList.contains("nut-val")) renderNutritionTotals();
   }

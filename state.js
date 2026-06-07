@@ -12,14 +12,19 @@ import {
   WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS,
 } from "./constants.js";
 import {
-  today, cellKey, setKey, measureKey, nutKey, placement,
+  today, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey,
+  placement, loadMode, circuitOf, bandFor, bandKg,
 } from "./helpers.js";
 
 /* ---------------------------------------------------------------------- *
  * Seed data — straight from the training design doc.                     *
  * ---------------------------------------------------------------------- */
-function S(id, name, setup, targetReps) {
-  return { id, name, type: "strength", setup, targetReps };
+function S(id, name, setup, targetReps, loadMode) {
+  const ex = { id, name, type: "strength", setup, targetReps };
+  // Loading mode is optional — absent means standard (load as entered). Only the
+  // multi-implement / per-side moves carry one, so tonnage is right out of the box.
+  if (loadMode) ex.loadMode = loadMode;
+  return ex;
 }
 // Circuit moves are just a name + type now — rounds and timing live on the day
 // (the circuit), not the individual move.
@@ -33,20 +38,20 @@ function keyById(list) { const o = {}; list.forEach((x) => (o[x.id] = x)); retur
 function seedLibrary() {
   const list = [
     S("goblet-squats", "Goblet Squats", "Hold a single dumbbell vertically against your chest.", "8–12"),
-    S("bent-over-rows", "Bent Over Rows", "Hinge at the hips with a flat back, dumbbells hanging down. Pull your elbows up.", "8–12"),
+    S("bent-over-rows", "Bent Over Rows", "Hinge at the hips with a flat back, dumbbells hanging down. Pull your elbows up.", "8–12", "two-dumbbell"),
     S("banded-clamshells", "Banded Clamshells", "Loop a resistance band around your thighs just above the knees. Open your knees out.", "10–15"),
-    S("bicep-curls", "Bicep Curls", "Palms facing forward, curl the weights up keeping your elbows tucked at your sides.", "8–12"),
-    S("wrist-curls", "Wrist Curls", "Forearms resting on thighs, palms facing up. Curl your wrists upward.", "8–12"),
-    S("dumbbell-rdls", "Dumbbell RDLs", "Romanian deadlifts. Soft knees, push your hips straight back, slide the weights down your thighs.", "8–12"),
-    S("floor-chest-presses", "Floor Chest Presses", "Lie on your back on the floor or a firm mattress. Press the dumbbells up.", "8–12"),
+    S("bicep-curls", "Bicep Curls", "Palms facing forward, curl the weights up keeping your elbows tucked at your sides.", "8–12", "two-dumbbell"),
+    S("wrist-curls", "Wrist Curls", "Forearms resting on thighs, palms facing up. Curl your wrists upward.", "8–12", "two-dumbbell"),
+    S("dumbbell-rdls", "Dumbbell RDLs", "Romanian deadlifts. Soft knees, push your hips straight back, slide the weights down your thighs.", "8–12", "two-dumbbell"),
+    S("floor-chest-presses", "Floor Chest Presses", "Lie on your back on the floor or a firm mattress. Press the dumbbells up.", "8–12", "two-dumbbell"),
     S("glute-bridges", "Glute Bridges", "Lie on your back, knees bent, feet flat. Squeeze your glutes and lift your hips.", "10–15"),
-    S("overhead-shoulder-presses", "Overhead Shoulder Presses", "Sit or stand tall. Press the dumbbells from shoulder height up overhead.", "8–12"),
+    S("overhead-shoulder-presses", "Overhead Shoulder Presses", "Sit or stand tall. Press the dumbbells from shoulder height up overhead.", "8–12", "two-dumbbell"),
     S("crunches", "Crunches", "Lie on your back, lift your shoulder blades slightly using your upper abs.", "8–12"),
     S("sumo-squats", "Sumo Squats", "Wide stance, toes pointed out. Hold one dumbbell down between your legs.", "8–12"),
-    S("dumbbell-lateral-raises", "Dumbbell Lateral Raises", "Raise your arms straight out to the sides until parallel with the floor.", "8–12"),
-    S("donkey-kicks", "Donkey Kicks", "On hands and knees (or leaning over a table). Drive one heel toward the ceiling.", "10–15 each leg"),
+    S("dumbbell-lateral-raises", "Dumbbell Lateral Raises", "Raise your arms straight out to the sides until parallel with the floor.", "8–12", "two-dumbbell"),
+    S("donkey-kicks", "Donkey Kicks", "On hands and knees (or leaning over a table). Drive one heel toward the ceiling.", "10–15 each leg", "per-side"),
     S("dumbbell-tricep-extensions", "Dumbbell Tricep Extensions", "Hold a dumbbell overhead with both hands, bend your elbows behind your head, then extend.", "8–12"),
-    S("wrist-extensions", "Wrist Extensions", "Forearms resting on thighs, palms facing down. Curl your wrists upward.", "8–12"),
+    S("wrist-extensions", "Wrist Extensions", "Forearms resting on thighs, palms facing down. Curl your wrists upward.", "8–12", "two-dumbbell"),
     C("high-knees", "High Knees"),
     C("wall-press-ups", "Wall Press-Ups"),
     C("glute-squeezes", "Glute Squeezes"),
@@ -58,7 +63,17 @@ function seedLibrary() {
     C("quad-stretch", "Quad Stretch"),
     C("childs-pose-or-seated-torso-twist", "Child's Pose or Seated Torso Twist"),
   ];
-  return keyById(list);
+  const lib = keyById(list);
+  // Banded moves take their load from a resistance band, not free weight — across
+  // both day kinds (a strength exercise and a circuit move here). They log a band
+  // tier (defaulting to `defaultBand`) plus reps, and their tonnage is band kg ×
+  // reps. `banded` is what render/dayVolume branch on; the seed default just
+  // pre-selects a sensible tier the user can change per session.
+  lib["banded-clamshells"].banded = true;
+  lib["banded-clamshells"].defaultBand = "light";
+  lib["banded-hip-abductions"].banded = true;
+  lib["banded-hip-abductions"].defaultBand = "medium";
+  return lib;
 }
 
 // Body-measurement catalogue. Bodyweight is the only mass (kg); circumferences
@@ -131,6 +146,7 @@ function normalise(s) {
   if (!s.profile || typeof s.profile !== "object") s.profile = {};
   migrateSets(s);
   migrateCircuit(s);
+  migrateExerciseLoading(s);
   if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (typeof s.notes !== "string") s.notes = "";
   return s;
@@ -173,6 +189,21 @@ function migrateCircuit(s) {
   Object.keys(s.library).forEach((id) => {
     const ex = s.library[id];
     delete ex.duration; delete ex.rest; delete ex.rounds;
+  });
+}
+
+// Per-exercise loading metadata — the loading mode (per-side / two-dumbbell) and
+// the banded flag + default band — is additive, so older saves predate it.
+// Backfill the program's seed defaults onto matching library records, but only
+// per-field where the user hasn't already set one, so manual choices and custom
+// exercises are left alone. Idempotent once a field is present.
+function migrateExerciseLoading(s) {
+  const seed = seedLibrary();
+  Object.keys(seed).forEach((id) => {
+    const ex = s.library[id], sd = seed[id];
+    if (!ex) return;
+    if (ex.loadMode == null && sd.loadMode) ex.loadMode = sd.loadMode;
+    if (ex.banded == null && sd.banded) { ex.banded = true; ex.defaultBand = sd.defaultBand; }
   });
 }
 
@@ -234,16 +265,42 @@ export function previousSets(exId, curBlockIdx, curWeek, curDay) {
   return best ? best.sets : null;
 }
 
-// Training volume (tonnage) for one day: sum of weight × reps over every
-// logged set. Only strength days carry load; circuits/rest contribute 0.
+// Reps summed across a banded move's logged inputs: strength reads each set's
+// reps field; a circuit move reads its per-round reps. (Banded load is band kg ×
+// these reps, so the "weight" is the band rather than a typed number.)
+function bandedReps(cell, d, p) {
+  let total = 0;
+  if (d.kind === "strength") {
+    const sets = p.sets || DEFAULT_SETS;
+    for (let i = 0; i < sets; i++) { const r = parseFloat(state.log[setKey(cell, p.id, i, "r")]); if (r > 0) total += r; }
+  } else {
+    const rounds = circuitOf(d).rounds;
+    for (let i = 0; i < rounds; i++) { const r = parseFloat(state.log[roundRepKey(cell, p.id, i)]); if (r > 0) total += r; }
+  }
+  return total;
+}
+
+// Training volume (tonnage) for one day. Free-weight strength sets contribute
+// weight × reps, scaled by the loading mode (per-side doubles reps, two-dumbbell
+// doubles weight). Banded moves contribute band kg × summed reps — and because a
+// band can sit on a recovery day, circuits now carry load too. Rest days are 0.
 export function dayVolume(block, wk, d) {
-  if (d.kind !== "strength") return 0;
+  if (d.kind === "rest") return 0;
+  const cell = cellKey(block.id, wk, d.day);
   let v = 0;
   d.exercises.forEach((p) => {
-    readSets(block.id, wk, d.day, p.id, p.sets || DEFAULT_SETS).forEach((s) => {
-      const w = parseFloat(s.w), r = parseFloat(s.r);
-      if (w > 0 && r > 0) v += w * r;
-    });
+    const ex = state.library[p.id];
+    if (!ex) return;
+    if (ex.banded) {
+      const kg = bandKg(bandFor(ex, state.log[bandKey(cell, p.id)]));
+      if (kg > 0) v += kg * bandedReps(cell, d, p);
+    } else if (d.kind === "strength") {
+      const m = loadMode(ex);
+      readSets(block.id, wk, d.day, p.id, p.sets || DEFAULT_SETS).forEach((s) => {
+        const w = parseFloat(s.w), r = parseFloat(s.r);
+        if (w > 0 && r > 0) v += w * m.wMult * r * m.rMult;
+      });
+    }
   });
   return v;
 }
