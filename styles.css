@@ -203,6 +203,24 @@ nav.weeks {
 }
 .day-volume strong { color: var(--text); font-variant-numeric: tabular-nums; }
 
+/* Per-day class logger — a separated section under each day, like day-volume. */
+.classes { margin-top: .75rem; padding-top: .6rem; border-top: 1px dashed var(--border); }
+.class-list { list-style: none; margin: 0 0 .4rem; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
+.class-item { display: flex; align-items: center; gap: .5rem; font-size: .82rem; }
+.class-text { flex: 1; min-width: 0; }
+.class-type { font-weight: 600; color: var(--text); }
+.class-desc { color: var(--muted); }
+.class-mins { color: var(--workout); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.class-add-btn { padding: .2rem 0; }
+.class-form { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+.class-form input[name="type"] { flex: 1 1 8rem; }
+.class-form input[name="desc"] { flex: 2 1 10rem; }
+.class-form input[name="mins"] { flex: 0 0 4.5rem; text-align: center; }
+.class-form .form-actions { flex-basis: 100%; }
+/* Header class-minutes line — parallels .volume. */
+.class-total { font-size: .8rem; color: var(--muted); margin: .15rem 0 0; font-variant-numeric: tabular-nums; }
+.class-total strong { color: var(--workout); }
+
 .sets-edit {
   display: flex;
   align-items: center;

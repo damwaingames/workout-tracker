@@ -9,10 +9,10 @@
  * for the importer). Property mutation (state.log[k] = …) works from anywhere. */
 
 import {
-  WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS,
+  WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
 import {
-  today, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey,
+  today, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
   placement, loadMode, circuitOf, bandFor, bandKg,
 } from "./helpers.js";
 
@@ -141,6 +141,8 @@ export function defaultState() {
     // Body stats: the measurement catalogue, the user's tracked subset, and a
     // one-time profile (height → BMI). Weekly values live in `log` (measureKey).
     measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
+    // Editable list of class types for the per-day class logger.
+    classTypes: [...DEFAULT_CLASS_TYPES],
   };
 }
 
@@ -161,6 +163,7 @@ function normalise(s) {
   if (!s.measurements) s.measurements = seedMeasurements();
   if (!Array.isArray(s.tracked)) s.tracked = ["bodyweight"];
   if (!s.profile || typeof s.profile !== "object") s.profile = {};
+  if (!Array.isArray(s.classTypes)) s.classTypes = [...DEFAULT_CLASS_TYPES];
   migrateSets(s);
   migrateCircuit(s);
   migrateLibrary(s);
@@ -376,4 +379,18 @@ export function nutritionTotals(block, weeks) {
     });
   });
   return { ...sum, kcalDays };
+}
+
+// Total class minutes over a set of weeks (one week / all weeks), summing every
+// logged class on every day. Mirrors nutritionTotals' scan; classes are an array
+// per day cell, each carrying `mins`.
+export function classMinutes(block, weeks) {
+  let total = 0;
+  weeks.forEach((wk) => {
+    block.days.forEach((d) => {
+      const list = state.log[classesKey(cellKey(block.id, wk, d.day))];
+      if (Array.isArray(list)) list.forEach((c) => { const m = parseFloat(c.mins); if (m > 0) total += m; });
+    });
+  });
+  return total;
 }

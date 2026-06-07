@@ -5,16 +5,16 @@
 
 import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
-  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey,
+  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
   circuitOf, circuitSummary, kindType, loadMode, repsLabel, bandFor, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, dayDef,
-  previousSets, dayVolume, previousMeasure, bmiFor, nutritionTotals,
+  previousSets, dayVolume, previousMeasure, bmiFor, nutritionTotals, classMinutes,
 } from "./state.js";
 
-export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderNutrition(); }
+export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderNutrition(); renderClassTotal(); }
 
 function renderHeader() {
   const sel = document.getElementById("block-select");
@@ -45,6 +45,9 @@ function renderWeek() {
   document.getElementById("week-view").innerHTML =
     '<p class="week-heading">' + nameHtml + " · Week " + wk + " of " + WEEKS +
     (editing ? ' <span class="edit-hint">— editing this block’s exercises</span>' : "") + "</p>" +
+    // Shared autocomplete list of known class types — every add-class form's type
+    // input references this by id, so adding a type makes it offered everywhere.
+    '<datalist id="class-types">' + state.classTypes.map((t) => '<option value="' + esc(t) + '">').join("") + "</datalist>" +
     block.days.map((d) => renderDay(block, d, wk)).join("");
   hydrate();
 }
@@ -64,7 +67,47 @@ function renderDay(block, d, wk) {
     '<div class="day-focus">' + esc(d.focus) + "</div>" +
     '<div class="day-body">' + body + "</div>" +
     (editing && d.kind !== "rest" ? renderAddZone(d) : "") +
+    renderClasses(cell) +
     "</div>";
+}
+
+// The per-day class logger — a list of logged classes (type · note · minutes,
+// each removable) and an add form, on every day kind. Classes are logged
+// activity (shown in both modes), not part of the day template.
+function renderClasses(cell) {
+  const list = Array.isArray(state.log[classesKey(cell)]) ? state.log[classesKey(cell)] : [];
+  const items = list.map((c, i) =>
+    '<li class="class-item"><span class="class-text">' +
+      '<span class="class-type">' + esc(c.type) + "</span>" +
+      (c.desc ? ' <span class="class-desc">' + esc(c.desc) + "</span>" : "") +
+      ' <span class="class-mins">' + esc(String(c.mins)) + " min</span></span>" +
+      '<button class="remove" type="button" data-action="class-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove class">×</button></li>'
+  ).join("");
+  return '<div class="classes" data-cell="' + cell + '">' +
+    (list.length ? '<ul class="class-list">' + items + "</ul>" : "") +
+    '<div class="class-add">' +
+      '<button class="link class-add-btn" type="button" data-action="class-add-open">＋ Add class</button>' +
+      '<form class="class-form" hidden>' +
+        '<input list="class-types" name="type" placeholder="Type (e.g. Pilates)" autocomplete="off" required>' +
+        '<input name="desc" placeholder="What you did (optional)">' +
+        '<input type="number" inputmode="numeric" min="1" name="mins" placeholder="Mins" required>' +
+        '<div class="form-actions"><button type="submit">Add</button>' +
+        '<button type="button" class="link" data-action="class-add-cancel">Cancel</button></div>' +
+      "</form>" +
+    "</div></div>";
+}
+
+// The header's class-minutes line (week + block), shown only once anything's
+// logged so it doesn't clutter an empty header. Parallels the Volume line.
+function renderClassTotal() {
+  const el = document.getElementById("class-total");
+  if (!el) return;
+  const b = currentBlock();
+  const week = classMinutes(b, [state.ui.week]);
+  const block = classMinutes(b, Array.from({ length: WEEKS }, (_, i) => i + 1));
+  el.innerHTML = (week || block)
+    ? "Classes · <strong>" + fmt(week) + " min</strong> this week · <strong>" + fmt(block) + " min</strong> this block"
+    : "";
 }
 
 // The per-session band picker for a banded move (logged via bandKey, so it gets

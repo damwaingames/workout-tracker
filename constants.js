@@ -51,6 +51,11 @@ export const BANDS = [
 // derived so the "sensible default" lives in one place rather than as a literal.
 export const DEFAULT_BAND = BANDS[Math.floor(BANDS.length / 2)].id;
 
+// Seed types for the "class" logger — a class is any extra session you did on a
+// day (type + free-text note + minutes), logged on top of the planned workout.
+// The list is editable: a new type typed into the add-class form is remembered.
+export const DEFAULT_CLASS_TYPES = ["Yoga", "Pilates", "Box-Fit"];
+
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "1.6.0";
+export const APP_VERSION = "1.7.0";

@@ -6,7 +6,7 @@
 import { DEFAULT_SETS, DEFAULT_BAND } from "./constants.js";
 import {
   placement, clampSets, clampRounds, circuitOf, kindType,
-  nonNegSec, slugify, uniqueId, today, bandKey,
+  nonNegSec, slugify, uniqueId, today, bandKey, classesKey,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog,
@@ -94,18 +94,63 @@ export function handleClick(e) {
       state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
       save(); render(); break;
     }
+    case "class-add-open": {
+      const zone = el.closest(".classes");
+      const form = zone.querySelector(".class-form");
+      form.hidden = false;
+      el.hidden = true;
+      const t = form.querySelector('[name="type"]');
+      if (t) t.focus();
+      break;
+    }
+    case "class-add-cancel": {
+      const form = el.closest(".class-form");
+      form.hidden = true; form.reset();
+      const btn = el.closest(".classes").querySelector('[data-action="class-add-open"]');
+      if (btn) btn.hidden = false;
+      break;
+    }
+    case "class-remove": removeClass(el.dataset.cell, Number(el.dataset.i)); break;
     case "export": exportBackup(); break;
     case "reset": resetAll(); break;
   }
 }
 
 export function handleSubmit(e) {
+  const classForm = e.target.closest(".class-form");
+  if (classForm) { e.preventDefault(); return addClass(classForm); }
   const form = e.target.closest(".picker-form");
   if (!form) return;
   e.preventDefault();
   const zone = form.closest(".add-zone");
   if (zone && zone.dataset.picker === "measure") return addNewMeasurement(form);
   addNewExercise(form, zone ? Number(zone.dataset.day) : NaN);
+}
+
+// Log a class on a day cell: type (required) + free-text note + minutes (>0).
+// Classes are an array under one cell key; a brand-new type is remembered in the
+// editable classTypes list so the datalist offers it next time.
+function addClass(form) {
+  const cell = form.closest(".classes").dataset.cell;
+  const fd = new FormData(form);
+  const type = String(fd.get("type") || "").trim();
+  const mins = parseFloat(fd.get("mins"));
+  if (!type || !(mins > 0)) return;
+  const desc = String(fd.get("desc") || "").trim();
+  if (state.classTypes.indexOf(type) < 0) state.classTypes.push(type);
+  const key = classesKey(cell);
+  const list = Array.isArray(state.log[key]) ? state.log[key] : [];
+  list.push({ type, desc, mins });
+  setLog(key, list);
+  render();
+}
+
+function removeClass(cell, i) {
+  const key = classesKey(cell);
+  const list = Array.isArray(state.log[key]) ? state.log[key].slice() : [];
+  list.splice(i, 1);
+  setLog(key, list.length ? list : ""); // "" deletes the key once the last class goes
+  render();
 }
 
 function addNewExercise(form, day) {
