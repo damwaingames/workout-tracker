@@ -13,7 +13,7 @@ import {
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M,
 } from "./state.js";
 import {
-  render, renderBmi, renderVolumes, renderNutritionTotals, patchCircuitTime, repopulate, hydrateNotes,
+  render, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, repopulate, hydrateNotes,
 } from "./render.js";
 
 /* ---------------------------------------------------------------------- *
@@ -137,7 +137,8 @@ function addClass(form) {
   const mins = parseFloat(fd.get("mins"));
   if (!type || !(mins > 0)) return;
   const desc = String(fd.get("desc") || "").trim();
-  if (state.classTypes.indexOf(type) < 0) state.classTypes.push(type);
+  // Remember a brand-new type (rate starts at 0; set it in the Edit-mode editor).
+  if (!state.classTypes.some((c) => c.name === type)) state.classTypes.push({ name: type, rate: 0 });
   const key = classesKey(cell);
   const list = Array.isArray(state.log[key]) ? state.log[key] : [];
   list.push({ type, desc, mins });
@@ -255,6 +256,13 @@ function bandDefaultField(el) {
   const ex = state.library[el.dataset.ex];
   if (ex) { ex.defaultBand = el.value; save(); render(); }
 }
+// A class type's calorie rate (kcal/min/kg) on the editable classTypes list.
+// Live-patch the header total only, so the rate input keeps focus while typing
+// (per-class ~kcal labels refresh on the next full render).
+function classRateField(el) {
+  const t = state.classTypes.find((c) => c.name === el.dataset.typeName);
+  if (t) { t.rate = parseFloat(el.value) || 0; save(); renderClassTotal(); }
+}
 const fieldByName = {
   "picker-search": pickerSearch,
   "circuit-field": circuitField,
@@ -264,6 +272,7 @@ const fieldByName = {
   "band-pick": bandPickField,
   "banded-toggle": bandedToggleField,
   "band-default": bandDefaultField,
+  "ct-rate": classRateField,
 };
 
 export function handleField(e) {

@@ -6,12 +6,13 @@
 import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
-  circuitOf, circuitSummary, kindType, loadMode, repsLabel, bandFor, esc, fmt,
+  circuitOf, circuitSummary, kindType, loadMode, repsLabel, bandFor, kcalBurn, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, dayDef,
-  previousSets, dayVolume, previousMeasure, bmiFor, nutritionTotals, classMinutes,
+  previousSets, dayVolume, previousMeasure, bmiFor, nutritionTotals,
+  classTotals, weekBodyweight, classRate,
 } from "./state.js";
 
 export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderNutrition(); renderClassTotal(); }
@@ -47,7 +48,8 @@ function renderWeek() {
     (editing ? ' <span class="edit-hint">— editing this block’s exercises</span>' : "") + "</p>" +
     // Shared autocomplete list of known class types — every add-class form's type
     // input references this by id, so adding a type makes it offered everywhere.
-    '<datalist id="class-types">' + state.classTypes.map((t) => '<option value="' + esc(t) + '">').join("") + "</datalist>" +
+    '<datalist id="class-types">' + state.classTypes.map((t) => '<option value="' + esc(t.name) + '">').join("") + "</datalist>" +
+    (editing ? renderClassTypesEdit() : "") +
     block.days.map((d) => renderDay(block, d, wk)).join("");
   hydrate();
 }
@@ -67,22 +69,25 @@ function renderDay(block, d, wk) {
     '<div class="day-focus">' + esc(d.focus) + "</div>" +
     '<div class="day-body">' + body + "</div>" +
     (editing && d.kind !== "rest" ? renderAddZone(d) : "") +
-    renderClasses(cell) +
+    renderClasses(cell, weekBodyweight(block, wk)) +
     "</div>";
 }
 
-// The per-day class logger — a list of logged classes (type · note · minutes,
-// each removable) and an add form, on every day kind. Classes are logged
-// activity (shown in both modes), not part of the day template.
-function renderClasses(cell) {
+// The per-day class logger — a list of logged classes (type · note · minutes ·
+// ~kcal, each removable) and an add form, on every day kind. Classes are logged
+// activity (shown in both modes), not part of the day template. `kg` is the
+// week's bodyweight, used (with the type's rate) to estimate each class's burn.
+function renderClasses(cell, kg) {
   const list = Array.isArray(state.log[classesKey(cell)]) ? state.log[classesKey(cell)] : [];
-  const items = list.map((c, i) =>
-    '<li class="class-item"><span class="class-text">' +
+  const items = list.map((c, i) => {
+    const kcal = kcalBurn(classRate(c.type), parseFloat(c.mins), kg);
+    return '<li class="class-item"><span class="class-text">' +
       '<span class="class-type">' + esc(c.type) + "</span>" +
       (c.desc ? ' <span class="class-desc">' + esc(c.desc) + "</span>" : "") +
-      ' <span class="class-mins">' + esc(String(c.mins)) + " min</span></span>" +
-      '<button class="remove" type="button" data-action="class-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove class">×</button></li>'
-  ).join("");
+      ' <span class="class-mins">' + esc(String(c.mins)) + " min</span>" +
+      (kcal > 0 ? ' <span class="class-kcal">~' + fmt(kcal) + " kcal</span>" : "") + "</span>" +
+      '<button class="remove" type="button" data-action="class-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove class">×</button></li>';
+  }).join("");
   return '<div class="classes" data-cell="' + cell + '">' +
     (list.length ? '<ul class="class-list">' + items + "</ul>" : "") +
     '<div class="class-add">' +
@@ -97,16 +102,30 @@ function renderClasses(cell) {
     "</div></div>";
 }
 
-// The header's class-minutes line (week + block), shown only once anything's
-// logged so it doesn't clutter an empty header. Parallels the Volume line.
-function renderClassTotal() {
+// Edit-mode editor for the class-type calorie rates (kcal/min/kg). One row per
+// type; a new type created by logging starts at 0 and is set here. Live-patches
+// the header total on change (renderClassTotal), so a rate input keeps focus.
+function renderClassTypesEdit() {
+  return '<div class="class-types-edit"><div class="ct-head">Class burn rates <span class="ct-unit">kcal / min / kg</span></div>' +
+    state.classTypes.map((t) =>
+      '<label class="ct-row"><span class="ct-name">' + esc(t.name) + "</span>" +
+      '<input type="number" class="ct-rate" data-fh="ct-rate" data-type-name="' + esc(t.name) + '" inputmode="decimal" step="0.01" min="0" value="' + esc(String(t.rate)) + '"></label>'
+    ).join("") + "</div>";
+}
+
+// The header's Classes line (week + block: minutes, plus estimated burn once a
+// bodyweight makes it computable). Shown only once anything's logged so it doesn't
+// clutter an empty header. Parallels the Volume line; exported so a live rate edit
+// can re-patch it without a full render.
+export function renderClassTotal() {
   const el = document.getElementById("class-total");
   if (!el) return;
   const b = currentBlock();
-  const week = classMinutes(b, [state.ui.week]);
-  const block = classMinutes(b, Array.from({ length: WEEKS }, (_, i) => i + 1));
-  el.innerHTML = (week || block)
-    ? "Classes · <strong>" + fmt(week) + " min</strong> this week · <strong>" + fmt(block) + " min</strong> this block"
+  const week = classTotals(b, [state.ui.week]);
+  const block = classTotals(b, Array.from({ length: WEEKS }, (_, i) => i + 1));
+  const part = (t) => "<strong>" + fmt(t.mins) + " min</strong>" + (t.kcal > 0 ? " · <strong>~" + fmt(t.kcal) + " kcal</strong>" : "");
+  el.innerHTML = (week.mins || block.mins)
+    ? "Classes · " + part(week) + " this week · " + part(block) + " this block"
     : "";
 }
 

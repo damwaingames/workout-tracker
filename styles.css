@@ -211,6 +211,13 @@ nav.weeks {
 .class-type { font-weight: 600; color: var(--text); }
 .class-desc { color: var(--muted); }
 .class-mins { color: var(--workout); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.class-kcal { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Edit-mode class burn-rate editor. */
+.class-types-edit { margin: .5rem 0 1rem; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px; background: #fafafa; }
+.ct-head { font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: .4rem; }
+.ct-unit { text-transform: none; letter-spacing: 0; }
+.ct-row { display: flex; align-items: center; justify-content: space-between; gap: .6rem; padding: .2rem 0; font-size: .85rem; }
+.ct-rate { width: 5rem; text-align: center; }
 .class-add-btn { padding: .2rem 0; }
 .class-form { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
 .class-form input[name="type"] { flex: 1 1 8rem; }

@@ -53,8 +53,14 @@ export const DEFAULT_BAND = BANDS[Math.floor(BANDS.length / 2)].id;
 
 // Seed types for the "class" logger — a class is any extra session you did on a
 // day (type + free-text note + minutes), logged on top of the planned workout.
-// The list is editable: a new type typed into the add-class form is remembered.
-export const DEFAULT_CLASS_TYPES = ["Yoga", "Pilates", "Box-Fit"];
+// Each type carries a `rate` in kcal/min/kg, so a class's calorie burn estimates
+// as rate × minutes × bodyweight. The list is editable: a new type typed into the
+// add-class form is remembered (starting at rate 0, set in the Edit-mode editor).
+export const DEFAULT_CLASS_TYPES = [
+  { name: "Yoga", rate: 0.02 },
+  { name: "Pilates", rate: 0.04 },
+  { name: "Box-Fit", rate: 0.08 },
+];
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.

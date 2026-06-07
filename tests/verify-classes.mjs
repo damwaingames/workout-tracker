@@ -33,6 +33,8 @@ verify(async ({ page, ck, ls, reset, key }) => {
   const log1 = await classesLog(D1);
   ck("logged as array under .classes key",
     Array.isArray(log1) && log1.length === 1 && log1[0].type === "Pilates" && log1[0].mins === 45);
+  ck("seeded types carry a kcal/min/kg rate",
+    (await ls()).classTypes.find((c) => c.name === "Pilates").rate === 0.04);
   ck("total shows 45 min week + block",
     /45 min<\/strong> this week/.test(await total()) && /45 min<\/strong> this block/.test(await total()));
 
@@ -41,9 +43,10 @@ verify(async ({ page, ck, ls, reset, key }) => {
   ck("two classes on the day", (await page.$$(`${cz(D1)} .class-item`)).length === 2);
   ck("week total now 75 min", /75 min<\/strong> this week/.test(await total()));
 
-  // ---- A brand-new type is remembered (classTypes + datalist) ----
+  // ---- A brand-new type is remembered (classTypes + datalist), rate starts 0 ----
   await addClass(D1, "Spin", "", 40);
-  ck("new type added to classTypes", (await ls()).classTypes.includes("Spin"));
+  ck("new type added to classTypes (rate 0)",
+    (await ls()).classTypes.some((c) => c.name === "Spin" && c.rate === 0));
   ck("new type offered in the datalist", !!(await page.$('#class-types option[value="Spin"]')));
 
   // ---- Remove a class (first item) ----
@@ -62,6 +65,27 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await page.click(`${cz(D7)} .class-item:nth-child(1) .remove`);
   await page.waitForTimeout(60);
   ck("emptying a day deletes its classes key", (await classesLog(D7)) === undefined);
+
+  // ---- Calorie burn: rate × minutes × bodyweight ----
+  // D1 now holds Yoga(30) + Spin(40, rate 0). Log 60 kg, then add Pilates(45):
+  // Pilates 0.04×45×60 = 108, Yoga 0.02×30×60 = 36, Spin 0 → week ~144 kcal.
+  await page.fill('[data-k="b1.w1.m.bodyweight"]', "60");
+  await page.waitForTimeout(40);
+  await addClass(D1, "Pilates", "reformer", 45);
+  ck("per-class kcal shown (Pilates ~108)", (await page.textContent(cz(D1))).includes("~108 kcal"));
+  ck("per-class kcal shown (Yoga ~36)", (await page.textContent(cz(D1))).includes("~36 kcal"));
+  ck("zero-rate type shows no kcal (Spin)", !(await page.textContent(cz(D1))).includes("~0 kcal"));
+  ck("total folds in burn (~144 kcal this week)", /~144 kcal<\/strong> this week/.test(await total()));
+
+  // ---- Edit-mode rate editor: changing a rate live-updates the total ----
+  await page.click("#edit-toggle");
+  ck("rate editor present", !!(await page.$(".class-types-edit .ct-rate[data-type-name='Pilates']")));
+  ck("rate editor shows seeded Pilates rate", (await page.inputValue(".ct-rate[data-type-name='Pilates']")) === "0.04");
+  await page.fill(".ct-rate[data-type-name='Pilates']", "0.08"); // Pilates → 0.08×45×60 = 216; week 36+216 = 252
+  await page.waitForTimeout(40);
+  ck("editing a rate persists", (await ls()).classTypes.find((c) => c.name === "Pilates").rate === 0.08);
+  ck("total live-updates with the new rate (~252 kcal)", /~252 kcal<\/strong> this week/.test(await total()));
+  await page.click("#edit-toggle"); // leave edit mode before the migration step
 
   // ---- Migration: a save without classTypes backfills the defaults ----
   await page.evaluate((k) => {

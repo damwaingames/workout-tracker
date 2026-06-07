@@ -131,3 +131,8 @@ export function esc(s) {
 }
 
 export function fmt(n) { return Math.round(n).toLocaleString(); }
+
+// Estimated calorie burn for a class: rate (kcal/min/kg) × minutes × bodyweight,
+// rounded. Any missing/zero factor → 0 (no estimate). Pure, so the per-class label
+// and the rolled-up total compute it identically.
+export const kcalBurn = (rate, mins, kg) => Math.round((rate || 0) * (mins || 0) * (kg || 0));
