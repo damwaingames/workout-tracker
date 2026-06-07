@@ -9,7 +9,7 @@ import {
   nonNegSec, slugify, uniqueId, today, bandKey, classesKey,
 } from "./helpers.js";
 import {
-  state, editing, setState, setEditing, save, setLog,
+  state, editing, setState, setEditing, save, setLog, logList, purgeBlockLog,
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M,
 } from "./state.js";
 import {
@@ -128,7 +128,7 @@ function addClass(form) {
   // Remember a brand-new type (rate starts at 0; set it in the Edit-mode editor).
   if (!state.classTypes.some((c) => c.name === type)) state.classTypes.push({ name: type, rate: 0 });
   const key = classesKey(cell);
-  const list = Array.isArray(state.log[key]) ? state.log[key] : [];
+  const list = logList(key);
   list.push({ type, desc, mins });
   setLog(key, list);
   render();
@@ -136,7 +136,7 @@ function addClass(form) {
 
 function removeClass(cell, i) {
   const key = classesKey(cell);
-  const list = Array.isArray(state.log[key]) ? state.log[key].slice() : [];
+  const list = logList(key).slice();
   list.splice(i, 1);
   setLog(key, list.length ? list : ""); // "" deletes the key once the last class goes
   render();
@@ -235,7 +235,7 @@ function bandedToggleField(el) {
   // Store false verbatim rather than deleting — an absent flag reads as "never
   // chosen" to migrateLibrary, which would re-band a seeded move on the next
   // load. false ≠ null, so the migration leaves the user's choice alone, and
-  // both dayVolume and the renderer treat false exactly like not-banded.
+  // both dayLoad and the renderer treat false exactly like not-banded.
   if (el.checked) { ex.banded = true; if (!ex.defaultBand) ex.defaultBand = DEFAULT_BAND; }
   else ex.banded = false;
   save(); render();
@@ -263,6 +263,17 @@ const fieldByName = {
   "ct-rate": classRateField,
 };
 
+// Live-patch refreshers keyed by an input's data-refresh tag — the same data-*→map
+// dispatch as fieldByName / handleClick. A logged field declares which running total
+// it feeds, so handleField needn't scan CSS classes (which exist for styling, and
+// shouldn't double as routing). The full render already emits correct totals; these
+// only re-patch in place so the edited input keeps focus mid-type.
+const refreshBy = {
+  volumes: renderVolumes,            // weight / reps / banded round-reps → day + week + block tonnage
+  bmi: renderBmi,                    // a measurement value → the BMI line
+  nutrition: renderNutritionTotals,  // a nutrition cell → the week/block totals + avg
+};
+
 export function handleField(e) {
   const el = e.target;
   if (el.id && Object.prototype.hasOwnProperty.call(fieldById, el.id)) return fieldById[el.id](el);
@@ -276,10 +287,8 @@ export function handleField(e) {
     if (k.slice(-5) === ".done") afterDone(el, k);
   } else {
     setLog(k, el.value);
-    // "round-rep" = a banded circuit move's per-round reps, which feed tonnage.
-    if (el.classList.contains("w") || el.classList.contains("r") || el.classList.contains("round-rep")) renderVolumes();
-    else if (el.classList.contains("measure-val")) renderBmi();
-    else if (el.classList.contains("nut-val")) renderNutritionTotals();
+    const r = el.dataset.refresh; // which running total this field feeds (if any)
+    if (r && Object.prototype.hasOwnProperty.call(refreshBy, r)) refreshBy[r]();
   }
 }
 
@@ -317,7 +326,7 @@ function deleteBlock() {
   if (state.blocks.length <= 1) return;
   const b = currentBlock();
   if (!window.confirm("Delete " + b.name + " and all of its logged data? This cannot be undone.")) return;
-  Object.keys(state.log).forEach((k) => { if (k.indexOf(b.id + ".") === 0) delete state.log[k]; });
+  purgeBlockLog(b.id);
   state.blocks = state.blocks.filter((x) => x.id !== b.id);
   state.ui.block = state.blocks[0].id;
   state.ui.week = 1;

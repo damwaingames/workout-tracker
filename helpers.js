@@ -60,7 +60,7 @@ export function kindType(kind) { return kind === "strength" ? "strength" : "circ
 
 // The loading-mode record for an exercise (default standard). An absent/unknown
 // `ex.loadMode` resolves to the first LOAD_MODES entry. Pure — both the renderer
-// (input labels) and dayVolume (the tonnage multipliers) read through this, so
+// (input labels) and dayLoad (the tonnage multipliers) read through this, so
 // they can't disagree on what a mode means.
 const LOAD_MODE_BY_ID = Object.fromEntries(LOAD_MODES.map((m) => [m.id, m]));
 export function loadMode(ex) {
@@ -72,7 +72,7 @@ export function loadMode(ex) {
 // (only ever "/side" or undefined), so it needs no escaping.
 export const repsLabel = (m) => "reps" + (m.rUnit || "");
 
-// Band helpers — pure, so the renderer (picker + labels) and dayVolume (the kg
+// Band helpers — pure, so the renderer (picker + labels) and dayLoad (the kg
 // that feeds tonnage) read bands the same way. The chosen tier for a session is
 // the logged value, falling back to the exercise's default; bandKg turns a tier
 // id into its approximate kg (0 when unset/unknown, so it contributes no load).
