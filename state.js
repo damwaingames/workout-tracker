@@ -9,11 +9,11 @@
  * for the importer). Property mutation (state.log[k] = …) works from anywhere. */
 
 import {
-  WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS,
+  WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
 import {
-  today, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey,
-  placement, loadMode, circuitOf, bandFor, bandKg,
+  today, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
+  placement, loadMode, circuitOf, bandFor, bandKg, kcalBurn,
 } from "./helpers.js";
 
 /* ---------------------------------------------------------------------- *
@@ -141,6 +141,8 @@ export function defaultState() {
     // Body stats: the measurement catalogue, the user's tracked subset, and a
     // one-time profile (height → BMI). Weekly values live in `log` (measureKey).
     measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
+    // Editable list of class types ({ name, rate }) for the per-day class logger.
+    classTypes: DEFAULT_CLASS_TYPES.map((c) => ({ ...c })),
   };
 }
 
@@ -161,6 +163,7 @@ function normalise(s) {
   if (!s.measurements) s.measurements = seedMeasurements();
   if (!Array.isArray(s.tracked)) s.tracked = ["bodyweight"];
   if (!s.profile || typeof s.profile !== "object") s.profile = {};
+  normaliseClassTypes(s);
   migrateSets(s);
   migrateCircuit(s);
   migrateLibrary(s);
@@ -227,6 +230,21 @@ function migrateLibrary(s) {
     if (ex.loadMode == null && sd.loadMode) ex.loadMode = sd.loadMode;
     if (ex.banded == null && sd.banded) { ex.banded = true; ex.defaultBand = sd.defaultBand; }
   });
+}
+
+// Class types are { name, rate (kcal/min/kg) }. Coerce each entry to that shape:
+// a bare string (an earlier shape) becomes { name }, leaving the single rate pass
+// below to supply its rate — the one place rate is normalised. A stored rate of 0
+// is a deliberate "no burn estimate for this type" choice and is kept; only a
+// missing, negative, or non-numeric rate falls back to the seed rate for a known
+// type (else 0). A missing/invalid list → the seed defaults.
+function normaliseClassTypes(s) {
+  const seedRate = Object.fromEntries(DEFAULT_CLASS_TYPES.map((c) => [c.name, c.rate]));
+  if (!Array.isArray(s.classTypes)) { s.classTypes = DEFAULT_CLASS_TYPES.map((c) => ({ ...c })); return; }
+  s.classTypes = s.classTypes
+    .map((c) => (typeof c === "string" ? { name: c } : c))
+    .filter((c) => c && c.name)
+    .map((c) => { const r = parseFloat(c.rate); return { name: c.name, rate: Number.isFinite(r) && r >= 0 ? r : (seedRate[c.name] || 0) }; });
 }
 
 export function load() {
@@ -376,4 +394,39 @@ export function nutritionTotals(block, weeks) {
     });
   });
   return { ...sum, kcalDays };
+}
+
+// The rate (kcal/min/kg) for a class type, 0 if unknown.
+export function classRate(name) {
+  const t = state.classTypes.find((c) => c && c.name === name);
+  return t ? (parseFloat(t.rate) || 0) : 0;
+}
+
+// The bodyweight (kg) used for a week's class-calorie estimates: that week's
+// logged reading, else the most recent earlier one, else 0 (→ no estimate).
+export function weekBodyweight(block, wk) {
+  const cur = parseFloat(state.log[measureKey(block.id, wk, "bodyweight")]);
+  if (cur > 0) return cur;
+  const bi = Math.max(0, state.blocks.findIndex((b) => b.id === block.id));
+  const prev = parseFloat(previousMeasure("bodyweight", bi, wk));
+  return prev > 0 ? prev : 0;
+}
+
+// Class minutes + estimated calorie burn over a set of weeks (one week / all
+// weeks). Mirrors nutritionTotals' scan; burn uses each week's bodyweight and the
+// type's rate, summed from the same per-class round the labels show.
+export function classTotals(block, weeks) {
+  let mins = 0, kcal = 0;
+  weeks.forEach((wk) => {
+    const kg = weekBodyweight(block, wk);
+    block.days.forEach((d) => {
+      const list = state.log[classesKey(cellKey(block.id, wk, d.day))];
+      if (!Array.isArray(list)) return;
+      list.forEach((c) => {
+        const m = parseFloat(c.mins);
+        if (m > 0) { mins += m; kcal += kcalBurn(classRate(c.type), m, kg); }
+      });
+    });
+  });
+  return { mins, kcal };
 }

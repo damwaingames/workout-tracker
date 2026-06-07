@@ -31,7 +31,7 @@ verify(async ({ page, ck, ls, reset }) => {
 
   // ---- create a new exercise via the form ----
   await page.click(`${D1} [data-action="picker-open"]`); // reopen after re-render
-  await page.click(`${D1} [data-action="picker-new-open"]`);
+  await page.click(`${D1} [data-action="form-open"]`);
   ck("create form revealed", await page.isVisible(`${D1} .picker-form`));
   await page.fill(`${D1} .picker-form [name="name"]`, "Cable Face Pull");
   await page.click(`${D1} .picker-form button[type="submit"]`); // type derives from the day kind now
@@ -41,10 +41,10 @@ verify(async ({ page, ck, ls, reset }) => {
 
   // ---- cancel path ----
   await page.click(`${D1} [data-action="picker-open"]`);
-  await page.click(`${D1} [data-action="picker-new-open"]`);
-  await page.click(`${D1} .picker-form [data-action="picker-new-cancel"]`);
+  await page.click(`${D1} [data-action="form-open"]`);
+  await page.click(`${D1} .picker-form [data-action="form-cancel"]`);
   ck("create form hidden after cancel", !(await page.isVisible(`${D1} .picker-form`)));
-  ck("create link visible again", await page.isVisible(`${D1} [data-action="picker-new-open"]`));
+  ck("create link visible again", await page.isVisible(`${D1} [data-action="form-open"]`));
 
   // ---- remove an exercise ----
   await page.click(`${D1} .exercise[data-ex="dumbbell-rdls"] [data-action="remove-exercise"]`);

@@ -6,14 +6,14 @@
 import { DEFAULT_SETS, DEFAULT_BAND } from "./constants.js";
 import {
   placement, clampSets, clampRounds, circuitOf, kindType,
-  nonNegSec, slugify, uniqueId, today, bandKey,
+  nonNegSec, slugify, uniqueId, today, bandKey, classesKey,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog,
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M,
 } from "./state.js";
 import {
-  render, renderBmi, renderVolumes, renderNutritionTotals, patchCircuitTime, repopulate, hydrateNotes,
+  render, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, repopulate, hydrateNotes,
 } from "./render.js";
 
 /* ---------------------------------------------------------------------- *
@@ -65,19 +65,23 @@ export function handleClick(e) {
       }
       break;
     }
-    case "picker-new-open": {
-      const picker = el.closest(".picker");
-      picker.querySelector(".picker-form").hidden = false;
-      el.hidden = true;
-      const n = picker.querySelector('[name="name"]');
-      if (n) n.focus();
+    // Generic form disclosure: a trigger button and a hidden <form> sit as
+    // siblings in a small wrapper (.picker, .class-add). Open reveals the form and
+    // hides the trigger, focusing the first field; cancel resets it and restores
+    // the trigger. Shared by the picker's create form and the add-class form. (The
+    // outer picker-open toggle stays separate — it also repopulates the list.)
+    case "form-open": {
+      const form = el.parentNode.querySelector("form");
+      form.hidden = false; el.hidden = true;
+      const first = form.querySelector("input, select, textarea");
+      if (first) first.focus();
       break;
     }
-    case "picker-new-cancel": {
-      const form = el.closest(".picker-form");
+    case "form-cancel": {
+      const form = el.closest("form");
       form.hidden = true; form.reset();
-      const link = el.closest(".picker").querySelector('[data-action="picker-new-open"]');
-      if (link) link.hidden = false;
+      const trigger = form.parentNode.querySelector('[data-action="form-open"]');
+      if (trigger) trigger.hidden = false;
       break;
     }
     case "add-ex": {
@@ -94,18 +98,48 @@ export function handleClick(e) {
       state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
       save(); render(); break;
     }
+    case "class-remove": removeClass(el.dataset.cell, Number(el.dataset.i)); break;
     case "export": exportBackup(); break;
     case "reset": resetAll(); break;
   }
 }
 
 export function handleSubmit(e) {
+  const classForm = e.target.closest(".class-form");
+  if (classForm) { e.preventDefault(); return addClass(classForm); }
   const form = e.target.closest(".picker-form");
   if (!form) return;
   e.preventDefault();
   const zone = form.closest(".add-zone");
   if (zone && zone.dataset.picker === "measure") return addNewMeasurement(form);
   addNewExercise(form, zone ? Number(zone.dataset.day) : NaN);
+}
+
+// Log a class on a day cell: type (required) + free-text note + minutes (>0).
+// Classes are an array under one cell key; a brand-new type is remembered in the
+// editable classTypes list so the datalist offers it next time.
+function addClass(form) {
+  const cell = form.closest(".classes").dataset.cell;
+  const fd = new FormData(form);
+  const type = String(fd.get("type") || "").trim();
+  const mins = parseFloat(fd.get("mins"));
+  if (!type || !(mins > 0)) return;
+  const desc = String(fd.get("desc") || "").trim();
+  // Remember a brand-new type (rate starts at 0; set it in the Edit-mode editor).
+  if (!state.classTypes.some((c) => c.name === type)) state.classTypes.push({ name: type, rate: 0 });
+  const key = classesKey(cell);
+  const list = Array.isArray(state.log[key]) ? state.log[key] : [];
+  list.push({ type, desc, mins });
+  setLog(key, list);
+  render();
+}
+
+function removeClass(cell, i) {
+  const key = classesKey(cell);
+  const list = Array.isArray(state.log[key]) ? state.log[key].slice() : [];
+  list.splice(i, 1);
+  setLog(key, list.length ? list : ""); // "" deletes the key once the last class goes
+  render();
 }
 
 function addNewExercise(form, day) {
@@ -210,6 +244,13 @@ function bandDefaultField(el) {
   const ex = state.library[el.dataset.ex];
   if (ex) { ex.defaultBand = el.value; save(); render(); }
 }
+// A class type's calorie rate (kcal/min/kg) on the editable classTypes list.
+// Live-patch the header total only, so the rate input keeps focus while typing
+// (per-class ~kcal labels refresh on the next full render).
+function classRateField(el) {
+  const t = state.classTypes.find((c) => c.name === el.dataset.typeName);
+  if (t) { t.rate = parseFloat(el.value) || 0; save(); renderClassTotal(); }
+}
 const fieldByName = {
   "picker-search": pickerSearch,
   "circuit-field": circuitField,
@@ -219,6 +260,7 @@ const fieldByName = {
   "band-pick": bandPickField,
   "banded-toggle": bandedToggleField,
   "band-default": bandDefaultField,
+  "ct-rate": classRateField,
 };
 
 export function handleField(e) {

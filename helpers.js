@@ -32,6 +32,10 @@ export const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mI
 // it shares the cell without collision, and the block.id prefix means deleteBlock
 // sweeps it up too. (cell already encodes block/week/day via cellKey.)
 export const nutKey = (cell, field) => cell + ".nut." + field;
+// Classes logged on a day cell — a single ".classes" key holding an array of
+// { type, desc, mins } (variable length, so not the scalar data-k path). The
+// block.id prefix (via cell) means deleteBlock's purge sweeps it up too.
+export const classesKey = (cell) => cell + ".classes";
 
 // Round and clamp an int into [min, max]; non-numeric (missing) → fallback.
 // NB: 0 must clamp to min, so we can't use `|| fallback` (0 is falsy).
@@ -127,3 +131,8 @@ export function esc(s) {
 }
 
 export function fmt(n) { return Math.round(n).toLocaleString(); }
+
+// Estimated calorie burn for a class: rate (kcal/min/kg) × minutes × bodyweight,
+// rounded. Any missing/zero factor → 0 (no estimate). Pure, so the per-class label
+// and the rolled-up total compute it identically.
+export const kcalBurn = (rate, mins, kg) => Math.round((rate || 0) * (mins || 0) * (kg || 0));
