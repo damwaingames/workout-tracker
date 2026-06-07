@@ -106,6 +106,12 @@ function fmtSecs(sec) {
   const m = Math.floor(sec / 60), s = sec % 60;
   return s ? m + " min " + s + " sec" : m + " min";
 }
+// The circuit's estimated total time, formatted ("≈ 12 min 30 sec"). The headline
+// figure from circuitSummary, exposed on its own for the collapsed day summary —
+// where only the total matters, not the round / work / rest breakdown.
+export function circuitTimeLabel(d) {
+  return "≈ " + fmtSecs(circuitTime(d.exercises.length, circuitOf(d)));
+}
 // The one-line circuit summary shown under a recovery day: structure + estimate.
 export function circuitSummary(d) {
   const c = circuitOf(d);
@@ -115,7 +121,7 @@ export function circuitSummary(d) {
     fmtSecs(c.restSec) + " rest",
   ];
   if (c.roundRestSec > 0) parts.push(fmtSecs(c.roundRestSec) + " between rounds");
-  return parts.join(" · ") + " · ≈ " + fmtSecs(circuitTime(d.exercises.length, c));
+  return parts.join(" · ") + " · " + circuitTimeLabel(d);
 }
 
 export function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }

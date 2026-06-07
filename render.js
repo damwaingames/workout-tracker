@@ -6,7 +6,7 @@
 import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
-  circuitOf, circuitSummary, kindType, loadMode, repsLabel, bandFor, kcalBurn, esc, fmt,
+  circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
@@ -57,21 +57,56 @@ function renderWeek() {
 
 function renderDay(block, d, wk, kg) {
   const cell = cellKey(block.id, wk, d.day);
+  // Collapse is a persisted per-cell flag (absent = expanded), set on completion
+  // and toggleable by hand. The collapsed view shows only day-head + focus + the
+  // totals summary; everything else lives in .day-collapsible, hidden by CSS.
+  const collapsed = !!state.log[cell + ".collapsed"];
   let body;
   if (d.kind === "strength") body = renderStrength(d, wk, cell);
   else if (d.kind === "recovery") body = renderRecovery(d, wk, cell);
   else body = renderRest(cell);
 
-  return '<div class="day ' + d.kind + '" data-cell="' + cell + '">' +
+  return '<div class="day ' + d.kind + (collapsed ? " is-collapsed" : "") + '" data-cell="' + cell + '">' +
     '<div class="day-head">' +
-      '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check"><span class="day-title">Day ' + d.day + ": " + esc(d.title) + "</span></label>" +
+      '<div class="day-head-main">' +
+        '<button class="day-collapse" type="button" data-action="toggle-day" aria-label="Collapse or expand this day" aria-expanded="' + (!collapsed) + '">▾</button>' +
+        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check"><span class="day-title">Day ' + d.day + ": " + esc(d.title) + "</span></label>" +
+      "</div>" +
       '<input type="date" class="day-date" data-k="' + cell + '.date" data-type="text" aria-label="Date trained">' +
     "</div>" +
     '<div class="day-focus">' + esc(d.focus) + "</div>" +
-    '<div class="day-body">' + body + "</div>" +
-    (editing && d.kind !== "rest" ? renderAddZone(d) : "") +
-    renderClasses(cell, kg) +
+    daySummary(block, d, wk, cell) +
+    // .day-collapsible is a one-row grid (1fr ↔ 0fr) so the inner height animates
+    // to the content's natural size; the inner clips during the slide.
+    '<div class="day-collapsible"><div class="day-collapsible-inner">' +
+      '<div class="day-body">' + body + "</div>" +
+      (editing && d.kind !== "rest" ? renderAddZone(d) : "") +
+      renderClasses(cell, kg) +
+    "</div></div>" +
     "</div>";
+}
+
+// The collapsed day's one-line totals (CSS-hidden while expanded). Strength days
+// show tonnage; recovery days show the circuit's estimated total time, plus tonnage
+// when a banded move makes the day load-bearing; any day adds logged class minutes.
+// Empty (no line) for a rest day with nothing logged.
+function daySummary(block, d, wk, cell) {
+  const bits = [];
+  // The volume figure carries the SAME data-vol-cell as the body's day-volume line,
+  // so renderVolumes patches both (querySelectorAll) on every volume-affecting edit.
+  // They are two views of one dayLoad().total and must never be patched independently
+  // — collapse then just reveals an already-fresh number, no work in toggleDay/afterDone.
+  const volBit = (total) => 'Volume <strong data-vol-cell="' + cell + '">' + fmt(total) + " kg</strong>";
+  if (d.kind === "recovery") {
+    bits.push(circuitTimeLabel(d));
+    const { total, loadBearing } = dayLoad(block, wk, d);
+    if (loadBearing) bits.push(volBit(total));
+  } else if (d.kind === "strength") {
+    bits.push(volBit(dayLoad(block, wk, d).total));
+  }
+  const mins = logList(classesKey(cell)).reduce((s, c) => s + (parseFloat(c.mins) || 0), 0);
+  if (mins > 0) bits.push("Classes " + fmt(mins) + " min");
+  return bits.length ? '<div class="day-summary">' + bits.join(" · ") + "</div>" : "";
 }
 
 // The per-day class logger — a list of logged classes (type · note · minutes ·
@@ -345,7 +380,7 @@ function renderAddZone(d) {
   });
 }
 
-function renderProgress() {
+export function renderProgress() {
   const b = currentBlock();
   const days = b.days.length;
   let weekDone = 0, blockDone = 0;
@@ -374,8 +409,9 @@ export function renderVolumes() {
       blockVol += v;
       if (w === wk) {
         weekVol += v;
-        const el = document.querySelector('[data-vol-cell="' + cellKey(b.id, w, d.day) + '"]');
-        if (el) el.textContent = fmt(v) + " kg";
+        // All matches: the body day-volume line AND the collapsed summary's figure.
+        document.querySelectorAll('[data-vol-cell="' + cellKey(b.id, w, d.day) + '"]')
+          .forEach((el) => { el.textContent = fmt(v) + " kg"; });
       }
     });
   }
@@ -505,15 +541,26 @@ export function renderNutritionTotals() {
   }
 }
 
-function hydrate() {
+// Reflect the log onto the existing #week-view DOM without rebuilding it: every
+// data-k input, plus the per-cell day flags on each .day (completion styling and
+// collapse state + its caret — both are absent-or-set flags on the cell). Because
+// it patches in place, afterDone can re-sync through here and still animate the
+// collapse. Exported so afterDone reuses this one reflect path rather than
+// hand-mirroring it. Runs after each renderWeek too (a no-op vs the fresh markup).
+export function hydrate() {
   document.querySelectorAll("#week-view [data-k]").forEach((el) => {
     const k = el.dataset.k;
     if (el.dataset.type === "check") el.checked = !!state.log[k];
     else el.value = state.log[k] != null ? state.log[k] : "";
   });
-  document.querySelectorAll("#week-view [data-cell]").forEach((c) =>
-    c.classList.toggle("is-done", !!state.log[c.dataset.cell + ".done"])
-  );
+  document.querySelectorAll("#week-view .day[data-cell]").forEach((dayEl) => {
+    const cell = dayEl.dataset.cell;
+    dayEl.classList.toggle("is-done", !!state.log[cell + ".done"]);
+    const collapsed = !!state.log[cell + ".collapsed"];
+    dayEl.classList.toggle("is-collapsed", collapsed);
+    const chevron = dayEl.querySelector(".day-collapse");
+    if (chevron) chevron.setAttribute("aria-expanded", String(!collapsed));
+  });
 }
 
 export function hydrateNotes() {

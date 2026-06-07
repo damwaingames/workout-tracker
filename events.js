@@ -13,7 +13,7 @@ import {
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M,
 } from "./state.js";
 import {
-  render, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, repopulate, hydrateNotes,
+  render, renderProgress, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes,
 } from "./render.js";
 
 /* ---------------------------------------------------------------------- *
@@ -99,9 +99,20 @@ export function handleClick(e) {
       save(); render(); break;
     }
     case "class-remove": removeClass(el.dataset.cell, Number(el.dataset.i)); break;
+    case "toggle-day": toggleDay(el); break;
     case "export": exportBackup(); break;
     case "reset": resetAll(); break;
   }
+}
+
+// Collapse / expand a day in place — a CSS class flip plus the persisted flag, no
+// full render (snappy, and the collapsed summary is already in the DOM). setLog
+// deletes the key on `false`, so expanded = absent, which is what renderDay reads.
+function toggleDay(el) {
+  const dayEl = el.closest(".day");
+  const collapsed = dayEl.classList.toggle("is-collapsed"); // CSS rotates the caret + slides the body
+  setLog(dayEl.dataset.cell + ".collapsed", collapsed);
+  el.setAttribute("aria-expanded", String(!collapsed));
 }
 
 export function handleSubmit(e) {
@@ -294,10 +305,17 @@ export function handleField(e) {
 
 function afterDone(el, k) {
   const cell = k.slice(0, -5);
-  if (el.checked && !state.log[cell + ".date"]) setLog(cell + ".date", today());
-  // Full re-render: the date stamp + is-done styling flow through hydrate()
-  // rather than a separate hand-patch path. Nothing is focused after a tick.
-  render();
+  const done = el.checked;
+  if (done && !state.log[cell + ".date"]) setLog(cell + ".date", today());
+  // Completing a day auto-collapses it (less to scroll past); reopening expands it.
+  // setLog deletes on false, so un-completing clears the flag → expanded.
+  setLog(cell + ".collapsed", done);
+  // Reflect the changed flags through hydrate — the canonical "log → existing DOM"
+  // pass (is-done, is-collapsed + caret, the date stamp). It patches in place rather
+  // than rebuilding, so the collapse still animates; then refresh the one off-day
+  // thing it doesn't own: the header progress count.
+  hydrate();
+  renderProgress();
 }
 
 /* ---------------------------------------------------------------------- *

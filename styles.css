@@ -137,6 +137,15 @@ nav.weeks {
 .day.is-done { background: var(--done-bg); border-left-color: var(--done-border); }
 
 .day-head { display: flex; align-items: center; justify-content: space-between; gap: .6rem; }
+.day-head-main { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+.day-collapse {
+  background: none; border: 0; cursor: pointer;
+  color: var(--muted); font-size: .8rem; line-height: 1;
+  padding: .2rem .3rem; border-radius: 6px; flex: 0 0 auto;
+  transition: transform .25s ease, background .15s ease, color .15s ease;
+}
+.day-collapse:hover { background: var(--done-bg); color: var(--text); }
+.day.is-collapsed .day-collapse { transform: rotate(-90deg); } /* ▾ caret → points right */
 .done-toggle { display: flex; align-items: center; gap: .55rem; cursor: pointer; user-select: none; }
 .done-toggle input { width: 1.15rem; height: 1.15rem; cursor: pointer; flex: 0 0 auto; }
 .day-title { font-weight: 700; font-size: 1rem; }
@@ -149,7 +158,29 @@ nav.weeks {
   padding: .2rem .35rem;
   background: #fff;
 }
-.day-focus { font-size: .8rem; color: var(--muted); margin: .15rem 0 0 1.7rem; }
+.day-focus { font-size: .8rem; color: var(--muted); margin: .15rem 0 0 1.9rem; }
+
+/* Collapsed day: show the totals summary, hide everything below the header. */
+.day-summary {
+  margin: .45rem 0 0 1.9rem;
+  font-size: .78rem; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.day:not(.is-collapsed) .day-summary { display: none; }
+/* Animate the body open/closed via a 1fr↔0fr grid row, which transitions to the
+   content's natural height; the inner clips during the slide. A transition (not an
+   animation) only fires on an interactive toggle — a fresh render of an already-
+   collapsed day stays at 0fr instantly, so switching weeks doesn't re-animate. */
+.day-collapsible {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows .28s ease;
+}
+.day.is-collapsed .day-collapsible { grid-template-rows: 0fr; }
+.day-collapsible-inner { overflow: hidden; min-height: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .day-collapse, .day-collapsible { transition: none; }
+}
 
 .day-body { margin-top: .85rem; display: flex; flex-direction: column; gap: .8rem; }
 
@@ -435,5 +466,5 @@ footer .muted { margin-top: .85rem; line-height: 1.5; }
 
 @media (max-width: 520px) {
   h1 { font-size: 1.05rem; }
-  .day-focus { margin-left: 1.7rem; }
+  .day-focus, .day-summary { margin-left: 1.7rem; }
 }
