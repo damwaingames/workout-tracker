@@ -13,7 +13,7 @@ import {
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M,
 } from "./state.js";
 import {
-  render, renderProgress, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, repopulate, hydrateNotes,
+  render, renderProgress, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes,
 } from "./render.js";
 
 /* ---------------------------------------------------------------------- *
@@ -310,19 +310,11 @@ function afterDone(el, k) {
   // Completing a day auto-collapses it (less to scroll past); reopening expands it.
   // setLog deletes on false, so un-completing clears the flag → expanded.
   setLog(cell + ".collapsed", done);
-  // Patch in place instead of a full render, so the collapse animates — a rebuilt
-  // element can't transition. Mirror exactly what render()/hydrate would have set:
-  // is-done styling, the collapse + caret state, the auto-stamped date input, and
-  // the header progress count (the only thing outside this day that changes).
-  const dayEl = el.closest(".day");
-  if (dayEl) {
-    dayEl.classList.toggle("is-done", done);
-    dayEl.classList.toggle("is-collapsed", done);
-    const chevron = dayEl.querySelector(".day-collapse");
-    if (chevron) chevron.setAttribute("aria-expanded", String(!done));
-    const dateEl = dayEl.querySelector(".day-date");
-    if (dateEl) dateEl.value = state.log[cell + ".date"] || "";
-  }
+  // Reflect the changed flags through hydrate — the canonical "log → existing DOM"
+  // pass (is-done, is-collapsed + caret, the date stamp). It patches in place rather
+  // than rebuilding, so the collapse still animates; then refresh the one off-day
+  // thing it doesn't own: the header progress count.
+  hydrate();
   renderProgress();
 }
 

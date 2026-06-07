@@ -42,6 +42,19 @@ verify(async ({ page, ck, ls, reset }) => {
   ck("expand re-grows the body", (await bodyHeight(D1)) > 0);
   ck("expanding deletes the flag", (await flag("b1.w1.d1")) === undefined);
 
+  // ---- Edit-then-collapse: the summary must show the LIVE volume, not a stale 0.
+  // Logging a set live-patches the body day-volume line; collapsing reveals the
+  // summary without a full render, so the summary figure must be kept in sync too. ----
+  await page.fill('[data-k="b1.w1.d1.ex.goblet-squats.s0.w"]', "50");
+  await page.fill('[data-k="b1.w1.d1.ex.goblet-squats.s0.r"]', "10"); // 50 × 10 = 500 kg
+  await page.waitForTimeout(60);
+  ck("body day-volume reflects the edit (500 kg)", /500 kg/.test(await page.textContent(`${D1} .day-volume`)));
+  await page.click(`${D1} .day-collapse`);
+  await page.waitForTimeout(60);
+  ck("collapsed summary shows the live volume, not a stale 0", /Volume 500 kg/.test(await page.textContent(`${D1} .day-summary`)));
+  await page.click(`${D1} .day-collapse`); // re-expand, so the done test below collapses from open
+  await page.waitForTimeout(SLIDE);
+
   // ---- Recovery collapsed summary tracks circuit total time, not volume ----
   await page.click(`${D2} .day-collapse`);
   await page.waitForTimeout(60);
