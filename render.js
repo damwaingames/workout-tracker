@@ -84,14 +84,22 @@ function bandPicker(cell, exId, ex) {
 // only). Circuit moves get just the toggle + default band — they carry no mode.
 function loadingEdit(d, ex) {
   const toggle = '<label class="banded-edit"><input type="checkbox" class="banded-toggle" data-fh="banded-toggle" data-ex="' + ex.id + '"' + (ex.banded ? " checked" : "") + "> Banded</label>";
-  if (ex.banded) {
-    return toggle + '<label class="load-edit">Default <select class="band-default" data-fh="band-default" data-ex="' + ex.id + '" aria-label="Default band for ' + esc(ex.name) + '">' +
-      BANDS.map((b) => '<option value="' + b.id + '"' + (b.id === (ex.defaultBand || "") ? " selected" : "") + ">" + esc(b.label) + "</option>").join("") + "</select></label>";
+  // A banded move shows its default-band picker (the tier sessions start on).
+  const bandDefault = ex.banded
+    ? '<label class="load-edit">Default band <select class="band-default" data-fh="band-default" data-ex="' + ex.id + '" aria-label="Default band for ' + esc(ex.name) + '">' +
+      BANDS.map((b) => '<option value="' + b.id + '"' + (b.id === (ex.defaultBand || "") ? " selected" : "") + ">" + esc(b.label) + "</option>").join("") + "</select></label>"
+    : "";
+  // Loading-mode picker: all modes for free weights; only the rep-axis ones (Both
+  // sides / Per side) for a band, since weight-doubling needs a second dumbbell. A
+  // plain (non-banded) circuit move carries no load, so it gets no picker at all.
+  let modePicker = "";
+  if (ex.banded || d.kind === "strength") {
+    const m = loadMode(ex);
+    modePicker = '<label class="load-edit">Tonnage <select class="load-mode" data-fh="load-mode" data-ex="' + ex.id + '" aria-label="How ' + esc(ex.name) + ' counts toward tonnage">' +
+      LOAD_MODES.filter((lm) => !ex.banded || lm.wMult === 1)
+        .map((lm) => '<option value="' + lm.id + '"' + (lm.id === m.id ? " selected" : "") + ">" + esc(lm.label) + "</option>").join("") + "</select></label>";
   }
-  if (d.kind !== "strength") return toggle;
-  const m = loadMode(ex);
-  return toggle + '<label class="load-edit">Tonnage <select class="load-mode" data-fh="load-mode" data-ex="' + ex.id + '" aria-label="How ' + esc(ex.name) + ' counts toward tonnage">' +
-    LOAD_MODES.map((lm) => '<option value="' + lm.id + '"' + (lm.id === m.id ? " selected" : "") + ">" + esc(lm.label) + "</option>").join("") + "</select></label>";
+  return toggle + bandDefault + modePicker;
 }
 
 // The day's tonnage line. One source for the markup, since renderVolumes patches
@@ -116,7 +124,7 @@ function renderStrength(d, wk, cell) {
         rows +=
           '<div class="set banded"><span class="set-n">Set ' + (i + 1) + "</span>" +
           '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" placeholder="reps">' +
-          '<span class="unit">reps</span></div>';
+          '<span class="unit">reps' + (m.rUnit ? esc(m.rUnit) : "") + "</span></div>";
         continue;
       }
       const p = prev && prev[i];
@@ -171,10 +179,11 @@ function renderRecovery(d, wk, cell) {
     if (ex.banded) {
       // Banded circuit move: a per-session band + a reps input for each round
       // (replacing the bare completion checkboxes), so it can feed tonnage.
+      const m = loadMode(ex); // per-side annotates the reps and doubles them in tonnage
       let reps = "";
       for (let r = 0; r < rounds; r++) {
         reps += '<label class="round"><span class="round-n">R' + (r + 1) + "</span>" +
-          '<input type="number" inputmode="numeric" class="round-rep" data-k="' + roundRepKey(cell, exId, r) + '" data-type="text" placeholder="reps"></label>';
+          '<input type="number" inputmode="numeric" class="round-rep" data-k="' + roundRepKey(cell, exId, r) + '" data-type="text" placeholder="' + (m.rUnit ? "reps" + m.rUnit : "reps") + '"></label>';
       }
       inner = bandPicker(cell, exId, ex) + '<div class="rounds reps">' + reps + "</div>";
     } else {

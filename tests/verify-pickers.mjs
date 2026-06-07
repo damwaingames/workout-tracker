@@ -15,10 +15,11 @@ verify(async ({ page, ck, ls, reset }) => {
   ck("exercise picker opened", await page.isVisible(`${D1} .picker`));
   ck("picker excludes already-added (no goblet-squats chip)", !(await page.$(`${D1} .pick[data-ex="goblet-squats"]`)));
 
-  // ---- search filters ----
-  await page.fill(`${D1} .picker-search`, "rdl");
+  // ---- search filters ---- (use a term unique to Dumbbell RDLs: the library now
+  // also has Single-Leg RDLs, so a bare "rdl" would match two)
+  await page.fill(`${D1} .picker-search`, "dumbbell rdl");
   await page.waitForTimeout(60);
-  ck("search 'rdl' narrows to 1 match", (await page.$$(`${D1} .pick`)).length === 1);
+  ck("search 'dumbbell rdl' narrows to 1 match", (await page.$$(`${D1} .pick`)).length === 1);
   ck("match is Dumbbell RDLs", await page.$(`${D1} .pick[data-ex="dumbbell-rdls"]`));
 
   // ---- pick adds to the day ----
