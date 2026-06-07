@@ -199,8 +199,8 @@ function bandedToggleField(el) {
   const ex = state.library[el.dataset.ex];
   if (!ex) return;
   // Store false verbatim rather than deleting — an absent flag reads as "never
-  // chosen" to migrateExerciseLoading, which would re-band a seeded move on the
-  // next load. false ≠ null, so the migration leaves the user's choice alone, and
+  // chosen" to migrateLibrary, which would re-band a seeded move on the next
+  // load. false ≠ null, so the migration leaves the user's choice alone, and
   // both dayVolume and the renderer treat false exactly like not-banded.
   if (el.checked) { ex.banded = true; if (!ex.defaultBand) ex.defaultBand = DEFAULT_BAND; }
   else ex.banded = false;

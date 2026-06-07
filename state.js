@@ -163,8 +163,7 @@ function normalise(s) {
   if (!s.profile || typeof s.profile !== "object") s.profile = {};
   migrateSets(s);
   migrateCircuit(s);
-  migrateExerciseLoading(s);
-  migrateLibraryAdditions(s);
+  migrateLibrary(s);
   if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (typeof s.notes !== "string") s.notes = "";
   return s;
@@ -210,28 +209,24 @@ function migrateCircuit(s) {
   });
 }
 
-// Per-exercise loading metadata — the loading mode (per-side / two-dumbbell) and
-// the banded flag + default band — is additive, so older saves predate it.
-// Backfill the program's seed defaults onto matching library records, but only
-// per-field where the user hasn't already set one, so manual choices and custom
-// exercises are left alone. Idempotent once a field is present.
-function migrateExerciseLoading(s) {
+// Reconcile the persisted library against the current seed in a single pass —
+// two complementary, additive halves of one concept (the save is guaranteed to
+// have a library by the guard in normalise):
+//   • a seed exercise the save is MISSING (a later release added it) → add the
+//     whole record, already stamped with its loadMode/banded by seedLibrary;
+//   • a seed exercise the save already HAS → backfill loading metadata (loadMode,
+//     banded + default band) per-field, only where the user hasn't set one, so
+//     manual choices and custom exercises are left alone.
+// The library is append-only from the UI (no delete), so neither half can clobber
+// a user's own entries or edits. Idempotent once each record/field is present.
+function migrateLibrary(s) {
   const seed = seedLibrary();
   Object.keys(seed).forEach((id) => {
-    const ex = s.library[id], sd = seed[id];
-    if (!ex) return;
+    const sd = seed[id], ex = s.library[id];
+    if (!ex) { s.library[id] = sd; return; }
     if (ex.loadMode == null && sd.loadMode) ex.loadMode = sd.loadMode;
     if (ex.banded == null && sd.banded) { ex.banded = true; ex.defaultBand = sd.defaultBand; }
   });
-}
-
-// Exercises added to the seed library in a later release won't exist in an older
-// save (which carries its own persisted library). Add any seed exercise the save
-// is missing, by id — additive and idempotent. The library is append-only from
-// the UI (no delete), so this can't clobber the user's own entries or edits.
-function migrateLibraryAdditions(s) {
-  const seed = seedLibrary();
-  Object.keys(seed).forEach((id) => { if (!s.library[id]) s.library[id] = seed[id]; });
 }
 
 export function load() {

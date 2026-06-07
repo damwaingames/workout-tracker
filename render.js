@@ -6,7 +6,7 @@
 import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey,
-  circuitOf, circuitSummary, kindType, loadMode, bandFor, esc, fmt,
+  circuitOf, circuitSummary, kindType, loadMode, repsLabel, bandFor, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
@@ -124,7 +124,7 @@ function renderStrength(d, wk, cell) {
         rows +=
           '<div class="set banded"><span class="set-n">Set ' + (i + 1) + "</span>" +
           '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" placeholder="reps">' +
-          '<span class="unit">reps' + (m.rUnit ? esc(m.rUnit) : "") + "</span></div>";
+          '<span class="unit">' + repsLabel(m) + "</span></div>";
         continue;
       }
       const p = prev && prev[i];
@@ -183,7 +183,7 @@ function renderRecovery(d, wk, cell) {
       let reps = "";
       for (let r = 0; r < rounds; r++) {
         reps += '<label class="round"><span class="round-n">R' + (r + 1) + "</span>" +
-          '<input type="number" inputmode="numeric" class="round-rep" data-k="' + roundRepKey(cell, exId, r) + '" data-type="text" placeholder="' + (m.rUnit ? "reps" + m.rUnit : "reps") + '"></label>';
+          '<input type="number" inputmode="numeric" class="round-rep" data-k="' + roundRepKey(cell, exId, r) + '" data-type="text" placeholder="' + repsLabel(m) + '"></label>';
       }
       inner = bandPicker(cell, exId, ex) + '<div class="rounds reps">' + reps + "</div>";
     } else {
