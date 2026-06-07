@@ -62,6 +62,11 @@ const LOAD_MODE_BY_ID = Object.fromEntries(LOAD_MODES.map((m) => [m.id, m]));
 export function loadMode(ex) {
   return (ex && LOAD_MODE_BY_ID[ex.loadMode]) || LOAD_MODES[0];
 }
+// The reps-axis annotation for a mode: "reps", or "reps/side" when a side is
+// logged but both are worked (per-side). One source so the strength set unit and
+// the circuit round placeholder can't drift. rUnit is a fixed LOAD_MODES constant
+// (only ever "/side" or undefined), so it needs no escaping.
+export const repsLabel = (m) => "reps" + (m.rUnit || "");
 
 // Band helpers — pure, so the renderer (picker + labels) and dayVolume (the kg
 // that feeds tonnage) read bands the same way. The chosen tier for a session is

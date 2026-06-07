@@ -39,7 +39,7 @@ function seedLibrary() {
   const list = [
     S("goblet-squats", "Goblet Squats", "Hold a single dumbbell vertically against your chest.", "8–12"),
     S("bent-over-rows", "Bent Over Rows", "Hinge at the hips with a flat back, dumbbells hanging down. Pull your elbows up.", "8–12", "two-dumbbell"),
-    S("banded-clamshells", "Banded Clamshells", "Loop a resistance band around your thighs just above the knees. Open your knees out.", "10–15"),
+    S("banded-clamshells", "Banded Clamshells", "Loop a resistance band around your thighs just above the knees. Open your knees out.", "10–15 each side", "per-side"),
     S("bicep-curls", "Bicep Curls", "Palms facing forward, curl the weights up keeping your elbows tucked at your sides.", "8–12", "two-dumbbell"),
     S("wrist-curls", "Wrist Curls", "Forearms resting on thighs, palms facing up. Curl your wrists upward.", "8–12", "two-dumbbell"),
     S("dumbbell-rdls", "Dumbbell RDLs", "Romanian deadlifts. Soft knees, push your hips straight back, slide the weights down your thighs.", "8–12", "two-dumbbell"),
@@ -52,6 +52,20 @@ function seedLibrary() {
     S("donkey-kicks", "Donkey Kicks", "On hands and knees (or leaning over a table). Drive one heel toward the ceiling.", "10–15 each leg", "per-side"),
     S("dumbbell-tricep-extensions", "Dumbbell Tricep Extensions", "Hold a dumbbell overhead with both hands, bend your elbows behind your head, then extend.", "8–12"),
     S("wrist-extensions", "Wrist Extensions", "Forearms resting on thighs, palms facing down. Curl your wrists upward.", "8–12", "two-dumbbell"),
+    // Added later — setups kept generic (no specific weights/resistances; those
+    // are logged per set / chosen per band). Banded flags applied below.
+    S("cyclist-squats", "Cyclist Squats", "Elevate your heels on small dumbbell handles. Hold a dumbbell vertically against your chest.", "8–12"),
+    S("deficit-reverse-lunges", "Deficit Reverse Lunges", "Stand on your mat. Step one foot back to lunge, lowering your back knee near the floor.", "8–12 each leg", "per-side"),
+    S("single-leg-rdls", "Single-Leg RDLs", "Balance on one leg. Hinge at hips keeping your back flat, lowering one dumbbell toward the floor.", "8–12 each leg", "per-side"),
+    S("banded-fire-hydrants", "Banded Fire Hydrants", "On hands and knees. Band above knees. Keep your knee bent at 90° and lift your leg out to the side.", "10–15 each leg", "per-side"),
+    S("single-arm-concentrated-rows", "Single-Arm Concentrated Rows", "Staggered stance, rest one elbow on your forward knee. Row a single dumbbell to your hip.", "8–12 each arm", "per-side"),
+    S("banded-lat-pulldowns", "Banded Lat Pulldowns", "Hold a mini-band overhead. Pull your elbows down and out, stretching the band to your upper chest.", "10–15"),
+    S("bicep-hammer-curls", "Bicep Hammer Curls", "Palms facing each other (neutral grip). Curl the weights up keeping elbows locked at your sides.", "8–12", "two-dumbbell"),
+    S("deficit-push-ups", "Deficit Push-Ups", "Place your hands on dumbbell handles (or push-up blocks) on the mat. Lower your chest past your hands for extra depth.", "8–12"),
+    S("seated-shoulder-presses", "Seated Shoulder Presses", "Sit tall on your mat with legs straight or crossed. Press dumbbells from shoulder height overhead.", "8–12", "two-dumbbell"),
+    S("banded-tricep-kickbacks", "Banded Tricep Kickbacks", "Hinge forward stepping on one end of a mini-band. Hold the other end and extend your arm straight back.", "10–15 each arm", "per-side"),
+    S("plank-dumbbell-pull-throughs", "Plank Dumbbell Pull-Throughs", "High plank. Reach under your torso with one hand to pull a dumbbell across to the other side.", "8–12"),
+    S("banded-bicycle-crunches", "Banded Bicycle Crunches", "Band around feet arches. Lie on back, alternate bringing your elbow to the opposite knee against band resistance.", "10–15"),
     C("high-knees", "High Knees"),
     C("wall-press-ups", "Wall Press-Ups"),
     C("glute-squeezes", "Glute Squeezes"),
@@ -64,15 +78,18 @@ function seedLibrary() {
     C("childs-pose-or-seated-torso-twist", "Child's Pose or Seated Torso Twist"),
   ];
   const lib = keyById(list);
-  // Banded moves take their load from a resistance band, not free weight — across
-  // both day kinds (a strength exercise and a circuit move here). They log a band
-  // tier (defaulting to `defaultBand`) plus reps, and their tonnage is band kg ×
-  // reps. `banded` is what render/dayVolume branch on; the seed default just
-  // pre-selects a sensible tier the user can change per session.
-  lib["banded-clamshells"].banded = true;
-  lib["banded-clamshells"].defaultBand = "light";
-  lib["banded-hip-abductions"].banded = true;
-  lib["banded-hip-abductions"].defaultBand = "medium";
+  // Banded moves take their load from a resistance band, not free weight (across
+  // both day kinds). They log a band tier (defaulting to `defaultBand`) plus reps,
+  // and their tonnage is band kg × reps × the loading-mode rep factor. `banded` is
+  // what render/dayVolume branch on; `defaultBand` just pre-selects a sensible tier
+  // the user can change per session.
+  const band = (id, tier) => { lib[id].banded = true; lib[id].defaultBand = tier; };
+  band("banded-clamshells", "light");
+  band("banded-hip-abductions", "medium");
+  band("banded-fire-hydrants", "heavy");
+  band("banded-tricep-kickbacks", "light");
+  band("banded-lat-pulldowns", "light");
+  band("banded-bicycle-crunches", "light");
   return lib;
 }
 
@@ -146,7 +163,7 @@ function normalise(s) {
   if (!s.profile || typeof s.profile !== "object") s.profile = {};
   migrateSets(s);
   migrateCircuit(s);
-  migrateExerciseLoading(s);
+  migrateLibrary(s);
   if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (typeof s.notes !== "string") s.notes = "";
   return s;
@@ -192,16 +209,21 @@ function migrateCircuit(s) {
   });
 }
 
-// Per-exercise loading metadata — the loading mode (per-side / two-dumbbell) and
-// the banded flag + default band — is additive, so older saves predate it.
-// Backfill the program's seed defaults onto matching library records, but only
-// per-field where the user hasn't already set one, so manual choices and custom
-// exercises are left alone. Idempotent once a field is present.
-function migrateExerciseLoading(s) {
+// Reconcile the persisted library against the current seed in a single pass —
+// two complementary, additive halves of one concept (the save is guaranteed to
+// have a library by the guard in normalise):
+//   • a seed exercise the save is MISSING (a later release added it) → add the
+//     whole record, already stamped with its loadMode/banded by seedLibrary;
+//   • a seed exercise the save already HAS → backfill loading metadata (loadMode,
+//     banded + default band) per-field, only where the user hasn't set one, so
+//     manual choices and custom exercises are left alone.
+// The library is append-only from the UI (no delete), so neither half can clobber
+// a user's own entries or edits. Idempotent once each record/field is present.
+function migrateLibrary(s) {
   const seed = seedLibrary();
   Object.keys(seed).forEach((id) => {
-    const ex = s.library[id], sd = seed[id];
-    if (!ex) return;
+    const sd = seed[id], ex = s.library[id];
+    if (!ex) { s.library[id] = sd; return; }
     if (ex.loadMode == null && sd.loadMode) ex.loadMode = sd.loadMode;
     if (ex.banded == null && sd.banded) { ex.banded = true; ex.defaultBand = sd.defaultBand; }
   });
@@ -292,8 +314,10 @@ export function dayVolume(block, wk, d) {
     const ex = state.library[p.id];
     if (!ex) return;
     if (ex.banded) {
+      // Band kg × reps; per-side still doubles the reps (the only loading-mode axis
+      // that applies to a band — there's no second band for two-dumbbell's weight).
       const kg = bandKg(bandFor(ex, state.log[bandKey(cell, p.id)]));
-      if (kg > 0) v += kg * bandedReps(cell, d, p);
+      if (kg > 0) v += kg * loadMode(ex).rMult * bandedReps(cell, d, p);
     } else if (d.kind === "strength") {
       const m = loadMode(ex);
       readSets(block.id, wk, d.day, p.id, p.sets || DEFAULT_SETS).forEach((s) => {

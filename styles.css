@@ -256,10 +256,11 @@ textarea { width: 100%; resize: vertical; }
 .rounds.reps .round-n { font-size: .68rem; color: var(--muted); }
 .round input.round-rep { width: 3.2rem; text-align: center; }
 
-/* Band picker (per session) + its reps-only strength sets. */
+/* Band picker (per session) + its reps-only strength sets. The reps input sits
+   right after "Set N" — same position as the weight input on a normal set row,
+   not pushed to the right — so banded and non-banded exercises line up. */
 .band-pick-l { display: flex; align-items: center; gap: .4rem; margin-top: .5rem; font-size: .78rem; color: var(--muted); }
 .band-pick { font-size: .8rem; padding: .2rem .3rem; }
-.set.banded .r { margin-left: auto; }
 
 .recovery-meta {
   display: flex;
