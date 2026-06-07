@@ -15,7 +15,7 @@ verify(async ({ page, ck, ls, reset }) => {
   ck("strength day: no circuit chips in picker", d1tags.length > 0 && !d1tags.includes("circuit"));
   ck("strength day: a circuit move (high-knees) is NOT offered", !(await page.$(`${D1} .pick[data-ex="high-knees"]`)));
   ck("strength day: a strength move (dumbbell-rdls) IS offered", !!(await page.$(`${D1} .pick[data-ex="dumbbell-rdls"]`)));
-  await page.click(`${D1} [data-action="picker-new-open"]`);
+  await page.click(`${D1} [data-action="form-open"]`);
   ck("strength form: no type select", !(await page.$(`${D1} .picker-form [name="type"]`)));
   ck("strength form: has targetReps", !!(await page.$(`${D1} .picker-form [name="targetReps"]`)));
   ck("strength form: has sets", !!(await page.$(`${D1} .picker-form [name="sets"]`)));
@@ -26,7 +26,7 @@ verify(async ({ page, ck, ls, reset }) => {
   ck("recovery day: every chip is a circuit", d2tags.length > 0 && d2tags.every((t) => t === "circuit"));
   ck("recovery day: a strength move (dumbbell-rdls) is NOT offered", !(await page.$(`${D2} .pick[data-ex="dumbbell-rdls"]`)));
   ck("recovery day: a circuit move (hollow-body-holds) IS offered", !!(await page.$(`${D2} .pick[data-ex="hollow-body-holds"]`)));
-  await page.click(`${D2} [data-action="picker-new-open"]`);
+  await page.click(`${D2} [data-action="form-open"]`);
   ck("recovery form: no type select", !(await page.$(`${D2} .picker-form [name="type"]`)));
   ck("recovery form: no targetReps", !(await page.$(`${D2} .picker-form [name="targetReps"]`)));
   ck("recovery form: no sets", !(await page.$(`${D2} .picker-form [name="sets"]`)));
@@ -43,7 +43,7 @@ verify(async ({ page, ck, ls, reset }) => {
 
   // ---- Create on STRENGTH day → strength placement with sets ----
   await page.click(`${D1} [data-action="picker-open"]`);
-  await page.click(`${D1} [data-action="picker-new-open"]`);
+  await page.click(`${D1} [data-action="form-open"]`);
   await page.fill(`${D1} .picker-form [name="name"]`, "Cable Row");
   await page.click(`${D1} .picker-form button[type="submit"]`);
   await page.waitForTimeout(60);

@@ -42,7 +42,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
 
   // ---- Create a custom measurement ----
   await page.click('.measurements-card [data-action="picker-open"]'); // reopened after re-render
-  await page.click('.measurements-card [data-action="picker-new-open"]');
+  await page.click('.measurements-card [data-action="form-open"]');
   await page.fill('.measurements-card .picker-form [name="name"]', "Left Thigh");
   await page.selectOption('.measurements-card .picker-form [name="unit"]', "cm");
   await page.click('.measurements-card .picker-form button[type="submit"]');

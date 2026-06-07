@@ -232,16 +232,19 @@ function migrateLibrary(s) {
   });
 }
 
-// Class types are { name, rate (kcal/min/kg) }. Coerce each entry to that shape —
-// a bare string (an earlier shape) becomes { name, rate }, with the rate taken
-// from the seed for a known type, else 0. Missing/invalid list → the seed.
+// Class types are { name, rate (kcal/min/kg) }. Coerce each entry to that shape:
+// a bare string (an earlier shape) becomes { name }, leaving the single rate pass
+// below to supply its rate — the one place rate is normalised. A stored rate of 0
+// is a deliberate "no burn estimate for this type" choice and is kept; only a
+// missing, negative, or non-numeric rate falls back to the seed rate for a known
+// type (else 0). A missing/invalid list → the seed defaults.
 function normaliseClassTypes(s) {
   const seedRate = Object.fromEntries(DEFAULT_CLASS_TYPES.map((c) => [c.name, c.rate]));
   if (!Array.isArray(s.classTypes)) { s.classTypes = DEFAULT_CLASS_TYPES.map((c) => ({ ...c })); return; }
   s.classTypes = s.classTypes
-    .map((c) => (typeof c === "string" ? { name: c, rate: seedRate[c] || 0 } : c))
+    .map((c) => (typeof c === "string" ? { name: c } : c))
     .filter((c) => c && c.name)
-    .map((c) => { const r = parseFloat(c.rate); return { name: c.name, rate: Number.isFinite(r) && r > 0 ? r : (seedRate[c.name] || 0) }; });
+    .map((c) => { const r = parseFloat(c.rate); return { name: c.name, rate: Number.isFinite(r) && r >= 0 ? r : (seedRate[c.name] || 0) }; });
 }
 
 export function load() {

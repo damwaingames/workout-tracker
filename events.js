@@ -65,19 +65,23 @@ export function handleClick(e) {
       }
       break;
     }
-    case "picker-new-open": {
-      const picker = el.closest(".picker");
-      picker.querySelector(".picker-form").hidden = false;
-      el.hidden = true;
-      const n = picker.querySelector('[name="name"]');
-      if (n) n.focus();
+    // Generic form disclosure: a trigger button and a hidden <form> sit as
+    // siblings in a small wrapper (.picker, .class-add). Open reveals the form and
+    // hides the trigger, focusing the first field; cancel resets it and restores
+    // the trigger. Shared by the picker's create form and the add-class form. (The
+    // outer picker-open toggle stays separate — it also repopulates the list.)
+    case "form-open": {
+      const form = el.parentNode.querySelector("form");
+      form.hidden = false; el.hidden = true;
+      const first = form.querySelector("input, select, textarea");
+      if (first) first.focus();
       break;
     }
-    case "picker-new-cancel": {
-      const form = el.closest(".picker-form");
+    case "form-cancel": {
+      const form = el.closest("form");
       form.hidden = true; form.reset();
-      const link = el.closest(".picker").querySelector('[data-action="picker-new-open"]');
-      if (link) link.hidden = false;
+      const trigger = form.parentNode.querySelector('[data-action="form-open"]');
+      if (trigger) trigger.hidden = false;
       break;
     }
     case "add-ex": {
@@ -93,22 +97,6 @@ export function handleClick(e) {
     case "m-remove": {
       state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
       save(); render(); break;
-    }
-    case "class-add-open": {
-      const zone = el.closest(".classes");
-      const form = zone.querySelector(".class-form");
-      form.hidden = false;
-      el.hidden = true;
-      const t = form.querySelector('[name="type"]');
-      if (t) t.focus();
-      break;
-    }
-    case "class-add-cancel": {
-      const form = el.closest(".class-form");
-      form.hidden = true; form.reset();
-      const btn = el.closest(".classes").querySelector('[data-action="class-add-open"]');
-      if (btn) btn.hidden = false;
-      break;
     }
     case "class-remove": removeClass(el.dataset.cell, Number(el.dataset.i)); break;
     case "export": exportBackup(); break;

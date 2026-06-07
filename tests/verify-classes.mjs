@@ -9,7 +9,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   const classesLog = async (cell) => (await ls()).log[`${cell}.classes`];
   const total = () => page.innerHTML("#class-total");
   const addClass = async (cell, type, desc, mins) => {
-    await page.click(`${cz(cell)} [data-action="class-add-open"]`);
+    await page.click(`${cz(cell)} [data-action="form-open"]`);
     await page.fill(`${cz(cell)} .class-form [name="type"]`, type);
     if (desc) await page.fill(`${cz(cell)} .class-form [name="desc"]`, desc);
     await page.fill(`${cz(cell)} .class-form [name="mins"]`, String(mins));
@@ -85,7 +85,33 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await page.waitForTimeout(40);
   ck("editing a rate persists", (await ls()).classTypes.find((c) => c.name === "Pilates").rate === 0.08);
   ck("total live-updates with the new rate (~252 kcal)", /~252 kcal<\/strong> this week/.test(await total()));
+  // A deliberately-zeroed seeded rate is a real choice (no burn estimate) and must
+  // survive a reload — not spring back to its seed via a missing-vs-zero fallback.
+  await page.fill(".ct-rate[data-type-name='Yoga']", "0"); // Yoga seed is 0.02; zero it on purpose
+  await page.waitForTimeout(40);
+  ck("zeroing a seeded rate persists in-session", (await ls()).classTypes.find((c) => c.name === "Yoga").rate === 0);
   await page.click("#edit-toggle"); // leave edit mode before the migration step
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(120);
+  ck("zeroed seeded rate stays 0 after reload (no seed spring-back)",
+    (await ls()).classTypes.find((c) => c.name === "Yoga").rate === 0);
+
+  // ---- Migration: legacy string[] classTypes coerce to { name, rate } ----
+  // A known type takes its seed rate; an unknown one starts at 0.
+  await page.evaluate((k) => {
+    const s = JSON.parse(localStorage.getItem(k));
+    s.classTypes = ["Yoga", "Spin"]; // the earlier bare-string shape
+    localStorage.setItem(k, JSON.stringify(s));
+  }, key);
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(120);
+  await page.click('[data-action="week"][data-week="1"]'); // no-op click → save() persists the normalised list
+  await page.waitForTimeout(60);
+  const migrated = (await ls()).classTypes;
+  ck("legacy string type coerces to object with seed rate (Yoga 0.02)",
+    migrated.some((c) => c.name === "Yoga" && c.rate === 0.02));
+  ck("legacy unknown string type starts at rate 0",
+    migrated.some((c) => c.name === "Spin" && c.rate === 0));
 
   // ---- Migration: a save without classTypes backfills the defaults ----
   await page.evaluate((k) => {

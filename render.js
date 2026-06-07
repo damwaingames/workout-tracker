@@ -39,6 +39,7 @@ function renderHeader() {
 function renderWeek() {
   const block = currentBlock();
   const wk = state.ui.week;
+  const kg = weekBodyweight(block, wk); // per-week value — hoisted out of the days loop (each renderClasses needs it)
   // In Edit mode the block name becomes an inline input; otherwise it's static.
   const nameHtml = editing
     ? '<input type="text" id="block-name-input" class="block-name-input" value="' + esc(block.name) + '" placeholder="Block name" aria-label="Block name" maxlength="40">'
@@ -50,11 +51,11 @@ function renderWeek() {
     // input references this by id, so adding a type makes it offered everywhere.
     '<datalist id="class-types">' + state.classTypes.map((t) => '<option value="' + esc(t.name) + '">').join("") + "</datalist>" +
     (editing ? renderClassTypesEdit() : "") +
-    block.days.map((d) => renderDay(block, d, wk)).join("");
+    block.days.map((d) => renderDay(block, d, wk, kg)).join("");
   hydrate();
 }
 
-function renderDay(block, d, wk) {
+function renderDay(block, d, wk, kg) {
   const cell = cellKey(block.id, wk, d.day);
   let body;
   if (d.kind === "strength") body = renderStrength(d, wk, cell);
@@ -69,7 +70,7 @@ function renderDay(block, d, wk) {
     '<div class="day-focus">' + esc(d.focus) + "</div>" +
     '<div class="day-body">' + body + "</div>" +
     (editing && d.kind !== "rest" ? renderAddZone(d) : "") +
-    renderClasses(cell, weekBodyweight(block, wk)) +
+    renderClasses(cell, kg) +
     "</div>";
 }
 
@@ -91,13 +92,13 @@ function renderClasses(cell, kg) {
   return '<div class="classes" data-cell="' + cell + '">' +
     (list.length ? '<ul class="class-list">' + items + "</ul>" : "") +
     '<div class="class-add">' +
-      '<button class="link class-add-btn" type="button" data-action="class-add-open">＋ Add class</button>' +
+      '<button class="link class-add-btn" type="button" data-action="form-open">＋ Add class</button>' +
       '<form class="class-form" hidden>' +
         '<input list="class-types" name="type" placeholder="Type (e.g. Pilates)" autocomplete="off" required>' +
         '<input name="desc" placeholder="What you did (optional)">' +
         '<input type="number" inputmode="numeric" min="1" name="mins" placeholder="Mins" required>' +
         '<div class="form-actions"><button type="submit">Add</button>' +
-        '<button type="button" class="link" data-action="class-add-cancel">Cancel</button></div>' +
+        '<button type="button" class="link" data-action="form-cancel">Cancel</button></div>' +
       "</form>" +
     "</div></div>";
 }
@@ -315,10 +316,10 @@ function pickerZone(o) {
     '<div class="picker" hidden>' +
       '<input type="text" class="picker-search" data-fh="picker-search" placeholder="' + o.searchPlaceholder + '">' +
       '<div class="picker-list"></div>' +
-      '<button class="link" type="button" data-action="picker-new-open">' + o.createLabel + "</button>" +
+      '<button class="link" type="button" data-action="form-open">' + o.createLabel + "</button>" +
       '<form class="picker-form" hidden>' + o.formFields +
         '<div class="form-actions"><button type="submit">' + o.submitLabel + "</button>" +
-        '<button type="button" class="link" data-action="picker-new-cancel">Cancel</button></div>' +
+        '<button type="button" class="link" data-action="form-cancel">Cancel</button></div>' +
       "</form>" +
     "</div></div>";
 }
