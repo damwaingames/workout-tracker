@@ -18,6 +18,39 @@ export const NUTRIENTS = [
   { id: "fat", label: "Fat", head: "Fat", unit: "g" },
   { id: "protein", label: "Protein", head: "Protein", unit: "g" },
 ];
+// How a strength exercise's logged set maps to tonnage (weight × reps). The
+// stored weight/reps are always exactly what the user typed; a non-standard mode
+// only scales that set's contribution to the volume total and relabels one input.
+// `wMult`/`rMult` are the tonnage multipliers, `wUnit` overrides the weight "kg"
+// unit, `rUnit` annotates the reps input. First entry is the default (and an
+// absent `ex.loadMode` resolves to it). For tonnage, doubling either factor
+// doubles the product — so per-side and two-dumbbell give the same total; they
+// differ only in which input is relabelled.
+//   standard      — load as entered.
+//   per-side      — one side logged but both worked: reps ×2, reps shown "/side".
+//   two-dumbbell  — per-dumbbell weight logged but both moved: weight ×2, "kg/db".
+export const LOAD_MODES = [
+  { id: "standard", label: "Both sides", wMult: 1, rMult: 1 },
+  { id: "per-side", label: "Per side", wMult: 1, rMult: 2, rUnit: "/side" },
+  { id: "two-dumbbell", label: "Two dumbbells", wMult: 2, rMult: 1, wUnit: "kg/db" },
+];
+
+// Resistance-band tiers for banded exercises, lightest → heaviest. A band has no
+// true fixed weight (resistance climbs as it stretches and varies by brand), so
+// each tier carries only an *approximate* kg equivalent — a rough proxy used as
+// the "weight" in band tonnage (kg × reps). Ordered for the picker; `id` is the
+// stored value. kg figures are mini-loop-band midpoints (≈5–30 lb across the set).
+export const BANDS = [
+  { id: "x-light", label: "X-Light", kg: 3 },
+  { id: "light", label: "Light", kg: 5 },
+  { id: "medium", label: "Medium", kg: 8 },
+  { id: "heavy", label: "Heavy", kg: 10 },
+  { id: "x-heavy", label: "X-Heavy", kg: 12 },
+];
+// The neutral starting band when a move is first marked banded — the middle tier,
+// derived so the "sensible default" lives in one place rather than as a literal.
+export const DEFAULT_BAND = BANDS[Math.floor(BANDS.length / 2)].id;
+
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "1.3.0";
+export const APP_VERSION = "1.5.0";
