@@ -10,6 +10,13 @@ separate and deliberately not redefined here.
   `Reset`/`New block`/`Delete block` operate on.
 - **Day** — one of three **kinds**: `strength` (logged sets), `recovery` (a **circuit**),
   or `rest`. The day's kind fixes which exercise **type** it accepts.
+- **Collapsed day** — a day folded down to just its header + focus + a one-line totals
+  **day summary** (strength → volume; recovery → circuit total time, plus volume when
+  load-bearing; any day → class minutes), to cut mobile scroll. State is a persisted
+  per-cell `.collapsed` flag (absent = expanded, like `.done`); completing a day sets it,
+  the header chevron toggles it. The body slides via a grid-row transition — so `toggleDay`
+  and `afterDone` flip the class in place rather than re-rendering (a rebuilt element
+  can't animate).
 - **Placement** — an exercise as it sits on a day: `{ id, sets }` for strength, bare
   `{ id }` for a circuit move (timing lives on the day, not the move).
 - **Library** — the `{id → record}` catalogue of exercises. Append-only from the UI

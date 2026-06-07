@@ -6,7 +6,7 @@
 import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
-  circuitOf, circuitSummary, kindType, loadMode, repsLabel, bandFor, kcalBurn, esc, fmt,
+  circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
@@ -57,21 +57,51 @@ function renderWeek() {
 
 function renderDay(block, d, wk, kg) {
   const cell = cellKey(block.id, wk, d.day);
+  // Collapse is a persisted per-cell flag (absent = expanded), set on completion
+  // and toggleable by hand. The collapsed view shows only day-head + focus + the
+  // totals summary; everything else lives in .day-collapsible, hidden by CSS.
+  const collapsed = !!state.log[cell + ".collapsed"];
   let body;
   if (d.kind === "strength") body = renderStrength(d, wk, cell);
   else if (d.kind === "recovery") body = renderRecovery(d, wk, cell);
   else body = renderRest(cell);
 
-  return '<div class="day ' + d.kind + '" data-cell="' + cell + '">' +
+  return '<div class="day ' + d.kind + (collapsed ? " is-collapsed" : "") + '" data-cell="' + cell + '">' +
     '<div class="day-head">' +
-      '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check"><span class="day-title">Day ' + d.day + ": " + esc(d.title) + "</span></label>" +
+      '<div class="day-head-main">' +
+        '<button class="day-collapse" type="button" data-action="toggle-day" aria-label="Collapse or expand this day" aria-expanded="' + (!collapsed) + '">▾</button>' +
+        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check"><span class="day-title">Day ' + d.day + ": " + esc(d.title) + "</span></label>" +
+      "</div>" +
       '<input type="date" class="day-date" data-k="' + cell + '.date" data-type="text" aria-label="Date trained">' +
     "</div>" +
     '<div class="day-focus">' + esc(d.focus) + "</div>" +
-    '<div class="day-body">' + body + "</div>" +
-    (editing && d.kind !== "rest" ? renderAddZone(d) : "") +
-    renderClasses(cell, kg) +
+    daySummary(block, d, wk, cell) +
+    // .day-collapsible is a one-row grid (1fr ↔ 0fr) so the inner height animates
+    // to the content's natural size; the inner clips during the slide.
+    '<div class="day-collapsible"><div class="day-collapsible-inner">' +
+      '<div class="day-body">' + body + "</div>" +
+      (editing && d.kind !== "rest" ? renderAddZone(d) : "") +
+      renderClasses(cell, kg) +
+    "</div></div>" +
     "</div>";
+}
+
+// The collapsed day's one-line totals (CSS-hidden while expanded). Strength days
+// show tonnage; recovery days show the circuit's estimated total time, plus tonnage
+// when a banded move makes the day load-bearing; any day adds logged class minutes.
+// Empty (no line) for a rest day with nothing logged.
+function daySummary(block, d, wk, cell) {
+  const bits = [];
+  if (d.kind === "recovery") {
+    bits.push(circuitTimeLabel(d));
+    const { total, loadBearing } = dayLoad(block, wk, d);
+    if (loadBearing) bits.push("Volume " + fmt(total) + " kg");
+  } else if (d.kind === "strength") {
+    bits.push("Volume " + fmt(dayLoad(block, wk, d).total) + " kg");
+  }
+  const mins = logList(classesKey(cell)).reduce((s, c) => s + (parseFloat(c.mins) || 0), 0);
+  if (mins > 0) bits.push("Classes " + fmt(mins) + " min");
+  return bits.length ? '<div class="day-summary">' + bits.join(" · ") + "</div>" : "";
 }
 
 // The per-day class logger — a list of logged classes (type · note · minutes ·
@@ -345,7 +375,7 @@ function renderAddZone(d) {
   });
 }
 
-function renderProgress() {
+export function renderProgress() {
   const b = currentBlock();
   const days = b.days.length;
   let weekDone = 0, blockDone = 0;

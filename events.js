@@ -13,7 +13,7 @@ import {
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M,
 } from "./state.js";
 import {
-  render, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, repopulate, hydrateNotes,
+  render, renderProgress, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, repopulate, hydrateNotes,
 } from "./render.js";
 
 /* ---------------------------------------------------------------------- *
@@ -99,9 +99,20 @@ export function handleClick(e) {
       save(); render(); break;
     }
     case "class-remove": removeClass(el.dataset.cell, Number(el.dataset.i)); break;
+    case "toggle-day": toggleDay(el); break;
     case "export": exportBackup(); break;
     case "reset": resetAll(); break;
   }
+}
+
+// Collapse / expand a day in place — a CSS class flip plus the persisted flag, no
+// full render (snappy, and the collapsed summary is already in the DOM). setLog
+// deletes the key on `false`, so expanded = absent, which is what renderDay reads.
+function toggleDay(el) {
+  const dayEl = el.closest(".day");
+  const collapsed = dayEl.classList.toggle("is-collapsed"); // CSS rotates the caret + slides the body
+  setLog(dayEl.dataset.cell + ".collapsed", collapsed);
+  el.setAttribute("aria-expanded", String(!collapsed));
 }
 
 export function handleSubmit(e) {
@@ -294,10 +305,25 @@ export function handleField(e) {
 
 function afterDone(el, k) {
   const cell = k.slice(0, -5);
-  if (el.checked && !state.log[cell + ".date"]) setLog(cell + ".date", today());
-  // Full re-render: the date stamp + is-done styling flow through hydrate()
-  // rather than a separate hand-patch path. Nothing is focused after a tick.
-  render();
+  const done = el.checked;
+  if (done && !state.log[cell + ".date"]) setLog(cell + ".date", today());
+  // Completing a day auto-collapses it (less to scroll past); reopening expands it.
+  // setLog deletes on false, so un-completing clears the flag → expanded.
+  setLog(cell + ".collapsed", done);
+  // Patch in place instead of a full render, so the collapse animates — a rebuilt
+  // element can't transition. Mirror exactly what render()/hydrate would have set:
+  // is-done styling, the collapse + caret state, the auto-stamped date input, and
+  // the header progress count (the only thing outside this day that changes).
+  const dayEl = el.closest(".day");
+  if (dayEl) {
+    dayEl.classList.toggle("is-done", done);
+    dayEl.classList.toggle("is-collapsed", done);
+    const chevron = dayEl.querySelector(".day-collapse");
+    if (chevron) chevron.setAttribute("aria-expanded", String(!done));
+    const dateEl = dayEl.querySelector(".day-date");
+    if (dateEl) dateEl.value = state.log[cell + ".date"] || "";
+  }
+  renderProgress();
 }
 
 /* ---------------------------------------------------------------------- *
