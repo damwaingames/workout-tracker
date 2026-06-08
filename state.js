@@ -435,48 +435,52 @@ export function dayLoad(block, wk, d) {
   return { total, loadBearing };
 }
 
-// The load of the most recent *normal* (non-holiday) session of this day number,
-// earlier than the cursor — for the progressive-overload delta on the day's volume
-// line. Scans back across weeks and block boundaries (rank like previousSets, but per
-// day number), skipping holiday weeks and any week the day carried no load, so the
-// delta always compares against the last time the real workout was actually done:
-// week-1-normal · week-2-holiday · week-3-normal → week 3 compares to week 1. Null on
-// a holiday day itself (holiday weeks aren't a tracking surface) or when none earlier.
-export function previousDayTotal(block, wk, d) {
-  if (isHoliday(cellKey(block.id, wk, d.day))) return null;
-  const curBi = Math.max(0, state.blocks.findIndex((b) => b.id === block.id));
-  const rank = (bi, w) => bi * (WEEKS + 1) + w;
-  const cutoff = rank(curBi, wk);
-  let best = null;
-  state.blocks.forEach((b, bi) => {
-    const pd = b.days.find((x) => x.day === d.day);
-    if (!pd) return;
-    for (let w = 1; w <= WEEKS; w++) {
-      const order = rank(bi, w);
-      if (order >= cutoff) continue;
-      if (isHoliday(cellKey(b.id, w, pd.day))) continue; // skip holiday weeks
-      const total = dayLoad(b, w, pd).total;
-      if (total > 0 && (!best || order > best.order)) best = { order, total };
-    }
-  });
-  return best ? best.total : null;
-}
-
-// Most recent earlier value of a measurement, scanning (block, week) like
-// previousSets but without days — measurements are weekly, not per-day.
-export function previousMeasure(mId, curBlockIdx, curWeek) {
+// The spine of the weekly "most-recent-earlier" scans: walk (block, week) backwards
+// from a cursor and return the latest cell's value for which `valueAt` is non-null.
+// previousMeasure and previousDayTotal share this *exact* 2-D enumerator + reduction,
+// differing only in the reader — so the walker takes just a reader (null = empty), not
+// the enumerator+predicate that ADR-0001 once rejected. previousSets stays separate:
+// it's the lone 3-D scan (block × placement-bearing-day × week). See ADR-0001's amendment.
+function latestByWeek(curBi, curWk, valueAt) {
   const rank = (bi, wk) => bi * (WEEKS + 1) + wk;
-  const cutoff = rank(curBlockIdx, curWeek);
+  const cutoff = rank(curBi, curWk);
   let best = null;
   state.blocks.forEach((block, bi) => {
     for (let wk = 1; wk <= WEEKS; wk++) {
       const order = rank(bi, wk);
       if (order >= cutoff) continue;
-      const v = state.log[measureKey(block.id, wk, mId)];
-      if (v != null && v !== "" && (!best || order > best.order)) best = { order, value: v };
+      const v = valueAt(block, wk);
+      if (v != null && (!best || order > best.order)) best = { order, v };
     }
   });
-  return best ? best.value : null;
+  return best ? best.v : null;
+}
+
+// The load of the most recent *normal* (non-holiday) session of this day number,
+// earlier than the cursor — for the progressive-overload delta on the day's volume
+// line. Skips holiday weeks and any week the day carried no load, so the delta always
+// compares against the last time the real workout was done: week-1-normal ·
+// week-2-holiday · week-3-normal → week 3 vs week 1. Null on a holiday day itself
+// (holiday weeks aren't a tracking surface) or when there's no earlier normal session.
+export function previousDayTotal(block, wk, d) {
+  if (isHoliday(cellKey(block.id, wk, d.day))) return null;
+  const curBi = Math.max(0, state.blocks.findIndex((b) => b.id === block.id));
+  return latestByWeek(curBi, wk, (b, w) => {
+    const pd = b.days.find((x) => x.day === d.day);
+    if (!pd || isHoliday(cellKey(b.id, w, pd.day))) return null; // skip holiday weeks
+    const total = dayLoad(b, w, pd).total;
+    return total > 0 ? total : null;
+  });
+}
+
+// Most recent earlier value of a measurement, scanning (block, week) — measurements
+// are weekly, not per-day. Shares the latestByWeek 2-D spine with previousDayTotal;
+// its reader is the measure log value, with "" treated as empty (ADR-0001 amendment).
+export function previousMeasure(mId, curBlockIdx, curWeek) {
+  return latestByWeek(curBlockIdx, curWeek, (block, wk) => {
+    const v = state.log[measureKey(block.id, wk, mId)];
+    return v != null && v !== "" ? v : null;
+  });
 }
 
 // BMI for a week = bodyweight / height² (metric). Null unless both a stored
