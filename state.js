@@ -432,6 +432,26 @@ export function dayLoad(block, wk, d) {
   return { total, loadBearing };
 }
 
+// The same day's load one week earlier — wk-1 in this block, or the previous block's
+// last week at a week-1 boundary — for the progressive-overload delta on the day's
+// volume line. Only a like-for-like comparison: null when the earlier same-day cell's
+// holiday state differs from this one's (a band-only holiday day vs a free-weight day
+// isn't a meaningful delta), or when there's no earlier same-day cell at all.
+export function previousDayTotal(block, wk, d) {
+  const curHoliday = !!state.log[cellKey(block.id, wk, d.day) + ".holiday"];
+  let pBlock, pWk;
+  if (wk > 1) { pBlock = block; pWk = wk - 1; }
+  else {
+    const bi = state.blocks.findIndex((b) => b.id === block.id);
+    if (bi <= 0) return null;
+    pBlock = state.blocks[bi - 1]; pWk = WEEKS;
+  }
+  const pd = pBlock.days.find((x) => x.day === d.day);
+  if (!pd) return null;
+  if (!!state.log[cellKey(pBlock.id, pWk, pd.day) + ".holiday"] !== curHoliday) return null;
+  return dayLoad(pBlock, pWk, pd).total;
+}
+
 // Most recent earlier value of a measurement, scanning (block, week) like
 // previousSets but without days — measurements are weekly, not per-day.
 export function previousMeasure(mId, curBlockIdx, curWeek) {

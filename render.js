@@ -11,7 +11,7 @@ import {
 import {
   state, editing,
   currentBlock, currentBlockIndex, dayDef,
-  previousSets, dayLoad, holidaySwap, previousMeasure, bmiFor, nutritionTotals,
+  previousSets, dayLoad, holidaySwap, previousDayTotal, previousMeasure, bmiFor, nutritionTotals,
   classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
 
@@ -114,7 +114,7 @@ function daySummary(block, d, wk, cell) {
   // so renderVolumes patches both (querySelectorAll) on every volume-affecting edit.
   // They are two views of one dayLoad().total and must never be patched independently
   // — collapse then just reveals an already-fresh number, no work in toggleDay/afterDone.
-  const volBit = (total) => 'Volume <strong data-vol-cell="' + cell + '">' + fmt(total) + " kg</strong>";
+  const volBit = (total) => 'Volume <strong data-vol-cell="' + cell + '">' + fmt(total) + ' kg</strong><span class="vol-delta" data-vol-delta="' + cell + '"></span>';
   if (d.kind === "recovery") {
     bits.push(circuitTimeLabel(d));
     const { total, loadBearing } = dayLoad(block, wk, d);
@@ -252,7 +252,20 @@ function loadingEdit(d, ex) {
 // The day's tonnage line. One source for the markup, since renderVolumes patches
 // the inner <strong> (by data-vol-cell) during live edits — both day kinds emit it.
 function volumeLine(cell, v) {
-  return '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(v) + " kg</strong></div>";
+  return '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(v) + ' kg</strong>' +
+    '<span class="vol-delta" data-vol-delta="' + cell + '"></span></div>';
+}
+
+// Fill (or clear) a day-volume delta chip: the progressive-overload change vs the
+// same day last week, as a signed "+N kg" / "−N kg" coloured up (green) / down. Empty
+// when there's nothing to compare — no prior same-day load, the day not yet logged,
+// or an exact match. previousDayTotal already gates to like-for-like (holiday) weeks.
+function setVolDelta(el, cur, prev) {
+  el.classList.remove("up", "down");
+  if (!(cur > 0) || !(prev > 0) || cur === prev) { el.textContent = ""; return; }
+  const diff = cur - prev;
+  el.classList.add(diff > 0 ? "up" : "down");
+  el.textContent = (diff > 0 ? "+" : "−") + fmt(Math.abs(diff)) + " kg";
 }
 
 // `editStruct` gates the per-exercise structural edit chrome (sets stepper,
@@ -268,17 +281,19 @@ function renderStrength(d, wk, cell, editStruct) {
     const sets = place.sets || DEFAULT_SETS;
     const banded = !!ex.banded; // banded moves log a band + reps, not weight × reps
     const m = loadMode(ex); // free-weight tonnage multipliers + per-mode labels
-    const prev = banded ? null : previousSets(exId, bi, wk, d.day);
+    // Last session's sets (band moves track reps too — they log a reps field, so the
+    // "most-recent non-empty" scan finds them just like a free-weight move).
+    const prev = previousSets(exId, bi, wk, d.day);
     let rows = "";
     for (let i = 0; i < sets; i++) {
+      const p = prev && prev[i];
       if (banded) {
         rows +=
           '<div class="set banded"><span class="set-n">Set ' + (i + 1) + "</span>" +
-          '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" data-refresh="volumes" placeholder="reps">' +
+          '<input type="number" inputmode="numeric" class="r" data-k="' + setKey(cell, exId, i, "r") + '" data-type="text" data-refresh="volumes" placeholder="' + (p && p.r ? esc(p.r) : "reps") + '">' +
           '<span class="unit">' + repsLabel(m) + "</span></div>";
         continue;
       }
-      const p = prev && prev[i];
       rows +=
         '<div class="set"><span class="set-n">Set ' + (i + 1) + "</span>" +
         '<input type="number" inputmode="decimal" class="w" data-k="' + setKey(cell, exId, i, "w") + '" data-type="text" data-refresh="volumes" placeholder="' + (p && p.w ? esc(p.w) : "wt") + '">' +
@@ -462,9 +477,14 @@ export function renderVolumes() {
       blockVol += v;
       if (w === wk) {
         weekVol += v;
+        const cell = cellKey(b.id, w, d.day);
         // All matches: the body day-volume line AND the collapsed summary's figure.
-        document.querySelectorAll('[data-vol-cell="' + cellKey(b.id, w, d.day) + '"]')
+        document.querySelectorAll('[data-vol-cell="' + cell + '"]')
           .forEach((el) => { el.textContent = fmt(v) + " kg"; });
+        // Progressive-overload delta vs the same day last week — patched here too so it
+        // tracks live edits, alongside both views' totals (same data-vol-delta on each).
+        const prev = previousDayTotal(b, w, d);
+        document.querySelectorAll('[data-vol-delta="' + cell + '"]').forEach((el) => setVolDelta(el, v, prev));
       }
     });
   }

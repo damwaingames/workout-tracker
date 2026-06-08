@@ -70,7 +70,15 @@ separate and deliberately not redefined here.
   loads from the Holiday Workout instead (resolved here from the cell's `.holiday` flag),
   so every caller — including `renderVolumes`' all-weeks scan — counts the right total.
 - **Progression** (`previousSets`) — the most-recent-earlier *non-empty* reading for an
-  exercise before a cursor. A **holiday day** is skipped for free: that week logs the
-  band moves, not the day's normal exercises, so the scan reads the normal exercise as
-  empty there and resumes against the last non-holiday week. The scan has no
-  holiday-specific code — see ADR-0002.
+  exercise before a cursor. Banded moves track too (they log a reps field, so the scan
+  finds them) — their ghost placeholder + "Last:" line show last session's reps. A
+  **holiday day** is skipped for free: that week logs the band moves, not the day's
+  normal exercises, so the scan reads the normal exercise as empty there and resumes
+  against the last non-holiday week. The scan has no holiday-specific code — see ADR-0002.
+- **Day-volume delta** (`previousDayTotal`) — the progressive-overload change for a day
+  vs the **same day one week earlier** (wk-1 in the block, or the prior block's last
+  week at a week-1 boundary), shown on the day-volume line as a signed `+N kg` / `−N kg`
+  chip (green up / amber down). Like-for-like only: returns null when the earlier cell's
+  holiday state differs (a band-only day isn't compared against a free-weight one), so a
+  misleading cross-workout delta never shows. `renderVolumes` patches it live, in both
+  the body line and the collapsed summary (shared `data-vol-delta`).
