@@ -6,11 +6,11 @@
 import { DEFAULT_SETS, DEFAULT_BAND } from "./constants.js";
 import {
   placement, clampSets, clampRounds, circuitOf, kindType,
-  nonNegSec, slugify, uniqueId, today, bandKey, classesKey,
+  nonNegSec, slugify, uniqueId, today, bandKey, classesKey, parseDay,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, purgeBlockLog,
-  currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M,
+  currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType,
 } from "./state.js";
 import {
   render, renderProgress, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes,
@@ -22,7 +22,9 @@ import {
 export function handleClick(e) {
   const el = e.target.closest("[data-action]");
   if (!el) return;
-  const day = el.dataset.day ? Number(el.dataset.day) : null;
+  // "holiday" sentinel (the shared Holiday Workout editor) survives the parse; a
+  // real day stays a number. dayDef resolves "holiday" → state.holiday.
+  const day = el.dataset.day ? parseDay(el.dataset.day) : null;
   switch (el.dataset.action) {
     case "week":
       state.ui.week = Number(el.dataset.week); save(); render(); break;
@@ -123,7 +125,7 @@ export function handleSubmit(e) {
   e.preventDefault();
   const zone = form.closest(".add-zone");
   if (zone && zone.dataset.picker === "measure") return addNewMeasurement(form);
-  addNewExercise(form, zone ? Number(zone.dataset.day) : NaN);
+  addNewExercise(form, zone ? parseDay(zone.dataset.day) : NaN);
 }
 
 // Log a class on a day cell: type (required) + free-text note + minutes (>0).
@@ -136,11 +138,15 @@ function addClass(form) {
   const mins = parseFloat(fd.get("mins"));
   if (!type || !(mins > 0)) return;
   const desc = String(fd.get("desc") || "").trim();
-  // Remember a brand-new type (rate starts at 0; set it in the Edit-mode editor).
-  if (!state.classTypes.some((c) => c.name === type)) state.classTypes.push({ name: type, rate: 0 });
+  // Match an existing type case-insensitively so "Box-Fit" / "box-fit" don't fork
+  // duplicates; reuse its canonical spelling (and log the class under that), else
+  // remember the new type (rate starts at 0; set it in the Edit-mode editor).
+  const known = findClassType(type);
+  const canonical = known ? known.name : type;
+  if (!known) state.classTypes.push({ name: canonical, rate: 0 });
   const key = classesKey(cell);
   const list = logList(key);
-  list.push({ type, desc, mins });
+  list.push({ type: canonical, desc, mins });
   setLog(key, list);
   render();
 }
@@ -296,6 +302,8 @@ export function handleField(e) {
   if (el.dataset.type === "check") {
     setLog(k, el.checked);
     if (k.slice(-5) === ".done") afterDone(el, k);
+    // Toggling the holiday flag swaps the whole day body in/out, so re-render.
+    else if (k.slice(-8) === ".holiday") render();
   } else {
     setLog(k, el.value);
     const r = el.dataset.refresh; // which running total this field feeds (if any)

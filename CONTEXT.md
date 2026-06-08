@@ -28,7 +28,17 @@ separate and deliberately not redefined here.
   weight: it logs a band tier + reps, and its tonnage is `band kg × reps × rMult`.
 - **Circuit** — a recovery day's structure: rounds + work/rest/round-rest seconds.
 - **Class** — an extra logged session (`{ type, desc, mins }`) on top of the planned
-  workout, on any day kind. Each **class type** carries a `rate` (kcal/min/kg).
+  workout, on any day kind. Each **class type** carries a `rate` (kcal/min/kg). Type
+  names are matched case-insensitively (logging "box-fit" reuses "Box-Fit"), so a
+  spelling variant can't fork a duplicate type.
+- **Holiday day** — a day swapped to the shared **Holiday Workout** for one cell,
+  for when you're away from your kit. The Holiday Workout (`state.holiday`) is a
+  single app-level band-only strength day, defined once in Edit mode and reused
+  everywhere. A persisted per-cell `.holiday` flag (absent = normal, like `.done`)
+  ticks it in on any day kind: the day keeps its number but takes the holiday day's
+  kind / title / focus / exercises, and the band moves log against that same cell.
+  `dayDef("holiday")` resolves the sentinel to `state.holiday` so the structural
+  edit handlers reach it through the normal placement path.
 
 ## Store & log
 
@@ -56,4 +66,11 @@ separate and deliberately not redefined here.
   `{ total, loadBearing }`. **Load-bearing** is structural, not value-based: a strength
   day always is; a recovery day becomes load-bearing the moment a banded move is placed
   (before any reps are logged, while `total` is still 0); a rest day never is. Render
-  reads both facts here rather than re-deriving the banded predicate.
+  reads both facts here rather than re-deriving the banded predicate. A **holiday day**
+  loads from the Holiday Workout instead (resolved here from the cell's `.holiday` flag),
+  so every caller — including `renderVolumes`' all-weeks scan — counts the right total.
+- **Progression** (`previousSets`) — the most-recent-earlier *non-empty* reading for an
+  exercise before a cursor. A **holiday day** is skipped for free: that week logs the
+  band moves, not the day's normal exercises, so the scan reads the normal exercise as
+  empty there and resumes against the last non-holiday week. The scan has no
+  holiday-specific code — see ADR-0002.
