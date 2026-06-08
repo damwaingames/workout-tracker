@@ -57,6 +57,17 @@ verify(async ({ page, ck, ls, reset, ignoreError }) => {
   ck("empty pantry shows empty-state row", await page.isVisible(`${foodSel("b1.w1.d1")} .food-result-empty`));
   await page.click(`${foodSel("b1.w1.d1")} [data-action="food-close"]`);
 
+  // ---- one finder open at a time: opening another day's finder closes the first ----
+  // (foundFoods is module-global, so a stale open finder's hits would otherwise strand a
+  // pick on it — foodOpen sweeps other finders shut so the invariant the code assumes holds.)
+  await nutTab("b1.w1.d1");
+  await page.click(`${foodSel("b1.w1.d1")} [data-action="food-open"]`);
+  await nutTab("b1.w1.d2");
+  await page.click(`${foodSel("b1.w1.d2")} [data-action="food-open"]`);
+  ck("opening a second finder closes the first", !(await page.isVisible(`${foodSel("b1.w1.d1")} .food-finder`)));
+  ck("the closed finder's Add-food button is restored", await page.isVisible(`${foodSel("b1.w1.d1")} .food-add-btn`));
+  await page.click(`${foodSel("b1.w1.d2")} [data-action="food-close"]`);
+
   // ---- name search → 2 OFF hits ----
   const d1 = await find("b1.w1.d1", "greek yogurt");
   await page.waitForSelector(`${d1} .food-result[data-barcode="111"]`);

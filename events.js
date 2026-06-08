@@ -222,8 +222,22 @@ function removeFood(cell, i) {
 // fresh OFF data) into the Pantry. Cleared whenever the local Pantry view is shown.
 let foundFoods = {};
 
+// Hide a finder and restore its "＋ Add food" trigger — the close half, shared by the
+// Close button and the one-finder-at-a-time sweep in foodOpen.
+function closeFinder(finder) {
+  finder.hidden = true;
+  const btn = finder.parentNode.querySelector(".food-add-btn");
+  if (btn) btn.hidden = false;
+}
+
 // Reveal the finder, seeding its results with the whole Pantry — the offline quick-pick.
 function foodOpen(el) {
+  // One finder open at a time: stop any scan and close a finder left open on another day
+  // card first, so the module-global foundFoods only ever holds THIS finder's hits. A
+  // stale finder's OFF results are cleared here and were never cached to the Pantry, so
+  // without this a pick on one would silently no-op — this makes that invariant real.
+  if (activeScan) activeScan.cancel();
+  document.querySelectorAll(".food-finder:not([hidden])").forEach(closeFinder);
   const finder = el.closest(".food-add").querySelector(".food-finder");
   el.hidden = true;
   finder.hidden = false;
@@ -236,10 +250,7 @@ function foodOpen(el) {
 
 function foodClose(el) {
   if (activeScan) activeScan.cancel(); // stop the camera if a scan is mid-flight
-  const finder = el.closest(".food-finder");
-  finder.hidden = true;
-  const btn = finder.parentNode.querySelector(".food-add-btn");
-  if (btn) btn.hidden = false;
+  closeFinder(el.closest(".food-finder"));
 }
 
 // Typing filters the Pantry locally (instant, offline) and returns to that view, so a
