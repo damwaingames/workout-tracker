@@ -98,9 +98,20 @@ function renderDay(block, d, wk, kg) {
     // .day-collapsible is a one-row grid (1fr ↔ 0fr) so the inner height animates
     // to the content's natural size; the inner clips during the slide.
     '<div class="day-collapsible"><div class="day-collapsible-inner">' +
-      '<div class="day-body">' + body + "</div>" +
-      (editing && ed.kind !== "rest" && !holiday ? renderAddZone(d) : "") +
-      renderClasses(cell, kg) +
+      // Per-day tabs: Workout (exercises/circuit + classes) ↔ Nutrition (food entries +
+      // derived totals). The active tab is the persisted .tab cell flag (absent =
+      // workout), reflected by hydrate; both panels render and CSS shows the active one,
+      // so switching is instant and an open finder survives a tab away-and-back.
+      '<div class="day-tabs" role="tablist">' +
+        '<button class="day-tab" type="button" role="tab" data-action="day-tab" data-tab="workout" aria-selected="true">Workout</button>' +
+        '<button class="day-tab" type="button" role="tab" data-action="day-tab" data-tab="nutrition" aria-selected="false">Nutrition</button>' +
+      "</div>" +
+      '<div class="day-panel day-panel-workout">' +
+        '<div class="day-body">' + body + "</div>" +
+        (editing && ed.kind !== "rest" && !holiday ? renderAddZone(d) : "") +
+        renderClasses(cell, kg) +
+      "</div>" +
+      '<div class="day-panel day-panel-nutrition">' + renderDayFood(cell) + "</div>" +
     "</div></div>" +
     "</div>";
 }
@@ -125,6 +136,10 @@ function daySummary(block, d, wk, cell) {
   }
   const mins = logList(classesKey(cell)).reduce((s, c) => s + (parseFloat(c.mins) || 0), 0);
   if (mins > 0) bits.push("Classes " + fmt(mins) + " min");
+  // Nutrition: once any food is logged, the day's derived kcal + full macro line — so a
+  // collapsed day still shows what it ate (CONTEXT.md "Collapsed day"). Rebuilt on every
+  // full render (food add/remove renders), so it needs no live-patch hook like volume.
+  if (logList(foodKey(cell)).length) bits.push(nutritionLine(dayNutrition(cell)));
   return bits.length ? '<div class="day-summary">' + bits.join(" · ") + "</div>" : "";
 }
 
@@ -553,17 +568,14 @@ export function renderBmi() {
   else { line.hidden = false; if (out) out.textContent = b.toFixed(1); }
 }
 
-// The Nutrition card: a per-day breakdown of food entries with each day's *derived*
-// kcal + macros, plus Week / Block totals and an avg kcal/day line. Each day shows its
-// food list (quick entries now; pantry entries once a lookup populates them), a derived
-// total line, and a quick-entry add form. Replaces the old hand-typed grid; the per-day
-// block (renderDayFood) is the unit a later slice lifts into the day card as a tab.
+// The Nutrition card: the week / block kcal + macro totals and an avg kcal/day line.
+// The per-day food breakdown moved into each day card's Nutrition tab (renderDayFood);
+// this card keeps only the roll-ups — the one place to read how the week is tracking.
 function renderNutrition() {
   const card = document.getElementById("nutrition-card");
   if (!card) return;
   const block = currentBlock();
   const wk = state.ui.week;
-  const days = block.days.map((d) => renderDayFood(cellKey(block.id, wk, d.day), "Day " + d.day)).join("");
   const allWeeks = Array.from({ length: WEEKS }, (_, i) => i + 1);
   const week = nutritionTotals(block, [wk]);
   const all = nutritionTotals(block, allWeeks);
@@ -573,16 +585,16 @@ function renderNutrition() {
     '<span data-nut-line="' + label.toLowerCase() + '">' + nutritionLine(t) + "</span></div>";
   card.innerHTML =
     "<h2>Nutrition</h2>" +
-    '<div class="food-days">' + days + "</div>" +
+    '<p class="muted small">Log food per day on each day card’s <strong>Nutrition</strong> tab.</p>' +
     '<div class="nut-totals">' + totalLine("Week", week) + totalLine("Block", all) + "</div>" +
     '<p class="nut-avg muted small">Avg ' + perDay(week) + " this week · " + perDay(all) + " this block</p>";
 }
 
-// One day's food block — its list of entries, the derived day total, and the quick-entry
-// add form. The container carries data-cell so addQuickEntry / removeFood resolve the
-// cell; `label` heads the block in the standalone card (the day card supplies its own
-// header). A pantry entry shows its Food's name + grams; a quick entry shows its name.
-function renderDayFood(cell, label) {
+// One day's food block — its list of entries, the derived day total, and the add finder
+// (search / barcode / scan / Pantry pick / quick entry). Lives in the day card's
+// Nutrition tab; the container carries data-cell so the food handlers resolve the cell.
+// A pantry entry shows its Food's name + grams; a quick entry shows its name.
+function renderDayFood(cell) {
   const list = logList(foodKey(cell));
   const items = list.map((e, i) => {
     const n = entryNutrition(e);
@@ -598,7 +610,6 @@ function renderDayFood(cell, label) {
     '<input type="number" inputmode="decimal" min="0" name="' + n.id + '" placeholder="' + esc(n.head) + '" aria-label="' + esc(n.label) + " (" + esc(n.unit) + ')">'
   ).join("");
   return '<div class="food" data-cell="' + cell + '">' +
-    (label ? '<div class="food-day">' + esc(label) + "</div>" : "") +
     (list.length ? '<ul class="food-list">' + items + "</ul>" : "") +
     (list.length ? '<div class="food-total">' + nutritionLine(dayNutrition(cell)) + "</div>" : "") +
     '<div class="food-add">' +
@@ -662,8 +673,8 @@ function nutritionLine(n) {
 }
 
 // Reflect the log onto the existing #week-view DOM without rebuilding it: every
-// data-k input, plus the per-cell day flags on each .day (completion styling and
-// collapse state + its caret — both are absent-or-set flags on the cell). Because
+// data-k input, plus the per-cell day flags on each .day (completion styling, collapse
+// state + its caret, and the active tab — all absent-or-set flags on the cell). Because
 // it patches in place, afterDone can re-sync through here and still animate the
 // collapse. Exported so afterDone reuses this one reflect path rather than
 // hand-mirroring it. Runs after each renderWeek too (a no-op vs the fresh markup).
@@ -680,6 +691,12 @@ export function hydrate() {
     dayEl.classList.toggle("is-collapsed", collapsed);
     const chevron = dayEl.querySelector(".day-collapse");
     if (chevron) chevron.setAttribute("aria-expanded", String(!collapsed));
+    // Active tab: another absent-or-set per-cell flag (absent = Workout). CSS shows the
+    // matching panel off this class; mirror the buttons' aria-selected for a11y.
+    const nutrition = state.log[cell + ".tab"] === "nutrition";
+    dayEl.classList.toggle("tab-nutrition", nutrition);
+    dayEl.querySelectorAll(".day-tab").forEach((b) =>
+      b.setAttribute("aria-selected", String((b.dataset.tab === "nutrition") === nutrition)));
   });
 }
 

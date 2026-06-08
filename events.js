@@ -111,6 +111,7 @@ export function handleClick(e) {
     case "food-scan-cancel": foodScanCancel(); break;
     case "food-pick": foodPick(el); break;
     case "toggle-day": toggleDay(el); break;
+    case "day-tab": dayTab(el); break;
     case "export": exportBackup(); break;
     case "reset": resetAll(); break;
   }
@@ -124,6 +125,17 @@ function toggleDay(el) {
   const collapsed = dayEl.classList.toggle("is-collapsed"); // CSS rotates the caret + slides the body
   setLog(dayEl.dataset.cell + ".collapsed", collapsed);
   el.setAttribute("aria-expanded", String(!collapsed));
+}
+
+// Switch a day's Workout / Nutrition tab in place — a CSS class flip plus the persisted
+// .tab flag, no full render (both panels are already in the DOM, so it's instant and an
+// open finder survives). setLog deletes on "", so Workout = absent (the default).
+function dayTab(el) {
+  const dayEl = el.closest(".day");
+  const nutrition = el.dataset.tab === "nutrition";
+  dayEl.classList.toggle("tab-nutrition", nutrition);
+  setLog(dayEl.dataset.cell + ".tab", nutrition ? "nutrition" : "");
+  dayEl.querySelectorAll(".day-tab").forEach((b) => b.setAttribute("aria-selected", String(b === el)));
 }
 
 export function handleSubmit(e) {

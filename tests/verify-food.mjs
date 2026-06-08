@@ -29,9 +29,14 @@ verify(async ({ page, ck, ls, reset, ignoreError }) => {
     return json({ status: 0 }); // any other barcode → not found
   });
 
+  // Food now lives in each day card's Nutrition tab (slice 4). Switch the day to that
+  // tab, then address its food block by the cell-scoped selector.
+  const foodSel = (cell) => `#week-view .day[data-cell="${cell}"] .food`;
+  const nutTab = (cell) => page.click(`#week-view .day[data-cell="${cell}"] .day-tab[data-tab="nutrition"]`);
   // Open finder, run a Find, wait for the results list to settle.
   const find = async (cell, query) => {
-    const sel = `#nutrition-card .food[data-cell="${cell}"]`;
+    const sel = foodSel(cell);
+    await nutTab(cell);
     await page.click(`${sel} [data-action="food-open"]`);
     await page.fill(`${sel} .food-search`, query);
     await page.click(`${sel} [data-action="food-find"]`);
@@ -46,10 +51,11 @@ verify(async ({ page, ck, ls, reset, ignoreError }) => {
   };
 
   // ---- finder opens; empty Pantry shows the empty-state ----
-  await page.click('#nutrition-card .food[data-cell="b1.w1.d1"] [data-action="food-open"]');
-  ck("finder reveals on Add food", await page.isVisible('#nutrition-card .food[data-cell="b1.w1.d1"] .food-finder'));
-  ck("empty pantry shows empty-state row", await page.isVisible('#nutrition-card .food[data-cell="b1.w1.d1"] .food-result-empty'));
-  await page.click('#nutrition-card .food[data-cell="b1.w1.d1"] [data-action="food-close"]');
+  await nutTab("b1.w1.d1");
+  await page.click(`${foodSel("b1.w1.d1")} [data-action="food-open"]`);
+  ck("finder reveals on Add food", await page.isVisible(`${foodSel("b1.w1.d1")} .food-finder`));
+  ck("empty pantry shows empty-state row", await page.isVisible(`${foodSel("b1.w1.d1")} .food-result-empty`));
+  await page.click(`${foodSel("b1.w1.d1")} [data-action="food-close"]`);
 
   // ---- name search → 2 OFF hits ----
   const d1 = await find("b1.w1.d1", "greek yogurt");
@@ -78,7 +84,8 @@ verify(async ({ page, ck, ls, reset, ignoreError }) => {
   ck("Mars cached in pantry", (await ls()).pantry["5000159461122"].name === "Mars Bar");
 
   // ---- Pantry quick-pick: both cached foods, filtered locally, NO Find ----
-  const d3 = '#nutrition-card .food[data-cell="b1.w1.d3"]';
+  const d3 = foodSel("b1.w1.d3");
+  await nutTab("b1.w1.d3");
   await page.click(`${d3} [data-action="food-open"]`);
   ck("pantry quick-pick lists both cached foods", (await page.$$(`${d3} .food-result`)).length === 2);
   await page.fill(`${d3} .food-search`, "mars");

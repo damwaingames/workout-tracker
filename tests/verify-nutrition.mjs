@@ -6,9 +6,15 @@ verify(async ({ page, ck, ls, reset, key }) => {
   const num = async (sel) => Number((await page.textContent(sel)).replace(/[^0-9.]/g, ""));
   const line = (scope) => page.textContent(`#nutrition-card [data-nut-line="${scope}"]`);
 
-  // Open a day's finder → quick-entry form, fill it, submit. Keyed by the day's cell.
+  // Food lives in each day card's Nutrition tab (slice 4): switch to it, then address the
+  // cell's food block. The #nutrition-card keeps only the Week / Block roll-ups + avg.
+  const foodSel = (cell) => `#week-view .day[data-cell="${cell}"] .food`;
+  const nutTab = (cell) => page.click(`#week-view .day[data-cell="${cell}"] .day-tab[data-tab="nutrition"]`);
+
+  // Open a day's Nutrition tab → finder → quick-entry form, fill it, submit. Keyed by cell.
   const addFood = async (cell, { name, kcal, carb, fat, protein }) => {
-    const sel = `#nutrition-card .food[data-cell="${cell}"]`;
+    const sel = foodSel(cell);
+    await nutTab(cell);                                    // reveal the Nutrition tab
     await page.click(`${sel} [data-action="food-open"]`);  // reveal the finder
     await page.click(`${sel} [data-action="form-open"]`);  // reveal the quick-entry form
     const set = async (n, v) => { if (v != null) await page.fill(`${sel} .food-quick-form input[name="${n}"]`, String(v)); };
@@ -20,14 +26,16 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await reset();
 
   // ---- card shape ----
-  ck("nutrition card present", await page.isVisible("#nutrition-card"));
-  ck("7 day food blocks", (await page.$$("#nutrition-card .food")).length === 7);
-  ck("each day has an Add food button", (await page.$$('#nutrition-card .food [data-action="food-open"]')).length === 7);
-  ck("quick-entry form starts hidden", !(await page.isVisible('#nutrition-card .food[data-cell="b1.w1.d1"] .food-quick-form')));
+  ck("nutrition totals card present", await page.isVisible("#nutrition-card"));
+  ck("7 day food blocks (one per day card)", (await page.$$("#week-view .food")).length === 7);
+  ck("each day has an Add food button", (await page.$$('#week-view .food [data-action="food-open"]')).length === 7);
+  const d1 = foodSel("b1.w1.d1");
+  await nutTab("b1.w1.d1");
+  ck("Nutrition tab reveals the food block", await page.isVisible(d1));
+  ck("quick-entry form starts hidden", !(await page.isVisible(`${d1} .food-quick-form`)));
 
   // ---- add a quick entry (derived totals) ----
   await addFood("b1.w1.d1", { name: "Oats", kcal: 2000, carb: 200, fat: 70, protein: 150 });
-  const d1 = '#nutrition-card .food[data-cell="b1.w1.d1"]';
   ck("entry shows its name", (await page.textContent(d1 + " .food-name")) === "Oats");
   ck("entry shows its kcal = 2000", (await num(d1 + " .food-kcal")) === 2000);
   ck("day total line shows kcal + macros", /2[,.]?000 cal/.test(await page.textContent(d1 + " .food-total")) &&
@@ -38,6 +46,16 @@ verify(async ({ page, ck, ls, reset, key }) => {
     Array.isArray(s1.log["b1.w1.d1.food"]) && s1.log["b1.w1.d1.food"].length === 1 &&
     s1.log["b1.w1.d1.food"][0].name === "Oats" && s1.log["b1.w1.d1.food"][0].kcal === 2000 &&
     s1.log["b1.w1.d1.food"][0].carb === 200 && !("barcode" in s1.log["b1.w1.d1.food"][0]));
+
+  // ---- collapsed summary carries the day's macro line (slice 4) ----
+  // The .tab flag persists, so collapsing then reading the summary needs no re-switch.
+  await page.click('#week-view .day[data-cell="b1.w1.d1"] .day-collapse');
+  await page.waitForTimeout(40);
+  const sum = await page.textContent('#week-view .day[data-cell="b1.w1.d1"] .day-summary');
+  ck("collapsed summary carries the macro line",
+    /2[,.]?000 cal/.test(sum) && /200c/.test(sum) && /70f/.test(sum) && /150p/.test(sum));
+  await page.click('#week-view .day[data-cell="b1.w1.d1"] .day-collapse'); // expand again
+  await page.waitForTimeout(40);
 
   // ---- second entry, another day: week + block accumulate, avg over kcal-days ----
   await addFood("b1.w1.d2", { kcal: 1000 });
@@ -53,7 +71,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   // ---- week switch: week isolates, block accumulates ----
   await page.click('#week-nav [data-action="week"][data-week="2"]');
   await page.waitForTimeout(40);
-  ck("week 2 day blocks start empty (no food-list)", (await page.$$("#nutrition-card .food-list")).length === 0);
+  ck("week 2 day blocks start empty (no food-list)", (await page.$$("#week-view .food-list")).length === 0);
   ck("week 2 line = 0 cal", /^0 cal/.test((await line("week")).trim()));
   ck("block line still 3000 across weeks", /3[,.]?000 cal/.test(await line("block")));
   await addFood("b1.w2.d1", { kcal: 500 });
@@ -63,10 +81,12 @@ verify(async ({ page, ck, ls, reset, key }) => {
   // ---- back to week 1: entries persist ----
   await page.click('#week-nav [data-action="week"][data-week="1"]');
   await page.waitForTimeout(40);
+  await nutTab("b1.w1.d1");
   ck("week 1 d1 entry still 'Oats'", (await page.textContent(d1 + " .food-name")) === "Oats");
 
   // ---- remove an entry: list + totals update, key deleted when last entry goes ----
-  await page.click('#nutrition-card .food[data-cell="b1.w1.d2"] [data-action="food-remove"]');
+  await nutTab("b1.w1.d2");
+  await page.click(`${foodSel("b1.w1.d2")} [data-action="food-remove"]`);
   await page.waitForTimeout(40);
   ck("d2 food key deleted once empty", !("b1.w1.d2.food" in (await ls()).log));
   ck("week line back to 2000 after removal", /2[,.]?000 cal/.test(await line("week")));
@@ -86,7 +106,8 @@ verify(async ({ page, ck, ls, reset, key }) => {
   }, key);
   await page.reload({ waitUntil: "load" });
 
-  const d4 = '#nutrition-card .food[data-cell="b1.w1.d4"]';
+  const d4 = foodSel("b1.w1.d4");
+  await nutTab("b1.w1.d4");
   ck("migrated scalars show as a quick entry", (await page.textContent(d4 + " .food-list")).includes("Logged total"));
   ck("migrated entry kcal = 1850", (await num(d4 + " .food-kcal")) === 1850);
   ck("migrated day total carries the macros", /77c/.test(await page.textContent(d4 + " .food-total")) &&

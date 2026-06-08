@@ -7,6 +7,10 @@ import { verify } from "./harness.mjs";
  * secure origin) so scanSupported() reads false and the Scan button isn't drawn. */
 verify(async ({ page, ck, reset, ls }) => {
   const BARCODE = "5000159461122";
+  // Food lives in each day card's Nutrition tab (slice 4): switch to it, then address
+  // the cell's food block.
+  const foodSel = (cell) => `#week-view .day[data-cell="${cell}"] .food`;
+  const nutTab = (cell) => page.click(`#week-view .day[data-cell="${cell}"] .day-tab[data-tab="nutrition"]`);
 
   // ---- 1) Unsupported: BarcodeDetector absent → no Scan button, other paths intact ----
   // Walk the prototype chain to delete the native BarcodeDetector, so the feature
@@ -19,7 +23,8 @@ verify(async ({ page, ck, reset, ls }) => {
     }
   });
   await reset();
-  const u = '#nutrition-card .food[data-cell="b1.w1.d1"]';
+  const u = foodSel("b1.w1.d1");
+  await nutTab("b1.w1.d1");
   await page.click(`${u} [data-action="food-open"]`);
   ck("Scan button absent when BarcodeDetector unsupported",
     (await page.$$(`${u} [data-action="food-scan"]`)).length === 0);
@@ -51,7 +56,8 @@ verify(async ({ page, ck, reset, ls }) => {
     return json({ status: 0 });
   });
 
-  const sel = '#nutrition-card .food[data-cell="b1.w1.d1"]';
+  const sel = foodSel("b1.w1.d1");
+  await nutTab("b1.w1.d1");
   await page.click(`${sel} [data-action="food-open"]`);
   ck("Scan button present when BarcodeDetector supported",
     await page.isVisible(`${sel} [data-action="food-scan"]`));
@@ -80,7 +86,8 @@ verify(async ({ page, ck, reset, ls }) => {
   await page.evaluate(() => {
     window.BarcodeDetector = class { constructor() {} async detect() { return []; } };
   });
-  const d2 = '#nutrition-card .food[data-cell="b1.w1.d2"]';
+  const d2 = foodSel("b1.w1.d2");
+  await nutTab("b1.w1.d2");
   await page.click(`${d2} [data-action="food-open"]`);
   await page.click(`${d2} [data-action="food-scan"]`);
   await page.waitForSelector(`${d2} .food-scanner:not([hidden])`);

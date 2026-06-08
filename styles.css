@@ -202,6 +202,26 @@ nav.weeks {
   .day-collapse, .day-collapsible { transition: none; }
 }
 
+/* Per-day Workout | Nutrition tabs. Both panels render; CSS shows the one matching the
+   day's .tab-nutrition class (set by hydrate / dayTab), so switching is instant. Workout
+   is the default (flag absent). The active tab's underline is derived from that same
+   class, so the buttons need no own state class. */
+.day-tabs { display: flex; gap: .4rem; margin-top: .85rem; border-bottom: 1px solid var(--border); }
+.day-tab {
+  background: none; border: 0; cursor: pointer; font: inherit;
+  font-size: .82rem; color: var(--muted);
+  padding: .35rem .15rem; margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+}
+.day-tab:hover { color: var(--text); }
+.day:not(.tab-nutrition) .day-tab[data-tab="workout"],
+.day.tab-nutrition .day-tab[data-tab="nutrition"] {
+  color: var(--text); font-weight: 600; border-bottom-color: var(--workout);
+}
+.day-panel-nutrition { display: none; padding-top: .85rem; }
+.day.tab-nutrition .day-panel-workout { display: none; }
+.day.tab-nutrition .day-panel-nutrition { display: block; }
+
 .day-body { margin-top: .85rem; display: flex; flex-direction: column; gap: .8rem; }
 
 .exercise { border-top: 1px solid #f0f1f4; padding-top: .7rem; }
@@ -456,12 +476,9 @@ textarea { width: 100%; resize: vertical; }
 .measure-height { margin-top: .7rem; }
 .measure-height input { width: 5rem; }
 
-/* Nutrition card: a per-day stack of food blocks — each a list of entries, a derived
- * day total, and a quick-entry add form (mirrors the class logger) — then the Week /
- * Block total lines and the avg. Per-day blocks are the unit a later slice tabs into
- * the day card. */
-.food-days { display: flex; flex-direction: column; gap: .9rem; }
-.food-day { font-size: .8rem; font-weight: 600; color: var(--muted); }
+/* Food block — a day's list of entries, a derived day total, and the add finder. Lives
+ * in each day card's Nutrition tab (.day-panel-nutrition); the .food-* styling is shared
+ * with the Nutrition card's Week / Block roll-ups below. */
 .food-list { list-style: none; margin: .35rem 0 .3rem; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
 .food-item { display: flex; align-items: center; gap: .5rem; font-size: .82rem; }
 .food-text { flex: 1; min-width: 0; }
