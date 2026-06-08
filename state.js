@@ -12,7 +12,7 @@ import {
   WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
 import {
-  today, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
+  today, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey, foodKey,
   placement, loadMode, circuitOf, bandFor, bandKg, kcalBurn,
 } from "./helpers.js";
 
@@ -170,6 +170,10 @@ export function defaultState() {
     classTypes: DEFAULT_CLASS_TYPES.map((c) => ({ ...c })),
     // The shared band-only day any day can swap in via its 🏝 toggle.
     holiday: seedHoliday(),
+    // The Pantry: { barcode → Food } catalogue of foods looked up from Open Food
+    // Facts — the offline cache and quick-pick in one, append-only. Empty until a
+    // lookup populates it; food entries reference it by barcode (see foodKey).
+    pantry: {},
   };
 }
 
@@ -190,10 +194,14 @@ function normalise(s) {
   if (!s.measurements) s.measurements = seedMeasurements();
   if (!Array.isArray(s.tracked)) s.tracked = ["bodyweight"];
   if (!s.profile || typeof s.profile !== "object") s.profile = {};
+  // The Pantry is additive (older v2 saves predate it) — backfill the empty
+  // catalogue rather than bumping the schema version, so old backups stay importable.
+  if (!s.pantry || typeof s.pantry !== "object") s.pantry = {};
   normaliseClassTypes(s);
   migrateSets(s);
   migrateCircuit(s);
   migrateLibrary(s);
+  migrateNutrition(s);
   // The Holiday Workout is additive (older v2 saves predate it) — backfill it, or
   // any missing field on a partial one, from the seed. Runs after migrateLibrary so
   // its band moves are guaranteed in the library. Per-cell `.holiday` flags live in
@@ -248,6 +256,37 @@ function migrateCircuit(s) {
   Object.keys(s.library).forEach((id) => {
     const ex = s.library[id];
     delete ex.duration; delete ex.rest; delete ex.rounds;
+  });
+}
+
+// Fold the legacy manual nutrition grid into the food-entry model. Any day that
+// carried .nut.* scalars (kcal + the three macros) becomes a single quick entry
+// holding those totals; the scalars are then deleted (which also clears lingering
+// zeros). Idempotent — once a day's scalars are gone it's a no-op — and additive,
+// so old backups migrate on import. Scans every cell, like nutritionTotals.
+function migrateNutrition(s) {
+  const weeks = Array.from({ length: WEEKS }, (_, i) => i + 1);
+  s.blocks.forEach((b) => {
+    weeks.forEach((wk) => {
+      (b.days || []).forEach((d) => {
+        const cell = cellKey(b.id, wk, d.day);
+        const vals = {};
+        let any = false;
+        NUTRIENTS.forEach((n) => {
+          const v = parseFloat(s.log[nutKey(cell, n.id)]);
+          if (v > 0) { vals[n.id] = v; any = true; }
+          delete s.log[nutKey(cell, n.id)];
+        });
+        // Seed the quick entry only when there was real data and the day has no food
+        // list yet — never double-migrate a day already on the new model.
+        if (any && !Array.isArray(s.log[foodKey(cell)])) {
+          s.log[foodKey(cell)] = [{
+            name: "Logged total",
+            ...Object.fromEntries(NUTRIENTS.map((n) => [n.id, vals[n.id] || 0])),
+          }];
+        }
+      });
+    });
   });
 }
 
@@ -330,7 +369,7 @@ export function setLog(k, v) {
 export function logList(k) { return Array.isArray(state.log[k]) ? state.log[k] : []; }
 
 // Purge every log key belonging to a block. The cell-key grammar guarantees every
-// day / measure / nutrition / class / band key is hung off a `block.id`-prefixed
+// day / measure / food / class / band key is hung off a `block.id`-prefixed
 // cell, so one prefix sweep collects them all — the invariant the key-grammar
 // comments promise, made executable in one named place. No save(): unlike setLog
 // (a per-field edit), this is a sub-step of deleteBlock, which saves once at the end.
@@ -493,10 +532,42 @@ export function bmiFor(block, wk) {
   return w / (m * m);
 }
 
+// The kcal + macros a single food entry contributes. A quick entry carries its own
+// numbers; a pantry entry scales its Food's per-100g values by grams (per100g × g/100),
+// reading the Food *live* from the Pantry — so an Open Food Facts correction reaches
+// the days that logged it (ADR-0004), and an unknown barcode (e.g. a half-restored
+// backup) contributes zero rather than throwing. Keyed off NUTRIENTS so the nutrient
+// set stays single-sourced.
+export function entryNutrition(entry) {
+  const out = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
+  if (!entry || typeof entry !== "object") return out;
+  if (entry.barcode) {
+    const food = state.pantry[entry.barcode];
+    const per = (food && food.per100g) || {};
+    const factor = (parseFloat(entry.grams) || 0) / 100;
+    NUTRIENTS.forEach((n) => { out[n.id] = (parseFloat(per[n.id]) || 0) * factor; });
+  } else {
+    NUTRIENTS.forEach((n) => { out[n.id] = parseFloat(entry[n.id]) || 0; });
+  }
+  return out;
+}
+
+// A day's nutrition: the *derived* sum of its food entries, as { kcal, carb, fat,
+// protein }. The single place a day total is computed — render and nutritionTotals
+// both read through here, so the four nutrients can never drift apart.
+export function dayNutrition(cell) {
+  const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
+  logList(foodKey(cell)).forEach((e) => {
+    const n = entryNutrition(e);
+    NUTRIENTS.forEach((x) => { sum[x.id] += n[x.id]; });
+  });
+  return sum;
+}
+
 // Summed nutrition over a set of weeks (one week for the week total, all of them
-// for the block total) — every day of each week, every field. `kcalDays` counts
-// days that logged calories, so the headline avg kcal/day divides by days the
-// user actually recorded rather than the full 7×N (parallels dayLoad's scan).
+// for the block total) — every day's derived total, accumulated. `kcalDays` counts
+// days that logged calories, so the headline avg kcal/day divides by days the user
+// actually recorded rather than the full 7×N (parallels dayLoad's scan).
 export function nutritionTotals(block, weeks) {
   // Derive the accumulator from NUTRIENTS so the nutrient set has one source of
   // truth — adding a field there can't silently skip it here.
@@ -504,12 +575,9 @@ export function nutritionTotals(block, weeks) {
   let kcalDays = 0;
   weeks.forEach((wk) => {
     block.days.forEach((d) => {
-      const cell = cellKey(block.id, wk, d.day);
-      NUTRIENTS.forEach((n) => {
-        const v = parseFloat(state.log[nutKey(cell, n.id)]);
-        if (v > 0) sum[n.id] += v;
-      });
-      if (parseFloat(state.log[nutKey(cell, "kcal")]) > 0) kcalDays++;
+      const day = dayNutrition(cellKey(block.id, wk, d.day));
+      NUTRIENTS.forEach((n) => { sum[n.id] += day[n.id]; });
+      if (day.kcal > 0) kcalDays++;
     });
   });
   return { ...sum, kcalDays };

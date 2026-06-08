@@ -3,17 +3,17 @@
  * The store reassignments (setState/setEditing) all funnel through state.js —
  * an importer can read `state`/`editing` but can't reassign the binding here. */
 
-import { DEFAULT_SETS, DEFAULT_BAND } from "./constants.js";
+import { DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
   placement, clampSets, clampRounds, circuitOf, kindType,
-  nonNegSec, slugify, uniqueId, today, bandKey, classesKey, parseDay,
+  nonNegSec, slugify, uniqueId, today, bandKey, classesKey, foodKey, parseDay,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, purgeBlockLog,
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType,
 } from "./state.js";
 import {
-  render, renderProgress, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes,
+  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes,
 } from "./render.js";
 
 /* ---------------------------------------------------------------------- *
@@ -101,6 +101,7 @@ export function handleClick(e) {
       save(); render(); break;
     }
     case "class-remove": removeClass(el.dataset.cell, Number(el.dataset.i)); break;
+    case "food-remove": removeFood(el.dataset.cell, Number(el.dataset.i)); break;
     case "toggle-day": toggleDay(el); break;
     case "export": exportBackup(); break;
     case "reset": resetAll(); break;
@@ -120,6 +121,8 @@ function toggleDay(el) {
 export function handleSubmit(e) {
   const classForm = e.target.closest(".class-form");
   if (classForm) { e.preventDefault(); return addClass(classForm); }
+  const foodForm = e.target.closest(".food-quick-form");
+  if (foodForm) { e.preventDefault(); return addQuickEntry(foodForm); }
   const form = e.target.closest(".picker-form");
   if (!form) return;
   e.preventDefault();
@@ -156,6 +159,37 @@ function removeClass(cell, i) {
   const list = logList(key).slice();
   list.splice(i, 1);
   setLog(key, list.length ? list : ""); // "" deletes the key once the last class goes
+  render();
+}
+
+// Log an ad-hoc quick entry on a day cell — un-barcoded food (loose fruit, meals out)
+// that carries its own kcal + macros, the snapshot exception to the pantry-reference
+// model (ADR-0004). A name is optional; at least one nutrient must be > 0 (an all-zero
+// entry would add a blank row and shift no total, so it's dropped). Food entries are an
+// array under one cell key, exactly like classes.
+function addQuickEntry(form) {
+  const cell = form.closest(".food").dataset.cell;
+  const fd = new FormData(form);
+  const entry = { name: String(fd.get("name") || "").trim() };
+  let any = false;
+  NUTRIENTS.forEach((n) => {
+    const v = parseFloat(fd.get(n.id));
+    entry[n.id] = v > 0 ? v : 0;
+    if (v > 0) any = true;
+  });
+  if (!any) return;
+  const key = foodKey(cell);
+  const list = logList(key);
+  list.push(entry);
+  setLog(key, list);
+  render();
+}
+
+function removeFood(cell, i) {
+  const key = foodKey(cell);
+  const list = logList(key).slice();
+  list.splice(i, 1);
+  setLog(key, list.length ? list : ""); // "" deletes the key once the last entry goes
   render();
 }
 
@@ -286,9 +320,8 @@ const fieldByName = {
 // shouldn't double as routing). The full render already emits correct totals; these
 // only re-patch in place so the edited input keeps focus mid-type.
 const refreshBy = {
-  volumes: renderVolumes,            // weight / reps / banded round-reps → day + week + block tonnage
-  bmi: renderBmi,                    // a measurement value → the BMI line
-  nutrition: renderNutritionTotals,  // a nutrition cell → the week/block totals + avg
+  volumes: renderVolumes,  // weight / reps / banded round-reps → day + week + block tonnage
+  bmi: renderBmi,          // a measurement value → the BMI line
 };
 
 export function handleField(e) {

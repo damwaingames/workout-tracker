@@ -5,13 +5,13 @@
 
 import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
-  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
+  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey,
   circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, parseDay, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, dayDef,
-  previousSets, dayLoad, holidaySwap, previousDayTotal, previousMeasure, bmiFor, nutritionTotals,
+  previousSets, dayLoad, holidaySwap, previousDayTotal, previousMeasure, bmiFor, nutritionTotals, dayNutrition, entryNutrition,
   classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
 
@@ -552,66 +552,71 @@ export function renderBmi() {
   else { line.hidden = false; if (out) out.textContent = b.toFixed(1); }
 }
 
-// The Nutrition card: a 7-day grid of plain number inputs (calories + the three
-// macros) the user copies from their tracking app, with Week and Block total
-// rows and an avg kcal/day line. Values use data-k/log like the workout grid;
-// the totals live-patch (renderNutritionTotals) avoids a full render so an input
-// keeps focus mid-type, exactly like renderVolumes/renderBmi.
+// The Nutrition card: a per-day breakdown of food entries with each day's *derived*
+// kcal + macros, plus Week / Block totals and an avg kcal/day line. Each day shows its
+// food list (quick entries now; pantry entries once a lookup populates them), a derived
+// total line, and a quick-entry add form. Replaces the old hand-typed grid; the per-day
+// block (renderDayFood) is the unit a later slice lifts into the day card as a tab.
 function renderNutrition() {
   const card = document.getElementById("nutrition-card");
   if (!card) return;
   const block = currentBlock();
   const wk = state.ui.week;
-
-  const head = '<div class="nut-row nut-head"><span class="nut-day"></span>' +
-    NUTRIENTS.map((n) => '<span class="nut-col-h">' + esc(n.head) + "<small>" + esc(n.unit) + "</small></span>").join("") +
-    "</div>";
-
-  const rows = block.days.map((d) => {
-    const cell = cellKey(block.id, wk, d.day);
-    return '<div class="nut-row">' +
-      '<span class="nut-day">Day ' + d.day + "</span>" +
-      NUTRIENTS.map((n) => {
-        const k = nutKey(cell, n.id);
-        const val = state.log[k] != null ? state.log[k] : "";
-        return '<input type="number" inputmode="decimal" min="0" class="nut-val" data-k="' + k + '" data-type="text" data-refresh="nutrition" aria-label="Day ' + d.day + " " + esc(n.label) + " (" + esc(n.unit) + ')" value="' + esc(val) + '">';
-      }).join("") +
-      "</div>";
-  }).join("");
-
-  const totalRow = (label, scope) =>
-    '<div class="nut-row nut-total">' +
-    '<span class="nut-day">' + label + "</span>" +
-    NUTRIENTS.map((n) => '<span class="nut-col" data-nut-total="' + scope + "-" + n.id + '"></span>').join("") +
-    "</div>";
-
+  const days = block.days.map((d) => renderDayFood(cellKey(block.id, wk, d.day), "Day " + d.day)).join("");
+  const allWeeks = Array.from({ length: WEEKS }, (_, i) => i + 1);
+  const week = nutritionTotals(block, [wk]);
+  const all = nutritionTotals(block, allWeeks);
+  const perDay = (t) => (t.kcalDays ? fmt(t.kcal / t.kcalDays) + " kcal/day" : "—");
+  const totalLine = (label, t) =>
+    '<div class="nut-total-line"><span class="nut-total-label">' + label + "</span> " +
+    '<span data-nut-line="' + label.toLowerCase() + '">' + nutritionLine(t) + "</span></div>";
   card.innerHTML =
     "<h2>Nutrition</h2>" +
-    '<div class="nut-grid">' + head + rows + totalRow("Week", "week") + totalRow("Block", "block") + "</div>" +
-    '<p class="nut-avg muted small" id="nut-avg"></p>';
-  renderNutritionTotals();
+    '<div class="food-days">' + days + "</div>" +
+    '<div class="nut-totals">' + totalLine("Week", week) + totalLine("Block", all) + "</div>" +
+    '<p class="nut-avg muted small">Avg ' + perDay(week) + " this week · " + perDay(all) + " this block</p>";
 }
 
-// Live-patch the Nutrition card's Week/Block total cells + the avg kcal/day line
-// from the current log, leaving the inputs (and focus) untouched.
-export function renderNutritionTotals() {
-  const card = document.getElementById("nutrition-card");
-  if (!card) return;
-  const block = currentBlock();
-  const allWeeks = Array.from({ length: WEEKS }, (_, i) => i + 1);
-  const week = nutritionTotals(block, [state.ui.week]);
-  const all = nutritionTotals(block, allWeeks);
-  [["week", week], ["block", all]].forEach(([scope, t]) =>
-    NUTRIENTS.forEach((n) => {
-      const el = card.querySelector('[data-nut-total="' + scope + "-" + n.id + '"]');
-      if (el) el.textContent = fmt(t[n.id]);
-    })
-  );
-  const avg = document.getElementById("nut-avg");
-  if (avg) {
-    const perDay = (t) => (t.kcalDays ? fmt(t.kcal / t.kcalDays) + " kcal/day" : "—");
-    avg.textContent = "Avg " + perDay(week) + " this week · " + perDay(all) + " this block";
-  }
+// One day's food block — its list of entries, the derived day total, and the quick-entry
+// add form. The container carries data-cell so addQuickEntry / removeFood resolve the
+// cell; `label` heads the block in the standalone card (the day card supplies its own
+// header). A pantry entry shows its Food's name + grams; a quick entry shows its name.
+function renderDayFood(cell, label) {
+  const list = logList(foodKey(cell));
+  const items = list.map((e, i) => {
+    const n = entryNutrition(e);
+    const food = e.barcode ? state.pantry[e.barcode] : null;
+    const name = e.barcode ? ((food && food.name) || e.barcode) : (e.name || "Quick entry");
+    const detail = e.barcode ? ' <span class="food-detail">' + fmt(parseFloat(e.grams) || 0) + " g</span>" : "";
+    return '<li class="food-item"><span class="food-text">' +
+      '<span class="food-name">' + esc(name) + "</span>" + detail +
+      ' <span class="food-kcal">' + fmt(n.kcal) + " kcal</span></span>" +
+      '<button class="remove" type="button" data-action="food-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove food">×</button></li>';
+  }).join("");
+  const fields = NUTRIENTS.map((n) =>
+    '<input type="number" inputmode="decimal" min="0" name="' + n.id + '" placeholder="' + esc(n.head) + '" aria-label="' + esc(n.label) + " (" + esc(n.unit) + ')">'
+  ).join("");
+  return '<div class="food" data-cell="' + cell + '">' +
+    (label ? '<div class="food-day">' + esc(label) + "</div>" : "") +
+    (list.length ? '<ul class="food-list">' + items + "</ul>" : "") +
+    (list.length ? '<div class="food-total">' + nutritionLine(dayNutrition(cell)) + "</div>" : "") +
+    '<div class="food-add">' +
+      '<button class="link food-add-btn" type="button" data-action="form-open">＋ Add food</button>' +
+      '<form class="food-quick-form" hidden>' +
+        '<input name="name" placeholder="Food (optional)" autocomplete="off">' +
+        fields +
+        '<div class="form-actions"><button type="submit">Add</button>' +
+        '<button type="button" class="link" data-action="form-cancel">Cancel</button></div>' +
+      "</form>" +
+    "</div></div>";
+}
+
+// Compact one-line nutrition figure shared by the day total and the Week / Block totals:
+// "1850 cal · 77c / 45f / 154p". Macros use their id initial (c/f/p); kcal leads. Reads
+// a { kcal, carb, fat, protein } object (dayNutrition / nutritionTotals).
+function nutritionLine(n) {
+  const macros = NUTRIENTS.filter((x) => x.id !== "kcal").map((x) => fmt(n[x.id]) + x.id[0]).join(" / ");
+  return fmt(n.kcal) + " cal" + (macros ? " · " + macros : "");
 }
 
 // Reflect the log onto the existing #week-view DOM without rebuilding it: every

@@ -282,6 +282,9 @@ nav.weeks {
 .ct-rate { width: 5rem; text-align: center; }
 .class-add-btn { padding: .2rem 0; }
 .class-form { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+/* display:flex above defeats the UA [hidden]{display:none}, so the add form showed
+ * unprompted on every day — same gotcha as .picker-form[hidden]. Make hidden win. */
+.class-form[hidden] { display: none; }
 .class-form input[name="type"] { flex: 1 1 8rem; }
 .class-form input[name="desc"] { flex: 2 1 10rem; }
 .class-form input[name="mins"] { flex: 0 0 4.5rem; text-align: center; }
@@ -453,38 +456,34 @@ textarea { width: 100%; resize: vertical; }
 .measure-height { margin-top: .7rem; }
 .measure-height input { width: 5rem; }
 
-/* Nutrition card: a day-label column + one column per nutrient, shared by the
- * input rows and the total rows so figures line up under their headers. */
-.nut-grid { display: flex; flex-direction: column; }
-.nut-row {
-  display: grid;
-  grid-template-columns: 2.6rem repeat(4, 1fr);
-  gap: .4rem;
-  align-items: center;
-  padding: .25rem 0;
-}
-.nut-day { font-size: .8rem; color: var(--muted); }
-.nut-head { padding-bottom: .15rem; }
-.nut-col-h {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  font-size: .7rem;
-  text-transform: uppercase;
-  letter-spacing: .03em;
-  color: var(--muted);
-  line-height: 1.15;
-}
-.nut-col-h small { font-size: .62rem; text-transform: none; letter-spacing: 0; }
-.nut-val { width: 100%; min-width: 0; text-align: center; padding: .35rem .2rem; font-size: .92rem; -moz-appearance: textfield; }
-/* Hide the number spinner so a 4-digit kcal value isn't clipped in the narrow
- * grid column (mobile Safari shows none anyway; this covers desktop/Chromium). */
-.nut-val::-webkit-outer-spin-button, .nut-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.nut-total { border-top: 1px dashed var(--border); margin-top: .2rem; padding-top: .5rem; }
-.nut-total + .nut-total { border-top: none; margin-top: 0; padding-top: .15rem; }
-.nut-total .nut-day { color: var(--text); font-weight: 600; }
-.nut-col { text-align: center; font-size: .8rem; color: var(--text); font-variant-numeric: tabular-nums; }
+/* Nutrition card: a per-day stack of food blocks — each a list of entries, a derived
+ * day total, and a quick-entry add form (mirrors the class logger) — then the Week /
+ * Block total lines and the avg. Per-day blocks are the unit a later slice tabs into
+ * the day card. */
+.food-days { display: flex; flex-direction: column; gap: .9rem; }
+.food-day { font-size: .8rem; font-weight: 600; color: var(--muted); }
+.food-list { list-style: none; margin: .35rem 0 .3rem; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
+.food-item { display: flex; align-items: center; gap: .5rem; font-size: .82rem; }
+.food-text { flex: 1; min-width: 0; }
+.food-name { font-weight: 600; color: var(--text); }
+.food-detail { color: var(--muted); font-variant-numeric: tabular-nums; }
+.food-kcal { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.food-total { font-size: .8rem; color: var(--text); font-variant-numeric: tabular-nums; }
+.food-add-btn { padding: .2rem 0; }
+.food-quick-form { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+/* display:flex above outweighs the UA [hidden]{display:none} (equal specificity,
+ * author wins), so make hidden authoritative — else the add form shows unprompted.
+ * Same gotcha the .picker-form[hidden] rule guards against. */
+.food-quick-form[hidden] { display: none; }
+.food-quick-form input[name="name"] { flex: 1 1 8rem; }
+.food-quick-form input[type="number"] { flex: 1 1 4rem; min-width: 0; text-align: center; -moz-appearance: textfield; }
+/* Hide the number spinner so the macro inputs stay narrow (matches the old grid). */
+.food-quick-form input[type="number"]::-webkit-outer-spin-button,
+.food-quick-form input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.food-quick-form .form-actions { flex-basis: 100%; }
+.nut-totals { margin-top: 1rem; padding-top: .6rem; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: .2rem; }
+.nut-total-line { font-size: .82rem; font-variant-numeric: tabular-nums; }
+.nut-total-label { font-weight: 600; display: inline-block; min-width: 3rem; color: var(--text); }
 .nut-avg { margin-top: .55rem; font-variant-numeric: tabular-nums; }
 
 footer { margin-top: 2rem; }

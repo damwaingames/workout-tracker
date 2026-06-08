@@ -27,15 +27,20 @@ export const roundRepKey = (cell, exId, r) => cell + ".ex." + exId + ".rr" + r;
 // state.log — the ".m." segment can't collide with a day's ".dN" cells, and
 // the block.id prefix means deleteBlock's purge sweeps these up for free.
 export const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mId;
-// Daily nutrition value — one per block/week/day/field, hung off the same day
-// cell as .done/.date/.energy. The ".nut." segment is distinct from those, so
-// it shares the cell without collision, and the block.id prefix means deleteBlock
-// sweeps it up too. (cell already encodes block/week/day via cellKey.)
+// Legacy daily nutrition scalar — one per block/week/day/field. Superseded by the
+// food-entry list (foodKey); read only by migrateNutrition, which folds any of these
+// it finds into a single quick entry and deletes them. Kept so old saves still migrate.
 export const nutKey = (cell, field) => cell + ".nut." + field;
 // Classes logged on a day cell — a single ".classes" key holding an array of
 // { type, desc, mins } (variable length, so not the scalar data-k path). The
 // block.id prefix (via cell) means deleteBlock's purge sweeps it up too.
 export const classesKey = (cell) => cell + ".classes";
+// Food eaten on a day — a single ".food" key holding an array of food entries:
+// a pantry entry { barcode, grams } (nutrition read live from state.pantry) or an
+// ad-hoc quick entry { name, kcal, carb, fat, protein }. Variable length like
+// classes, so not the scalar path; the block.id prefix (via cell) means deleteBlock's
+// purge sweeps it up too. The day's kcal + macros are the derived sum (dayNutrition).
+export const foodKey = (cell) => cell + ".food";
 
 // Round and clamp an int into [min, max]; non-numeric (missing) → fallback.
 // NB: 0 must clamp to min, so we can't use `|| fallback` (0 is falsy).
