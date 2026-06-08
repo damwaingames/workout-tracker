@@ -47,6 +47,18 @@ verify(async ({ page, ck, ls, reset, key }) => {
   ck("strength banded per-side: band → medium = 8kg × 22 × 2 = 352 kg", (await dayVol(D1)).trim() === "352 kg");
   ck("band choice logged per session", (await ls()).log["b1.w1.d1.ex.banded-clamshells.band"] === "medium");
 
+  // ---- Banded moves track previous-week reps (placeholder + Last line) ----
+  // Week 1 logged clamshells 10 / 12 above; week 2 should ghost those reps and show
+  // the "Last:" summary — banded sets log a reps field, so previousSets finds them.
+  await page.click('[data-action="week"][data-week="2"]');
+  await page.waitForTimeout(60);
+  const CLAM2 = ex('[data-cell="b1.w2.d1"]', "banded-clamshells"); // same move, week 2's cell
+  ck("banded set1 reps placeholder = last week (10)", (await page.getAttribute(`${CLAM2} .set:nth-child(1) .r`, "placeholder")) === "10");
+  ck("banded set2 reps placeholder = last week (12)", (await page.getAttribute(`${CLAM2} .set:nth-child(2) .r`, "placeholder")) === "12");
+  ck("banded Last line shows previous reps", /Last:\s*10,\s*12/.test(await page.textContent(`${CLAM2} .last`)));
+  await page.click('[data-action="week"][data-week="1"]'); // back to week 1 for the rest
+  await page.waitForTimeout(60);
+
   // ---- Circuit banded UI: band picker + per-round reps, day-volume line appears ----
   ck("circuit banded: band picker defaults to medium",
     (await page.inputValue(`${HIP} select.band-pick`)) === "medium");

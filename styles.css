@@ -253,6 +253,12 @@ nav.weeks {
   color: var(--muted);
 }
 .day-volume strong { color: var(--text); font-variant-numeric: tabular-nums; }
+/* Progressive-overload delta chip vs the same day last week (empty when nothing to
+   compare). Up = heavier than last week (green), down = lighter (amber). */
+.vol-delta { margin-left: .4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.vol-delta:empty { margin-left: 0; }
+.vol-delta.up { color: var(--done-border); }
+.vol-delta.down { color: var(--rest); }
 
 /* Per-day class logger — a separated section under each day, like day-volume. */
 .classes { margin-top: .75rem; padding-top: .6rem; border-top: 1px dashed var(--border); }
