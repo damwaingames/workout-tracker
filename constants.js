@@ -8,15 +8,17 @@ export const MIN_ROUNDS = 1, MAX_ROUNDS = 6;
 // reproduce the original hardcoded behaviour: 2 rounds, 1 min stations, 15 sec
 // rest between stations, no rest between rounds.
 export const CIRCUIT_DEFAULTS = { rounds: 2, workSec: 60, restSec: 15, roundRestSec: 0 };
-// Daily nutrition fields, in column order. The user logs these by hand (numbers
-// copied from whatever app they track in) — kcal and the three macros are all
-// independent inputs; nothing is derived. `id` is the log-key segment, `head`
-// the column header, `unit` the header's small print, `label` the aria name.
+// The four nutrition fields, in display order. A day's totals are the derived sum of
+// its food entries (see dayNutrition); a quick entry stores these `id`s directly, a
+// pantry entry derives them from its Food's per-100g values. `id` is the field key
+// (in entries, per100g, and the quick-entry form), `head` the short label, `unit` its
+// small print, `label` the aria name, and `off` the Open Food Facts nutriment key the
+// lookup reads to build per100g — so the OFF field names live in exactly one place.
 export const NUTRIENTS = [
-  { id: "kcal", label: "Calories", head: "Cals", unit: "kcal" },
-  { id: "carb", label: "Carbs", head: "Carbs", unit: "g" },
-  { id: "fat", label: "Fat", head: "Fat", unit: "g" },
-  { id: "protein", label: "Protein", head: "Protein", unit: "g" },
+  { id: "kcal", label: "Calories", head: "Cals", unit: "kcal", off: "energy-kcal_100g" },
+  { id: "carb", label: "Carbs", head: "Carbs", unit: "g", off: "carbohydrates_100g" },
+  { id: "fat", label: "Fat", head: "Fat", unit: "g", off: "fat_100g" },
+  { id: "protein", label: "Protein", head: "Protein", unit: "g", off: "proteins_100g" },
 ];
 // How a strength exercise's logged set maps to tonnage (weight × reps). The
 // stored weight/reps are always exactly what the user typed; a non-standard mode

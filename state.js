@@ -564,6 +564,16 @@ export function dayNutrition(cell) {
   return sum;
 }
 
+// The Pantry as a name-sorted array, optionally narrowed to foods whose name / brand /
+// barcode contains `query` (case-insensitive). Drives the finder's offline quick-pick —
+// reads only state.pantry, so it works with no network.
+export function pantryList(query) {
+  const q = String(query || "").trim().toLowerCase();
+  return Object.values(state.pantry)
+    .filter((f) => f && (!q || (f.name + " " + (f.brand || "") + " " + f.barcode).toLowerCase().includes(q)))
+    .sort((a, b) => String(a.name || a.barcode).localeCompare(String(b.name || b.barcode)));
+}
+
 // Summed nutrition over a set of weeks (one week for the week total, all of them
 // for the block total) — every day's derived total, accumulated. `kcalDays` counts
 // days that logged calories, so the headline avg kcal/day divides by days the user

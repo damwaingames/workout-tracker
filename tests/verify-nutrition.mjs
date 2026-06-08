@@ -6,10 +6,11 @@ verify(async ({ page, ck, ls, reset, key }) => {
   const num = async (sel) => Number((await page.textContent(sel)).replace(/[^0-9.]/g, ""));
   const line = (scope) => page.textContent(`#nutrition-card [data-nut-line="${scope}"]`);
 
-  // Open a day's quick-entry form, fill it, submit. Each day block is keyed by its cell.
+  // Open a day's finder → quick-entry form, fill it, submit. Keyed by the day's cell.
   const addFood = async (cell, { name, kcal, carb, fat, protein }) => {
     const sel = `#nutrition-card .food[data-cell="${cell}"]`;
-    await page.click(`${sel} [data-action="form-open"]`);
+    await page.click(`${sel} [data-action="food-open"]`);  // reveal the finder
+    await page.click(`${sel} [data-action="form-open"]`);  // reveal the quick-entry form
     const set = async (n, v) => { if (v != null) await page.fill(`${sel} .food-quick-form input[name="${n}"]`, String(v)); };
     await set("name", name); await set("kcal", kcal); await set("carb", carb); await set("fat", fat); await set("protein", protein);
     await page.click(`${sel} .food-quick-form button[type="submit"]`);
@@ -21,7 +22,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   // ---- card shape ----
   ck("nutrition card present", await page.isVisible("#nutrition-card"));
   ck("7 day food blocks", (await page.$$("#nutrition-card .food")).length === 7);
-  ck("each day has an Add food button", (await page.$$('#nutrition-card .food [data-action="form-open"]')).length === 7);
+  ck("each day has an Add food button", (await page.$$('#nutrition-card .food [data-action="food-open"]')).length === 7);
   ck("quick-entry form starts hidden", !(await page.isVisible('#nutrition-card .food[data-cell="b1.w1.d1"] .food-quick-form')));
 
   // ---- add a quick entry (derived totals) ----

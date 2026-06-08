@@ -601,14 +601,45 @@ function renderDayFood(cell, label) {
     (list.length ? '<ul class="food-list">' + items + "</ul>" : "") +
     (list.length ? '<div class="food-total">' + nutritionLine(dayNutrition(cell)) + "</div>" : "") +
     '<div class="food-add">' +
-      '<button class="link food-add-btn" type="button" data-action="form-open">＋ Add food</button>' +
-      '<form class="food-quick-form" hidden>' +
-        '<input name="name" placeholder="Food (optional)" autocomplete="off">' +
-        fields +
-        '<div class="form-actions"><button type="submit">Add</button>' +
-        '<button type="button" class="link" data-action="form-cancel">Cancel</button></div>' +
-      "</form>" +
+      '<button class="link food-add-btn" type="button" data-action="food-open">＋ Add food</button>' +
+      '<div class="food-finder" hidden>' +
+        '<div class="food-search-row">' +
+          '<input class="food-search" data-fh="food-search" placeholder="Search foods or barcode…" autocomplete="off" aria-label="Search foods or enter a barcode">' +
+          '<button type="button" data-action="food-find">Find</button>' +
+        "</div>" +
+        '<ul class="food-results"></ul>' +
+        '<div class="food-quick">' +
+          '<button type="button" class="link" data-action="form-open">Quick entry (no barcode)</button>' +
+          '<form class="food-quick-form" hidden>' +
+            '<input name="name" placeholder="Food (optional)" autocomplete="off">' +
+            fields +
+            '<div class="form-actions"><button type="submit">Add</button>' +
+            '<button type="button" class="link" data-action="form-cancel">Cancel</button></div>' +
+          "</form>" +
+        "</div>" +
+        '<button type="button" class="link food-close" data-action="food-close">Close</button>' +
+      "</div>" +
     "</div></div>";
+}
+
+// The finder's result rows — a Pantry quick-pick list or Open Food Facts hits — each a
+// pick button (name + brand + kcal/100g) with a hidden grams form revealed on pick.
+// Exported so events.js patches the list in place (like the exercise picker's repopulate)
+// rather than via a full render, which would close the finder mid-flow.
+export function foodResultsHTML(foods) {
+  if (!foods.length) return '<li class="food-result-empty muted small">No matches — Find on Open Food Facts, or add a quick entry.</li>';
+  return foods.map((f) =>
+    '<li class="food-result" data-barcode="' + esc(f.barcode) + '">' +
+      '<button type="button" class="food-result-pick" data-action="food-pick" data-barcode="' + esc(f.barcode) + '">' +
+        '<span class="food-result-name">' + esc(f.name || f.barcode) + "</span>" +
+        '<span class="food-result-meta">' + (f.brand ? esc(f.brand) + " · " : "") + fmt(f.per100g.kcal) + " kcal/100g</span>" +
+      "</button>" +
+      '<form class="food-grams-form" hidden data-barcode="' + esc(f.barcode) + '">' +
+        '<input type="number" inputmode="decimal" min="0" name="grams" value="100" aria-label="Grams">' +
+        '<span class="food-grams-unit">g</span><button type="submit">Add</button>' +
+      "</form>" +
+    "</li>"
+  ).join("");
 }
 
 // Compact one-line nutrition figure shared by the day total and the Week / Block totals:

@@ -10,11 +10,12 @@ import {
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, purgeBlockLog,
-  currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType,
+  currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
-  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes,
+  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
 } from "./render.js";
+import { lookupBarcode, searchFoods } from "./off.js";
 
 /* ---------------------------------------------------------------------- *
  * Events                                                                  *
@@ -102,6 +103,10 @@ export function handleClick(e) {
     }
     case "class-remove": removeClass(el.dataset.cell, Number(el.dataset.i)); break;
     case "food-remove": removeFood(el.dataset.cell, Number(el.dataset.i)); break;
+    case "food-open": foodOpen(el); break;
+    case "food-close": foodClose(el); break;
+    case "food-find": foodFind(el); break;
+    case "food-pick": foodPick(el); break;
     case "toggle-day": toggleDay(el); break;
     case "export": exportBackup(); break;
     case "reset": resetAll(); break;
@@ -123,6 +128,8 @@ export function handleSubmit(e) {
   if (classForm) { e.preventDefault(); return addClass(classForm); }
   const foodForm = e.target.closest(".food-quick-form");
   if (foodForm) { e.preventDefault(); return addQuickEntry(foodForm); }
+  const gramsForm = e.target.closest(".food-grams-form");
+  if (gramsForm) { e.preventDefault(); return addFoodEntry(gramsForm); }
   const form = e.target.closest(".picker-form");
   if (!form) return;
   e.preventDefault();
@@ -190,6 +197,91 @@ function removeFood(cell, i) {
   const list = logList(key).slice();
   list.splice(i, 1);
   setLog(key, list.length ? list : ""); // "" deletes the key once the last entry goes
+  render();
+}
+
+/* --- Food finder: search / barcode / pick foods from Open Food Facts into the Pantry,
+ * then log a portion. The finder is patched in place (no full render) so it stays open
+ * across a search; only confirming a portion renders. --- */
+// The most recent Find's hits, by barcode, so foodPick can cache the chosen one (its
+// fresh OFF data) into the Pantry. Cleared whenever the local Pantry view is shown.
+let foundFoods = {};
+
+// Reveal the finder, seeding its results with the whole Pantry — the offline quick-pick.
+function foodOpen(el) {
+  const finder = el.closest(".food-add").querySelector(".food-finder");
+  el.hidden = true;
+  finder.hidden = false;
+  foundFoods = {};
+  const input = finder.querySelector(".food-search");
+  input.value = "";
+  finder.querySelector(".food-results").innerHTML = foodResultsHTML(pantryList(""));
+  input.focus();
+}
+
+function foodClose(el) {
+  const finder = el.closest(".food-finder");
+  finder.hidden = true;
+  const btn = finder.parentNode.querySelector(".food-add-btn");
+  if (btn) btn.hidden = false;
+}
+
+// Typing filters the Pantry locally (instant, offline) and returns to that view, so a
+// stale Open Food Facts result list can't linger under a changed query.
+function foodSearch(el) {
+  foundFoods = {};
+  el.closest(".food-finder").querySelector(".food-results").innerHTML = foodResultsHTML(pantryList(el.value));
+}
+
+// Find on Open Food Facts: an all-digits query is a barcode lookup, anything else a name
+// search. A network failure (offline) falls back to the Pantry / a quick entry.
+async function foodFind(el) {
+  const finder = el.closest(".food-finder");
+  const q = finder.querySelector(".food-search").value.trim();
+  if (!q) return;
+  const results = finder.querySelector(".food-results");
+  results.innerHTML = '<li class="food-result-empty muted small">Searching Open Food Facts…</li>';
+  const digits = q.replace(/\D/g, "");
+  try {
+    const foods = digits.length >= 8 && digits === q
+      ? [await lookupBarcode(digits)].filter(Boolean)
+      : await searchFoods(q);
+    foundFoods = {};
+    foods.forEach((f) => { foundFoods[f.barcode] = f; });
+    results.innerHTML = foods.length ? foodResultsHTML(foods)
+      : '<li class="food-result-empty muted small">No Open Food Facts match — add a quick entry instead.</li>';
+  } catch (err) {
+    results.innerHTML = '<li class="food-result-empty muted small">Can’t reach Open Food Facts (offline?) — pick from your foods or add a quick entry.</li>';
+  }
+}
+
+// Pick a found / pantry food: cache it into the Pantry (re-finding then picking refreshes
+// a cached one with the new OFF data — ADR-0004), then reveal its grams form to confirm
+// the portion. A plain Pantry pick reuses the cached record, no network.
+function foodPick(el) {
+  const barcode = el.dataset.barcode;
+  const food = foundFoods[barcode] || state.pantry[barcode];
+  if (!food) return;
+  state.pantry[barcode] = food;
+  save();
+  const form = el.closest(".food-result").querySelector(".food-grams-form");
+  el.closest(".food-finder").querySelectorAll(".food-grams-form").forEach((f) => { if (f !== form) f.hidden = true; });
+  form.hidden = false;
+  const g = form.querySelector('input[name="grams"]');
+  g.focus(); g.select();
+}
+
+// Confirm the portion: push a pantry entry { barcode, grams } onto the day, then render
+// (which closes the finder). The food is already in the Pantry from foodPick.
+function addFoodEntry(form) {
+  const cell = form.closest(".food").dataset.cell;
+  const barcode = form.dataset.barcode;
+  const grams = parseFloat(new FormData(form).get("grams"));
+  if (!state.pantry[barcode] || !(grams > 0)) return;
+  const key = foodKey(cell);
+  const list = logList(key);
+  list.push({ barcode, grams });
+  setLog(key, list);
   render();
 }
 
@@ -304,6 +396,7 @@ function classRateField(el) {
 }
 const fieldByName = {
   "picker-search": pickerSearch,
+  "food-search": foodSearch,
   "circuit-field": circuitField,
   "load-mode": loadModeField,
   // Band selects/toggles carry no data-k (logged out-of-band so hydrate can't
