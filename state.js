@@ -400,12 +400,15 @@ function bandedReps(cell, d, p) {
 // weight × reps scaled by the loading mode (per-side doubles reps, two-dumbbell
 // doubles weight); banded moves contribute band kg × summed reps × the per-side
 // factor. Render reads both facts here instead of re-deriving the banded predicate.
-// A cell flagged "holiday" swaps in the shared Holiday Workout; otherwise the day
-// itself. The cell's coordinates stay the real day's — only the kind + exercise
-// list come from the swap (the band moves log against this same cell, which is what
-// lets previousSets skip the holiday week — ADR-0002). One name for the swap, read
-// by both dayLoad and the renderer rather than re-expressed at each.
-export function holidaySwap(cell, d) { return state.log[cell + ".holiday"] ? state.holiday : d; }
+// Whether a cell is flagged as a holiday day — the one place the `.holiday` flag
+// string is read, so every caller (the swap below, previousDayTotal's skip) shares it.
+export function isHoliday(cell) { return !!state.log[cell + ".holiday"]; }
+// A holiday-flagged cell swaps in the shared Holiday Workout; otherwise the day
+// itself. The cell's coordinates stay the real day's — only the kind + exercise list
+// come from the swap (the band moves log against this same cell, which is what lets
+// previousSets skip the holiday week — ADR-0002). One name for the swap, read by both
+// dayLoad and the renderer rather than re-expressed at each.
+export function holidaySwap(cell, d) { return isHoliday(cell) ? state.holiday : d; }
 
 export function dayLoad(block, wk, d) {
   const cell = cellKey(block.id, wk, d.day);
@@ -440,7 +443,7 @@ export function dayLoad(block, wk, d) {
 // week-1-normal · week-2-holiday · week-3-normal → week 3 compares to week 1. Null on
 // a holiday day itself (holiday weeks aren't a tracking surface) or when none earlier.
 export function previousDayTotal(block, wk, d) {
-  if (state.log[cellKey(block.id, wk, d.day) + ".holiday"]) return null;
+  if (isHoliday(cellKey(block.id, wk, d.day))) return null;
   const curBi = Math.max(0, state.blocks.findIndex((b) => b.id === block.id));
   const rank = (bi, w) => bi * (WEEKS + 1) + w;
   const cutoff = rank(curBi, wk);
@@ -451,7 +454,7 @@ export function previousDayTotal(block, wk, d) {
     for (let w = 1; w <= WEEKS; w++) {
       const order = rank(bi, w);
       if (order >= cutoff) continue;
-      if (state.log[cellKey(b.id, w, pd.day) + ".holiday"]) continue; // skip holiday weeks
+      if (isHoliday(cellKey(b.id, w, pd.day))) continue; // skip holiday weeks
       const total = dayLoad(b, w, pd).total;
       if (total > 0 && (!best || order > best.order)) best = { order, total };
     }
