@@ -400,13 +400,16 @@ function bandedReps(cell, d, p) {
 // weight × reps scaled by the loading mode (per-side doubles reps, two-dumbbell
 // doubles weight); banded moves contribute band kg × summed reps × the per-side
 // factor. Render reads both facts here instead of re-deriving the banded predicate.
+// A cell flagged "holiday" swaps in the shared Holiday Workout; otherwise the day
+// itself. The cell's coordinates stay the real day's — only the kind + exercise
+// list come from the swap (the band moves log against this same cell, which is what
+// lets previousSets skip the holiday week — ADR-0002). One name for the swap, read
+// by both dayLoad and the renderer rather than re-expressed at each.
+export function holidaySwap(cell, d) { return state.log[cell + ".holiday"] ? state.holiday : d; }
+
 export function dayLoad(block, wk, d) {
   const cell = cellKey(block.id, wk, d.day);
-  // A day flagged "holiday" swaps in the shared Holiday Workout for its load: the
-  // band moves log against this same cell while the day's own exercises stay blank
-  // (which is what lets previousSets skip the holiday week). The cell coordinates
-  // stay the real day's; only the kind + exercise list come from the holiday day.
-  const eff = state.log[cell + ".holiday"] ? state.holiday : d;
+  const eff = holidaySwap(cell, d);
   if (eff.kind === "rest") return { total: 0, loadBearing: false };
   let total = 0, loadBearing = eff.kind === "strength";
   eff.exercises.forEach((p) => {
@@ -478,12 +481,18 @@ export function nutritionTotals(block, weeks) {
   return { ...sum, kcalDays };
 }
 
-// The rate (kcal/min/kg) for a class type, 0 if unknown. Case-insensitive so a
-// class logged under a variant spelling still resolves to its type's rate (type
-// names are deduped case-insensitively in normaliseClassTypes).
-export function classRate(name) {
+// The class type matching a name, case-insensitively — the one definition of "the
+// same class type" (names are deduped case-insensitively in normaliseClassTypes, so
+// at most one matches). Both the rate lookup and addClass's reuse-or-create read
+// through this. Returns the stored { name, rate } or undefined.
+export function findClassType(name) {
   const lc = String(name).toLowerCase();
-  const t = state.classTypes.find((c) => c && c.name.toLowerCase() === lc);
+  return state.classTypes.find((c) => c && c.name.toLowerCase() === lc);
+}
+// The rate (kcal/min/kg) for a class type, 0 if unknown. Case-insensitive (via
+// findClassType) so a class logged under a variant spelling still resolves its rate.
+export function classRate(name) {
+  const t = findClassType(name);
   return t ? (parseFloat(t.rate) || 0) : 0;
 }
 

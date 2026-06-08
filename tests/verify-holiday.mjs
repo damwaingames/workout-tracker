@@ -86,6 +86,13 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await page.waitForTimeout(60);
   ck("holiday editor present in edit mode", !!(await page.$(".holiday-edit")));
   ck("editor lists all 5 holiday moves", (await page.$$(".holiday-edit .exercise")).length === 5);
+  // The holiday picker is band-only: offers banded strength moves, hides free-weight ones.
+  await page.click('.holiday-edit [data-action="picker-open"]');
+  await page.waitForTimeout(60);
+  ck("holiday picker offers a banded strength move", !!(await page.$('.holiday-edit .picker-list .pick[data-ex="banded-fire-hydrants"]')));
+  ck("holiday picker excludes a non-banded strength move", !(await page.$('.holiday-edit .picker-list .pick[data-ex="goblet-squats"]')));
+  await page.click('.holiday-edit [data-action="picker-open"]'); // close the picker
+  await page.waitForTimeout(40);
   await page.click('.holiday-edit .exercise[data-ex="banded-push-ups"] [data-action="remove-exercise"]');
   await page.waitForTimeout(60);
   ck("removing a move updates the shared definition (4 left)", (await ls()).holiday.exercises.length === 4);

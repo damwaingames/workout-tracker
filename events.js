@@ -10,7 +10,7 @@ import {
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, purgeBlockLog,
-  currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M,
+  currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType,
 } from "./state.js";
 import {
   render, renderProgress, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes,
@@ -141,7 +141,7 @@ function addClass(form) {
   // Match an existing type case-insensitively so "Box-Fit" / "box-fit" don't fork
   // duplicates; reuse its canonical spelling (and log the class under that), else
   // remember the new type (rate starts at 0; set it in the Edit-mode editor).
-  const known = state.classTypes.find((c) => c.name.toLowerCase() === type.toLowerCase());
+  const known = findClassType(type);
   const canonical = known ? known.name : type;
   if (!known) state.classTypes.push({ name: canonical, rate: 0 });
   const key = classesKey(cell);

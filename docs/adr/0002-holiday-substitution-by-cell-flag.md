@@ -54,6 +54,18 @@ Leave **`previousSets` untouched**.
   `purgeBlockLog`'s block-prefix purge. Old backups import unchanged.
 
 - **`dayLoad` owns the resolution.** It reads the flag and swaps the exercise list
-  internally, so every caller (notably `renderVolumes`' all-weeks scan) counts the
-  right total without each re-deriving the substitution. The cell coordinates stay the
-  real day's; only the kind + exercises come from the holiday day.
+  internally (via the shared `holidaySwap` helper, which the renderer also uses), so
+  every caller — notably `renderVolumes`' all-weeks scan — counts the right total
+  without each re-deriving the substitution. The cell coordinates stay the real day's;
+  only the kind + exercises come from the holiday day.
+
+- **Band-only is convention, enforced where it's cheap.** The skip's cleanliness rests
+  on the holiday moves being banded: a banded move logs under its own id and shows no
+  cross-day "Last:" line, so it neither pollutes the normal day's emptiness nor needs
+  history of its own. The Holiday Workout's **picker is therefore filtered to banded
+  moves**, so the natural path keeps the invariant. The **Create-new-exercise** path is
+  *not* constrained — a user who deliberately creates and adds a non-banded move (or one
+  that also sits on a normal day) can blur the skip for that one exercise that week.
+  Accepted as a self-inflicted edge: hard-enforcing it (forcing `banded` on anything
+  added to the holiday day) would cost more than the niche it closes. Revisit if it ever
+  bites in practice.

@@ -11,7 +11,7 @@ import {
 import {
   state, editing,
   currentBlock, currentBlockIndex, dayDef,
-  previousSets, dayLoad, previousMeasure, bmiFor, nutritionTotals,
+  previousSets, dayLoad, holidaySwap, previousMeasure, bmiFor, nutritionTotals,
   classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
 
@@ -68,8 +68,9 @@ function renderDay(block, d, wk, kg) {
   // exercises stay un-logged and previousSets resumes against the last normal week.
   // The holiday body is structurally read-only here (the template is edited once in
   // renderHolidayEdit), so the inline sets / remove / add zone are suppressed.
-  const holiday = !!state.log[cell + ".holiday"];
-  const ed = holiday ? { ...state.holiday, day: d.day } : d;
+  const eff = holidaySwap(cell, d);
+  const holiday = eff !== d;
+  const ed = holiday ? { ...eff, day: d.day } : d; // keep the real day number for previousSets / the cell
   let body;
   if (ed.kind === "strength") body = renderStrength(ed, wk, cell, editing && !holiday);
   else if (ed.kind === "recovery") body = renderRecovery(ed, wk, cell);
@@ -638,12 +639,15 @@ function renderPickList(picker, catalogue, chosenIds, query, rowHtml, keep) {
 
 function populatePicker(picker, day, query) {
   // Only offer exercises whose type matches the day's kind, so a circuit can't
-  // be added to a strength day (or vice versa).
+  // be added to a strength day (or vice versa). The Holiday Workout is band-only
+  // (its skip relies on banded moves carrying no cross-day history — ADR-0002), so
+  // its picker is further narrowed to banded moves. (Create-new isn't constrained;
+  // see the ADR caveat — adding a non-banded move there is the user's own choice.)
   const type = kindType(dayDef(day).kind);
   renderPickList(picker, state.library, dayDef(day).exercises.map((p) => p.id), query, (ex) =>
     '<button class="pick" type="button" data-action="add-ex" data-day="' + day + '" data-ex="' + ex.id + '">' +
     esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>",
-    (ex) => ex.type === type);
+    (ex) => ex.type === type && (day !== "holiday" || ex.banded));
 }
 
 function populateMeasurePicker(picker, query) {
