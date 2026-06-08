@@ -3,18 +3,20 @@
  * The store reassignments (setState/setEditing) all funnel through state.js —
  * an importer can read `state`/`editing` but can't reassign the binding here. */
 
-import { DEFAULT_SETS, DEFAULT_BAND } from "./constants.js";
+import { DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
   placement, clampSets, clampRounds, circuitOf, kindType,
-  nonNegSec, slugify, uniqueId, today, bandKey, classesKey, parseDay,
+  nonNegSec, slugify, uniqueId, today, bandKey, classesKey, foodKey, parseDay,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, purgeBlockLog,
-  currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType,
+  currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
-  render, renderProgress, renderBmi, renderVolumes, renderNutritionTotals, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes,
+  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
 } from "./render.js";
+import { lookupBarcode, searchFoods } from "./off.js";
+import { scanBarcode } from "./scan.js";
 
 /* ---------------------------------------------------------------------- *
  * Events                                                                  *
@@ -101,7 +103,15 @@ export function handleClick(e) {
       save(); render(); break;
     }
     case "class-remove": removeClass(el.dataset.cell, Number(el.dataset.i)); break;
+    case "food-remove": removeFood(el.dataset.cell, Number(el.dataset.i)); break;
+    case "food-open": foodOpen(el); break;
+    case "food-close": foodClose(el); break;
+    case "food-find": foodFind(el); break;
+    case "food-scan": foodScan(el); break;
+    case "food-scan-cancel": foodScanCancel(); break;
+    case "food-pick": foodPick(el); break;
     case "toggle-day": toggleDay(el); break;
+    case "day-tab": dayTab(el); break;
     case "export": exportBackup(); break;
     case "reset": resetAll(); break;
   }
@@ -117,9 +127,24 @@ function toggleDay(el) {
   el.setAttribute("aria-expanded", String(!collapsed));
 }
 
+// Switch a day's Workout / Nutrition tab in place — a CSS class flip plus the persisted
+// .tab flag, no full render (both panels are already in the DOM, so it's instant and an
+// open finder survives). setLog deletes on "", so Workout = absent (the default).
+function dayTab(el) {
+  const dayEl = el.closest(".day");
+  const nutrition = el.dataset.tab === "nutrition";
+  dayEl.classList.toggle("tab-nutrition", nutrition);
+  setLog(dayEl.dataset.cell + ".tab", nutrition ? "nutrition" : "");
+  dayEl.querySelectorAll(".day-tab").forEach((b) => b.setAttribute("aria-selected", String(b === el)));
+}
+
 export function handleSubmit(e) {
   const classForm = e.target.closest(".class-form");
   if (classForm) { e.preventDefault(); return addClass(classForm); }
+  const foodForm = e.target.closest(".food-quick-form");
+  if (foodForm) { e.preventDefault(); return addQuickEntry(foodForm); }
+  const gramsForm = e.target.closest(".food-grams-form");
+  if (gramsForm) { e.preventDefault(); return addFoodEntry(gramsForm); }
   const form = e.target.closest(".picker-form");
   if (!form) return;
   e.preventDefault();
@@ -156,6 +181,173 @@ function removeClass(cell, i) {
   const list = logList(key).slice();
   list.splice(i, 1);
   setLog(key, list.length ? list : ""); // "" deletes the key once the last class goes
+  render();
+}
+
+// Log an ad-hoc quick entry on a day cell — un-barcoded food (loose fruit, meals out)
+// that carries its own kcal + macros, the snapshot exception to the pantry-reference
+// model (ADR-0004). A name is optional; at least one nutrient must be > 0 (an all-zero
+// entry would add a blank row and shift no total, so it's dropped). Food entries are an
+// array under one cell key, exactly like classes.
+function addQuickEntry(form) {
+  const cell = form.closest(".food").dataset.cell;
+  const fd = new FormData(form);
+  const entry = { name: String(fd.get("name") || "").trim() };
+  let any = false;
+  NUTRIENTS.forEach((n) => {
+    const v = parseFloat(fd.get(n.id));
+    entry[n.id] = v > 0 ? v : 0;
+    if (v > 0) any = true;
+  });
+  if (!any) return;
+  const key = foodKey(cell);
+  const list = logList(key);
+  list.push(entry);
+  setLog(key, list);
+  render();
+}
+
+function removeFood(cell, i) {
+  const key = foodKey(cell);
+  const list = logList(key).slice();
+  list.splice(i, 1);
+  setLog(key, list.length ? list : ""); // "" deletes the key once the last entry goes
+  render();
+}
+
+/* --- Food finder: search / barcode / pick foods from Open Food Facts into the Pantry,
+ * then log a portion. The finder is patched in place (no full render) so it stays open
+ * across a search; only confirming a portion renders. --- */
+// The most recent Find's hits, by barcode, so foodPick can cache the chosen one (its
+// fresh OFF data) into the Pantry. Cleared whenever the local Pantry view is shown.
+let foundFoods = {};
+
+// Hide a finder and restore its "＋ Add food" trigger — the close half, shared by the
+// Close button and the one-finder-at-a-time sweep in foodOpen.
+function closeFinder(finder) {
+  finder.hidden = true;
+  const btn = finder.parentNode.querySelector(".food-add-btn");
+  if (btn) btn.hidden = false;
+}
+
+// Reveal the finder, seeding its results with the whole Pantry — the offline quick-pick.
+function foodOpen(el) {
+  // One finder open at a time: stop any scan and close a finder left open on another day
+  // card first, so the module-global foundFoods only ever holds THIS finder's hits. A
+  // stale finder's OFF results are cleared here and were never cached to the Pantry, so
+  // without this a pick on one would silently no-op — this makes that invariant real.
+  if (activeScan) activeScan.cancel();
+  document.querySelectorAll(".food-finder:not([hidden])").forEach(closeFinder);
+  const finder = el.closest(".food-add").querySelector(".food-finder");
+  el.hidden = true;
+  finder.hidden = false;
+  foundFoods = {};
+  const input = finder.querySelector(".food-search");
+  input.value = "";
+  finder.querySelector(".food-results").innerHTML = foodResultsHTML(pantryList(""));
+  input.focus();
+}
+
+function foodClose(el) {
+  if (activeScan) activeScan.cancel(); // stop the camera if a scan is mid-flight
+  closeFinder(el.closest(".food-finder"));
+}
+
+// Typing filters the Pantry locally (instant, offline) and returns to that view, so a
+// stale Open Food Facts result list can't linger under a changed query.
+function foodSearch(el) {
+  foundFoods = {};
+  el.closest(".food-finder").querySelector(".food-results").innerHTML = foodResultsHTML(pantryList(el.value));
+}
+
+// Find on Open Food Facts from the typed query.
+async function foodFind(el) {
+  const finder = el.closest(".food-finder");
+  const q = finder.querySelector(".food-search").value.trim();
+  if (q) await runFinderQuery(finder, q);
+}
+
+// Run an Open Food Facts lookup for `q` and paint the results in place (no full render,
+// so the finder stays open across it). An all-digits query of ≥ 8 chars is a barcode
+// lookup, anything else a name search. A network failure (offline) falls back to the
+// Pantry / a quick entry. Shared by the Find button and a successful camera scan — a
+// scanned barcode is just an all-digits query routed through the same path.
+async function runFinderQuery(finder, q) {
+  const results = finder.querySelector(".food-results");
+  results.innerHTML = '<li class="food-result-empty muted small">Searching Open Food Facts…</li>';
+  const digits = q.replace(/\D/g, "");
+  try {
+    const foods = digits.length >= 8 && digits === q
+      ? [await lookupBarcode(digits)].filter(Boolean)
+      : await searchFoods(q);
+    foundFoods = {};
+    foods.forEach((f) => { foundFoods[f.barcode] = f; });
+    results.innerHTML = foods.length ? foodResultsHTML(foods)
+      : '<li class="food-result-empty muted small">No Open Food Facts match — add a quick entry instead.</li>';
+  } catch (err) {
+    results.innerHTML = '<li class="food-result-empty muted small">Can’t reach Open Food Facts (offline?) — pick from your foods or add a quick entry.</li>';
+  }
+}
+
+/* --- Camera scan (ADR-0003): scan.js owns the stream + BarcodeDetector loop; here we
+ * just reveal the preview and route a decoded barcode through the same lookup the Find
+ * button uses. The Scan button is feature-detected away off Chrome/Android (render.js),
+ * so this only runs where the API exists. --- */
+// The in-flight scan (one finder open at a time), so Cancel / closing the finder can
+// stop the camera.
+let activeScan = null;
+
+async function foodScan(el) {
+  const finder = el.closest(".food-finder");
+  const scanner = finder.querySelector(".food-scanner");
+  const results = finder.querySelector(".food-results");
+  scanner.hidden = false;
+  activeScan = scanBarcode(scanner.querySelector(".scan-video"));
+  try {
+    const barcode = await activeScan.done;
+    scanner.hidden = true;
+    finder.querySelector(".food-search").value = barcode; // show what was scanned
+    await runFinderQuery(finder, barcode);
+  } catch (err) {
+    scanner.hidden = true;
+    // A real failure (no camera / permission denied) gets a note; a user Cancel is silent.
+    if (!err || err.name !== "AbortError") {
+      results.innerHTML = '<li class="food-result-empty muted small">Couldn’t start the camera — check the permission, or type the barcode in.</li>';
+    }
+  } finally {
+    activeScan = null;
+  }
+}
+
+function foodScanCancel() { if (activeScan) activeScan.cancel(); }
+
+// Pick a found / pantry food: cache it into the Pantry (re-finding then picking refreshes
+// a cached one with the new OFF data — ADR-0004), then reveal its grams form to confirm
+// the portion. A plain Pantry pick reuses the cached record, no network.
+function foodPick(el) {
+  const barcode = el.dataset.barcode;
+  const food = foundFoods[barcode] || state.pantry[barcode];
+  if (!food) return;
+  state.pantry[barcode] = food;
+  save();
+  const form = el.closest(".food-result").querySelector(".food-grams-form");
+  el.closest(".food-finder").querySelectorAll(".food-grams-form").forEach((f) => { if (f !== form) f.hidden = true; });
+  form.hidden = false;
+  const g = form.querySelector('input[name="grams"]');
+  g.focus(); g.select();
+}
+
+// Confirm the portion: push a pantry entry { barcode, grams } onto the day, then render
+// (which closes the finder). The food is already in the Pantry from foodPick.
+function addFoodEntry(form) {
+  const cell = form.closest(".food").dataset.cell;
+  const barcode = form.dataset.barcode;
+  const grams = parseFloat(new FormData(form).get("grams"));
+  if (!state.pantry[barcode] || !(grams > 0)) return;
+  const key = foodKey(cell);
+  const list = logList(key);
+  list.push({ barcode, grams });
+  setLog(key, list);
   render();
 }
 
@@ -270,6 +462,7 @@ function classRateField(el) {
 }
 const fieldByName = {
   "picker-search": pickerSearch,
+  "food-search": foodSearch,
   "circuit-field": circuitField,
   "load-mode": loadModeField,
   // Band selects/toggles carry no data-k (logged out-of-band so hydrate can't
@@ -286,9 +479,8 @@ const fieldByName = {
 // shouldn't double as routing). The full render already emits correct totals; these
 // only re-patch in place so the edited input keeps focus mid-type.
 const refreshBy = {
-  volumes: renderVolumes,            // weight / reps / banded round-reps → day + week + block tonnage
-  bmi: renderBmi,                    // a measurement value → the BMI line
-  nutrition: renderNutritionTotals,  // a nutrition cell → the week/block totals + avg
+  volumes: renderVolumes,  // weight / reps / banded round-reps → day + week + block tonnage
+  bmi: renderBmi,          // a measurement value → the BMI line
 };
 
 export function handleField(e) {

@@ -5,15 +5,16 @@
 
 import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
-  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
+  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey,
   circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, parseDay, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, dayDef,
-  previousSets, dayLoad, holidaySwap, previousDayTotal, previousMeasure, bmiFor, nutritionTotals,
+  previousSets, dayLoad, holidaySwap, previousDayTotal, previousMeasure, bmiFor, nutritionTotals, dayNutrition, entryNutrition,
   classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
+import { scanSupported } from "./scan.js";
 
 export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderNutrition(); renderClassTotal(); }
 
@@ -97,9 +98,20 @@ function renderDay(block, d, wk, kg) {
     // .day-collapsible is a one-row grid (1fr ↔ 0fr) so the inner height animates
     // to the content's natural size; the inner clips during the slide.
     '<div class="day-collapsible"><div class="day-collapsible-inner">' +
-      '<div class="day-body">' + body + "</div>" +
-      (editing && ed.kind !== "rest" && !holiday ? renderAddZone(d) : "") +
-      renderClasses(cell, kg) +
+      // Per-day tabs: Workout (exercises/circuit + classes) ↔ Nutrition (food entries +
+      // derived totals). The active tab is the persisted .tab cell flag (absent =
+      // workout), reflected by hydrate; both panels render and CSS shows the active one,
+      // so switching is instant and an open finder survives a tab away-and-back.
+      '<div class="day-tabs" role="tablist">' +
+        '<button class="day-tab" type="button" role="tab" data-action="day-tab" data-tab="workout" aria-selected="true">Workout</button>' +
+        '<button class="day-tab" type="button" role="tab" data-action="day-tab" data-tab="nutrition" aria-selected="false">Nutrition</button>' +
+      "</div>" +
+      '<div class="day-panel day-panel-workout">' +
+        '<div class="day-body">' + body + "</div>" +
+        (editing && ed.kind !== "rest" && !holiday ? renderAddZone(d) : "") +
+        renderClasses(cell, kg) +
+      "</div>" +
+      '<div class="day-panel day-panel-nutrition">' + renderDayFood(cell) + "</div>" +
     "</div></div>" +
     "</div>";
 }
@@ -124,6 +136,10 @@ function daySummary(block, d, wk, cell) {
   }
   const mins = logList(classesKey(cell)).reduce((s, c) => s + (parseFloat(c.mins) || 0), 0);
   if (mins > 0) bits.push("Classes " + fmt(mins) + " min");
+  // Nutrition: once any food is logged, the day's derived kcal + full macro line — so a
+  // collapsed day still shows what it ate (CONTEXT.md "Collapsed day"). Rebuilt on every
+  // full render (food add/remove renders), so it needs no live-patch hook like volume.
+  if (logList(foodKey(cell)).length) bits.push(nutritionLine(dayNutrition(cell)));
   return bits.length ? '<div class="day-summary">' + bits.join(" · ") + "</div>" : "";
 }
 
@@ -552,71 +568,113 @@ export function renderBmi() {
   else { line.hidden = false; if (out) out.textContent = b.toFixed(1); }
 }
 
-// The Nutrition card: a 7-day grid of plain number inputs (calories + the three
-// macros) the user copies from their tracking app, with Week and Block total
-// rows and an avg kcal/day line. Values use data-k/log like the workout grid;
-// the totals live-patch (renderNutritionTotals) avoids a full render so an input
-// keeps focus mid-type, exactly like renderVolumes/renderBmi.
+// The Nutrition card: the week / block kcal + macro totals and an avg kcal/day line.
+// The per-day food breakdown moved into each day card's Nutrition tab (renderDayFood);
+// this card keeps only the roll-ups — the one place to read how the week is tracking.
 function renderNutrition() {
   const card = document.getElementById("nutrition-card");
   if (!card) return;
   const block = currentBlock();
   const wk = state.ui.week;
-
-  const head = '<div class="nut-row nut-head"><span class="nut-day"></span>' +
-    NUTRIENTS.map((n) => '<span class="nut-col-h">' + esc(n.head) + "<small>" + esc(n.unit) + "</small></span>").join("") +
-    "</div>";
-
-  const rows = block.days.map((d) => {
-    const cell = cellKey(block.id, wk, d.day);
-    return '<div class="nut-row">' +
-      '<span class="nut-day">Day ' + d.day + "</span>" +
-      NUTRIENTS.map((n) => {
-        const k = nutKey(cell, n.id);
-        const val = state.log[k] != null ? state.log[k] : "";
-        return '<input type="number" inputmode="decimal" min="0" class="nut-val" data-k="' + k + '" data-type="text" data-refresh="nutrition" aria-label="Day ' + d.day + " " + esc(n.label) + " (" + esc(n.unit) + ')" value="' + esc(val) + '">';
-      }).join("") +
-      "</div>";
-  }).join("");
-
-  const totalRow = (label, scope) =>
-    '<div class="nut-row nut-total">' +
-    '<span class="nut-day">' + label + "</span>" +
-    NUTRIENTS.map((n) => '<span class="nut-col" data-nut-total="' + scope + "-" + n.id + '"></span>').join("") +
-    "</div>";
-
+  const allWeeks = Array.from({ length: WEEKS }, (_, i) => i + 1);
+  const week = nutritionTotals(block, [wk]);
+  const all = nutritionTotals(block, allWeeks);
+  const perDay = (t) => (t.kcalDays ? fmt(t.kcal / t.kcalDays) + " kcal/day" : "—");
+  const totalLine = (label, t) =>
+    '<div class="nut-total-line"><span class="nut-total-label">' + label + "</span> " +
+    '<span data-nut-line="' + label.toLowerCase() + '">' + nutritionLine(t) + "</span></div>";
   card.innerHTML =
     "<h2>Nutrition</h2>" +
-    '<div class="nut-grid">' + head + rows + totalRow("Week", "week") + totalRow("Block", "block") + "</div>" +
-    '<p class="nut-avg muted small" id="nut-avg"></p>';
-  renderNutritionTotals();
+    '<p class="muted small">Log food per day on each day card’s <strong>Nutrition</strong> tab.</p>' +
+    '<div class="nut-totals">' + totalLine("Week", week) + totalLine("Block", all) + "</div>" +
+    '<p class="nut-avg muted small">Avg ' + perDay(week) + " this week · " + perDay(all) + " this block</p>";
 }
 
-// Live-patch the Nutrition card's Week/Block total cells + the avg kcal/day line
-// from the current log, leaving the inputs (and focus) untouched.
-export function renderNutritionTotals() {
-  const card = document.getElementById("nutrition-card");
-  if (!card) return;
-  const block = currentBlock();
-  const allWeeks = Array.from({ length: WEEKS }, (_, i) => i + 1);
-  const week = nutritionTotals(block, [state.ui.week]);
-  const all = nutritionTotals(block, allWeeks);
-  [["week", week], ["block", all]].forEach(([scope, t]) =>
-    NUTRIENTS.forEach((n) => {
-      const el = card.querySelector('[data-nut-total="' + scope + "-" + n.id + '"]');
-      if (el) el.textContent = fmt(t[n.id]);
-    })
-  );
-  const avg = document.getElementById("nut-avg");
-  if (avg) {
-    const perDay = (t) => (t.kcalDays ? fmt(t.kcal / t.kcalDays) + " kcal/day" : "—");
-    avg.textContent = "Avg " + perDay(week) + " this week · " + perDay(all) + " this block";
-  }
+// One day's food block — its list of entries, the derived day total, and the add finder
+// (search / barcode / scan / Pantry pick / quick entry). Lives in the day card's
+// Nutrition tab; the container carries data-cell so the food handlers resolve the cell.
+// A pantry entry shows its Food's name + grams; a quick entry shows its name.
+function renderDayFood(cell) {
+  const list = logList(foodKey(cell));
+  const items = list.map((e, i) => {
+    const n = entryNutrition(e);
+    const food = e.barcode ? state.pantry[e.barcode] : null;
+    const name = e.barcode ? ((food && food.name) || e.barcode) : (e.name || "Quick entry");
+    const detail = e.barcode ? ' <span class="food-detail">' + fmt(parseFloat(e.grams) || 0) + " g</span>" : "";
+    return '<li class="food-item"><span class="food-text">' +
+      '<span class="food-name">' + esc(name) + "</span>" + detail +
+      ' <span class="food-kcal">' + fmt(n.kcal) + " kcal</span></span>" +
+      '<button class="remove" type="button" data-action="food-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove food">×</button></li>';
+  }).join("");
+  const fields = NUTRIENTS.map((n) =>
+    '<input type="number" inputmode="decimal" min="0" name="' + n.id + '" placeholder="' + esc(n.head) + '" aria-label="' + esc(n.label) + " (" + esc(n.unit) + ')">'
+  ).join("");
+  return '<div class="food" data-cell="' + cell + '">' +
+    (list.length ? '<ul class="food-list">' + items + "</ul>" : "") +
+    (list.length ? '<div class="food-total">' + nutritionLine(dayNutrition(cell)) + "</div>" : "") +
+    '<div class="food-add">' +
+      '<button class="link food-add-btn" type="button" data-action="food-open">＋ Add food</button>' +
+      '<div class="food-finder" hidden>' +
+        '<div class="food-search-row">' +
+          '<input class="food-search" data-fh="food-search" placeholder="Search foods or barcode…" autocomplete="off" aria-label="Search foods or enter a barcode">' +
+          '<button type="button" data-action="food-find">Find</button>' +
+          // Camera scan is native-BarcodeDetector only (Chrome/Android) — the button is
+          // drawn solely where the API exists, so it's deliberately absent elsewhere
+          // (ADR-0003); the search / barcode-type / Pantry / quick-entry paths stand alone.
+          (scanSupported() ? '<button type="button" class="food-scan-btn" data-action="food-scan" aria-label="Scan a barcode with the camera">Scan</button>' : "") +
+        "</div>" +
+        '<ul class="food-results"></ul>' +
+        // Live camera preview, revealed by Scan: the <video> the scanner decodes against
+        // plus a Cancel. playsinline + muted so a phone autoplays it inline.
+        '<div class="food-scanner" hidden>' +
+          '<video class="scan-video" playsinline muted></video>' +
+          '<button type="button" class="link food-scan-cancel" data-action="food-scan-cancel">Cancel</button>' +
+        "</div>" +
+        '<div class="food-quick">' +
+          '<button type="button" class="link" data-action="form-open">Quick entry (no barcode)</button>' +
+          '<form class="food-quick-form" hidden>' +
+            '<input name="name" placeholder="Food (optional)" autocomplete="off">' +
+            fields +
+            '<div class="form-actions"><button type="submit">Add</button>' +
+            '<button type="button" class="link" data-action="form-cancel">Cancel</button></div>' +
+          "</form>" +
+        "</div>" +
+        '<button type="button" class="link food-close" data-action="food-close">Close</button>' +
+      "</div>" +
+    "</div></div>";
+}
+
+// The finder's result rows — a Pantry quick-pick list or Open Food Facts hits — each a
+// pick button (name + brand + kcal/100g) with a hidden grams form revealed on pick.
+// Exported so events.js patches the list in place (like the exercise picker's repopulate)
+// rather than via a full render, which would close the finder mid-flow.
+export function foodResultsHTML(foods) {
+  if (!foods.length) return '<li class="food-result-empty muted small">No matches — Find on Open Food Facts, or add a quick entry.</li>';
+  return foods.map((f) =>
+    '<li class="food-result" data-barcode="' + esc(f.barcode) + '">' +
+      '<button type="button" class="food-result-pick" data-action="food-pick" data-barcode="' + esc(f.barcode) + '">' +
+        '<span class="food-result-name">' + esc(f.name || f.barcode) + "</span>" +
+        '<span class="food-result-meta">' + (f.brand ? esc(f.brand) + " · " : "") + fmt(f.per100g.kcal) + " kcal/100g</span>" +
+      "</button>" +
+      '<form class="food-grams-form" hidden data-barcode="' + esc(f.barcode) + '">' +
+        '<input type="number" inputmode="decimal" min="0" name="grams" value="100" aria-label="Grams">' +
+        '<span class="food-grams-unit">g</span><button type="submit">Add</button>' +
+      "</form>" +
+    "</li>"
+  ).join("");
+}
+
+// Compact one-line nutrition figure shared by the day total and the Week / Block totals:
+// "1850 cal · 77c / 45f / 154p". Macros use their id initial (c/f/p); kcal leads. Reads
+// a { kcal, carb, fat, protein } object (dayNutrition / nutritionTotals).
+function nutritionLine(n) {
+  const macros = NUTRIENTS.filter((x) => x.id !== "kcal").map((x) => fmt(n[x.id]) + x.id[0]).join(" / ");
+  return fmt(n.kcal) + " cal" + (macros ? " · " + macros : "");
 }
 
 // Reflect the log onto the existing #week-view DOM without rebuilding it: every
-// data-k input, plus the per-cell day flags on each .day (completion styling and
-// collapse state + its caret — both are absent-or-set flags on the cell). Because
+// data-k input, plus the per-cell day flags on each .day (completion styling, collapse
+// state + its caret, and the active tab — all absent-or-set flags on the cell). Because
 // it patches in place, afterDone can re-sync through here and still animate the
 // collapse. Exported so afterDone reuses this one reflect path rather than
 // hand-mirroring it. Runs after each renderWeek too (a no-op vs the fresh markup).
@@ -633,6 +691,12 @@ export function hydrate() {
     dayEl.classList.toggle("is-collapsed", collapsed);
     const chevron = dayEl.querySelector(".day-collapse");
     if (chevron) chevron.setAttribute("aria-expanded", String(!collapsed));
+    // Active tab: another absent-or-set per-cell flag (absent = Workout). CSS shows the
+    // matching panel off this class; mirror the buttons' aria-selected for a11y.
+    const nutrition = state.log[cell + ".tab"] === "nutrition";
+    dayEl.classList.toggle("tab-nutrition", nutrition);
+    dayEl.querySelectorAll(".day-tab").forEach((b) =>
+      b.setAttribute("aria-selected", String((b.dataset.tab === "nutrition") === nutrition)));
   });
 }
 

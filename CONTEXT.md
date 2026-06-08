@@ -12,7 +12,8 @@ separate and deliberately not redefined here.
   or `rest`. The day's kind fixes which exercise **type** it accepts.
 - **Collapsed day** — a day folded down to just its header + focus + a one-line totals
   **day summary** (strength → volume; recovery → circuit total time, plus volume when
-  load-bearing; any day → class minutes), to cut mobile scroll. State is a persisted
+  load-bearing; any day → class minutes, and — once food is logged — kcal + the full
+  macro line `Nc / Nf / Np`), to cut mobile scroll. State is a persisted
   per-cell `.collapsed` flag (absent = expanded, like `.done`); completing a day sets it,
   the header chevron toggles it. The body slides via a grid-row transition — so `toggleDay`
   and `afterDone` flip the class in place rather than re-rendering (a rebuilt element
@@ -39,6 +40,28 @@ separate and deliberately not redefined here.
   kind / title / focus / exercises, and the band moves log against that same cell.
   `dayDef("holiday")` resolves the sentinel to `state.holiday` so the structural
   edit handlers reach it through the normal placement path.
+- **Food** — a product from Open Food Facts, identified by its **barcode** (OFF's
+  primary key, so two look-ups of the same product resolve to one Food). Carries a
+  name, optional brand, and per-100g nutrition — the same `kcal`/`carb`/`fat`/
+  `protein` the manual nutrition grid used.
+- **Pantry** — the `{ barcode → Food }` catalogue of every food looked up
+  (`state.pantry`). One structure doing two jobs: the **offline cache** (read when a
+  lookup can't reach the network) and the **quick-pick** list (the foods you eat
+  again and again). Populated from Open Food Facts when online. Append-only from the
+  UI, like the exercise **Library** and for the same reason: a logged day references
+  a Food by barcode, so removing one would orphan history. Deliberately *not* the
+  service-worker HTTP cache, which is versioned and wiped on every release.
+- **Food entry** — a food eaten on a day; the nutrition analogue of a **Placement**.
+  Two kinds share one per-day list: a *pantry entry* `{ barcode, grams }` that
+  references a **Food** in the **Pantry** (nutrition read live, so a later OFF
+  correction reaches the days that logged it), and an ad-hoc *quick entry*
+  (`{ name, kcal, carb, fat, protein }`) for food with no barcode — loose fruit,
+  meals out — that carries its own numbers. A day's kcal + macros are the **derived
+  sum** of its entries, replacing the four hand-typed scalars the grid used; a
+  pantry entry contributes `per100g × grams / 100`. Each day card **tabs** between
+  its Workout (exercises/circuit + classes) and its Nutrition (the food-entry list +
+  derived totals); the active tab is a per-cell `.tab` flag, kin to `.collapsed`,
+  switched independently per day.
 
 ## Store & log
 

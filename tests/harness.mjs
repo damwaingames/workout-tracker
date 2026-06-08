@@ -18,8 +18,20 @@ export async function verify(run) {
   const ck = (label, cond) => { checks.push(!!cond); console.log((cond ? "ok  " : "FAIL") + "  " + label); };
 
   const browser = await chromium.launch();
-  const page = await browser.newPage();
-  page.on("console", (m) => { if (m.type() === "error") errors.push("console.error: " + m.text()); });
+  // Block the service worker: it would otherwise intercept network requests (defeating
+  // page.route mocks) and serve stale cached assets across the reloads tests do. The app
+  // degrades cleanly without it (the SW is offline progressive-enhancement only).
+  const context = await browser.newContext({ serviceWorkers: "block" });
+  const page = await context.newPage();
+  // A test can declare expected console errors (e.g. the browser logs net::ERR_FAILED for
+  // a deliberately-failed request when simulating offline) so they don't fail the run.
+  const ignore = [];
+  const ignoreError = (substr) => ignore.push(substr);
+  page.on("console", (m) => {
+    if (m.type() !== "error") return;
+    const t = m.text();
+    if (!ignore.some((s) => t.includes(s))) errors.push("console.error: " + t);
+  });
   page.on("pageerror", (e) => errors.push("pageerror: " + e.message));
 
   const ls = () => page.evaluate((k) => JSON.parse(localStorage.getItem(k)), STORAGE_KEY);
@@ -31,7 +43,7 @@ export async function verify(run) {
   };
 
   try {
-    await run({ page, ck, ls, reset, url, key: STORAGE_KEY });
+    await run({ page, ck, ls, reset, url, key: STORAGE_KEY, ignoreError });
   } catch (e) {
     // A thrown assertion (e.g. a selector that vanished after a refactor) becomes
     // a normal FAIL with its stack captured, rather than an unhandled rejection.
