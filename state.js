@@ -66,6 +66,12 @@ function seedLibrary() {
     S("banded-tricep-kickbacks", "Banded Tricep Kickbacks", "Hinge forward stepping on one end of a mini-band. Hold the other end and extend your arm straight back.", "10–15 each arm", "per-side"),
     S("plank-dumbbell-pull-throughs", "Plank Dumbbell Pull-Throughs", "High plank. Reach under your torso with one hand to pull a dumbbell across to the other side.", "8–12"),
     S("banded-bicycle-crunches", "Banded Bicycle Crunches", "Band around feet arches. Lie on back, alternate bringing your elbow to the opposite knee against band resistance.", "10–15"),
+    // Holiday-day band moves — a minimal-kit strength session (the seedHoliday
+    // workout below places these). All banded; per-side ones double their reps.
+    S("banded-monster-walks", "Banded Monster Walks", "Heavy band around your ankles (and another above the knees). Drop to a half-squat and take controlled lateral steps.", "10–15 each way", "per-side"),
+    S("banded-glute-bridges", "Banded Glute Bridges", "Heavy band above your knees. Drive your hips up and push your knees outward against the band at the top.", "10–15"),
+    S("banded-push-ups", "Banded Push-Ups", "Light band around your forearms, hands wide enough to keep the band under tension. Lower your chest with control.", "8–12"),
+    S("banded-plank-leg-abductions", "Plank with Leg Abduction", "Medium band around your ankles. Hold a forearm plank and alternate tapping each foot out to the side.", "10–15 each side", "per-side"),
     C("high-knees", "High Knees"),
     C("wall-press-ups", "Wall Press-Ups"),
     C("glute-squeezes", "Glute Squeezes"),
@@ -90,7 +96,26 @@ function seedLibrary() {
   band("banded-tricep-kickbacks", "light");
   band("banded-lat-pulldowns", "light");
   band("banded-bicycle-crunches", "light");
+  band("banded-monster-walks", "heavy");
+  band("banded-glute-bridges", "heavy");
+  band("banded-push-ups", "light");
+  band("banded-plank-leg-abductions", "medium");
   return lib;
+}
+
+// The shared Holiday Workout: a single band-only strength day any day can swap in
+// (per-cell, via its 🏝 toggle). Day-shaped so the renderer / dayLoad treat it like
+// a normal strength day, but app-level (one definition reused across blocks) — its
+// band moves log against whichever cell ticks it in, leaving that day's own
+// exercises un-logged, so previousSets resumes normal progression after the break.
+function seedHoliday() {
+  return {
+    title: "Holiday Workout", focus: "Bands only — minimal kit", kind: "strength",
+    exercises: [
+      "banded-monster-walks", "banded-glute-bridges", "banded-push-ups",
+      "banded-clamshells", "banded-plank-leg-abductions",
+    ].map((id) => placement("strength", id, DEFAULT_SETS)),
+  };
 }
 
 // Body-measurement catalogue. Bodyweight is the only mass (kg); circumferences
@@ -143,6 +168,8 @@ export function defaultState() {
     measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
     // Editable list of class types ({ name, rate }) for the per-day class logger.
     classTypes: DEFAULT_CLASS_TYPES.map((c) => ({ ...c })),
+    // The shared band-only day any day can swap in via its 🏝 toggle.
+    holiday: seedHoliday(),
   };
 }
 
@@ -167,6 +194,18 @@ function normalise(s) {
   migrateSets(s);
   migrateCircuit(s);
   migrateLibrary(s);
+  // The Holiday Workout is additive (older v2 saves predate it) — backfill it, or
+  // any missing field on a partial one, from the seed. Runs after migrateLibrary so
+  // its band moves are guaranteed in the library. Per-cell `.holiday` flags live in
+  // the log and need no migration.
+  if (!s.holiday || typeof s.holiday !== "object") s.holiday = seedHoliday();
+  else {
+    const h = seedHoliday();
+    if (typeof s.holiday.kind !== "string") s.holiday.kind = h.kind;
+    if (typeof s.holiday.title !== "string") s.holiday.title = h.title;
+    if (typeof s.holiday.focus !== "string") s.holiday.focus = h.focus;
+    if (!Array.isArray(s.holiday.exercises)) s.holiday.exercises = h.exercises;
+  }
   if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (typeof s.notes !== "string") s.notes = "";
   return s;
@@ -241,10 +280,22 @@ function migrateLibrary(s) {
 function normaliseClassTypes(s) {
   const seedRate = Object.fromEntries(DEFAULT_CLASS_TYPES.map((c) => [c.name, c.rate]));
   if (!Array.isArray(s.classTypes)) { s.classTypes = DEFAULT_CLASS_TYPES.map((c) => ({ ...c })); return; }
-  s.classTypes = s.classTypes
+  const coerced = s.classTypes
     .map((c) => (typeof c === "string" ? { name: c } : c))
     .filter((c) => c && c.name)
     .map((c) => { const r = parseFloat(c.rate); return { name: c.name, rate: Number.isFinite(r) && r >= 0 ? r : (seedRate[c.name] || 0) }; });
+  // Collapse case-duplicate type names ("Box-Fit" / "Box-fit" / "box-fit") to a
+  // single entry — keeping the first spelling seen and the highest rate in the
+  // group — so a typed case variant can't fork a second type. addClass matches the
+  // same way and classRate reads case-insensitively, so older logged classes under
+  // a variant spelling still resolve to the kept rate.
+  const byLower = new Map();
+  coerced.forEach((c) => {
+    const prev = byLower.get(c.name.toLowerCase());
+    if (prev) prev.rate = Math.max(prev.rate, c.rate);
+    else byLower.set(c.name.toLowerCase(), c);
+  });
+  s.classTypes = Array.from(byLower.values());
 }
 
 export function load() {
@@ -259,7 +310,13 @@ export function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)
  * ---------------------------------------------------------------------- */
 export function currentBlock() { return state.blocks.find((b) => b.id === state.ui.block) || state.blocks[0]; }
 export function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
-export function dayDef(day) { return currentBlock().days.find((d) => d.day === day); }
+// A day by its number within the current block, or the shared Holiday Workout for
+// the "holiday" sentinel — so the structural edit handlers (sets / add / remove /
+// the picker) operate on state.holiday through the same path as a real day.
+export function dayDef(day) {
+  if (day === "holiday") return state.holiday;
+  return currentBlock().days.find((d) => d.day === day);
+}
 
 export function setLog(k, v) {
   if (v === "" || v === false || v == null) delete state.log[k];
@@ -344,10 +401,15 @@ function bandedReps(cell, d, p) {
 // doubles weight); banded moves contribute band kg × summed reps × the per-side
 // factor. Render reads both facts here instead of re-deriving the banded predicate.
 export function dayLoad(block, wk, d) {
-  if (d.kind === "rest") return { total: 0, loadBearing: false };
   const cell = cellKey(block.id, wk, d.day);
-  let total = 0, loadBearing = d.kind === "strength";
-  d.exercises.forEach((p) => {
+  // A day flagged "holiday" swaps in the shared Holiday Workout for its load: the
+  // band moves log against this same cell while the day's own exercises stay blank
+  // (which is what lets previousSets skip the holiday week). The cell coordinates
+  // stay the real day's; only the kind + exercise list come from the holiday day.
+  const eff = state.log[cell + ".holiday"] ? state.holiday : d;
+  if (eff.kind === "rest") return { total: 0, loadBearing: false };
+  let total = 0, loadBearing = eff.kind === "strength";
+  eff.exercises.forEach((p) => {
     const ex = state.library[p.id];
     if (!ex) return;
     if (ex.banded) {
@@ -355,8 +417,8 @@ export function dayLoad(block, wk, d) {
       // Band kg × reps; per-side still doubles the reps (the only loading-mode axis
       // that applies to a band — there's no second band for two-dumbbell's weight).
       const kg = bandKg(bandFor(ex, state.log[bandKey(cell, p.id)]));
-      if (kg > 0) total += kg * loadMode(ex).rMult * bandedReps(cell, d, p);
-    } else if (d.kind === "strength") {
+      if (kg > 0) total += kg * loadMode(ex).rMult * bandedReps(cell, eff, p);
+    } else if (eff.kind === "strength") {
       const m = loadMode(ex);
       readSets(block.id, wk, d.day, p.id, p.sets || DEFAULT_SETS).forEach((s) => {
         const w = parseFloat(s.w), r = parseFloat(s.r);
@@ -416,9 +478,12 @@ export function nutritionTotals(block, weeks) {
   return { ...sum, kcalDays };
 }
 
-// The rate (kcal/min/kg) for a class type, 0 if unknown.
+// The rate (kcal/min/kg) for a class type, 0 if unknown. Case-insensitive so a
+// class logged under a variant spelling still resolves to its type's rate (type
+// names are deduped case-insensitively in normaliseClassTypes).
 export function classRate(name) {
-  const t = state.classTypes.find((c) => c && c.name === name);
+  const lc = String(name).toLowerCase();
+  const t = state.classTypes.find((c) => c && c.name.toLowerCase() === lc);
   return t ? (parseFloat(t.rate) || 0) : 0;
 }
 

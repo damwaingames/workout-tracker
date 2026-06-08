@@ -122,4 +122,28 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await page.reload({ waitUntil: "load" });
   await page.waitForTimeout(120);
   ck("migration: default class types restored (datalist has Pilates)", !!(await page.$('#class-types option[value="Pilates"]')));
+
+  // ---- Case-insensitive types: a variant spelling reuses the canonical type ----
+  // Box-Fit is seeded; logging "box-fit" must NOT fork a second type, and the class
+  // is stored under the canonical spelling (so its rate still resolves).
+  await page.click('[data-action="week"][data-week="1"]');
+  await page.waitForTimeout(60);
+  await addClass(D1, "box-fit", "", 30);
+  const names = (await ls()).classTypes.map((c) => c.name);
+  ck("a case variant doesn't fork a new type", names.filter((n) => n.toLowerCase() === "box-fit").length === 1);
+  ck("class logged under the canonical spelling (Box-Fit)", (await classesLog(D1)).some((c) => c.type === "Box-Fit"));
+
+  // ---- Dedupe on load: existing case-duplicate types collapse to one (highest rate) ----
+  await page.evaluate((k) => {
+    const s = JSON.parse(localStorage.getItem(k));
+    s.classTypes = [{ name: "Box-Fit", rate: 0.08 }, { name: "Box-fit", rate: 0 }, { name: "box-fit", rate: 0 }];
+    localStorage.setItem(k, JSON.stringify(s));
+  }, key);
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(120);
+  await page.click('[data-action="week"][data-week="1"]'); // save() persists the deduped list
+  await page.waitForTimeout(60);
+  const deduped = (await ls()).classTypes.filter((c) => c.name.toLowerCase() === "box-fit");
+  ck("case-duplicate types collapse to a single entry", deduped.length === 1);
+  ck("dedupe keeps the highest rate in the group (0.08)", deduped[0] && deduped[0].rate === 0.08);
 });

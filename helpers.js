@@ -57,6 +57,11 @@ export function placement(type, id, sets) {
 // day-kind ↔ exercise-type rule, so the picker and the create form agree and a
 // mismatched placement can't be built.
 export function kindType(kind) { return kind === "strength" ? "strength" : "circuit"; }
+// A day reference from a data-day attribute: a number for a real day, or the
+// "holiday" sentinel for the shared Holiday Workout (which dayDef resolves to
+// state.holiday). Kept here so every parse site (clicks, submit, the picker)
+// coerces identically and Number("holiday")=NaN can't leak through.
+export const parseDay = (v) => (v === "holiday" ? "holiday" : Number(v));
 
 // The loading-mode record for an exercise (default standard). An absent/unknown
 // `ex.loadMode` resolves to the first LOAD_MODES entry. Pure — both the renderer

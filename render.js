@@ -6,7 +6,7 @@
 import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, nutKey, classesKey,
-  circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, esc, fmt,
+  circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, parseDay, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
@@ -50,6 +50,7 @@ function renderWeek() {
     // Shared autocomplete list of known class types — every add-class form's type
     // input references this by id, so adding a type makes it offered everywhere.
     '<datalist id="class-types">' + state.classTypes.map((t) => '<option value="' + esc(t.name) + '">').join("") + "</datalist>" +
+    (editing ? renderHolidayEdit() : "") +
     (editing ? renderClassTypesEdit() : "") +
     block.days.map((d) => renderDay(block, d, wk, kg)).join("");
   hydrate();
@@ -61,26 +62,42 @@ function renderDay(block, d, wk, kg) {
   // and toggleable by hand. The collapsed view shows only day-head + focus + the
   // totals summary; everything else lives in .day-collapsible, hidden by CSS.
   const collapsed = !!state.log[cell + ".collapsed"];
+  // Holiday: another per-cell flag that swaps the shared Holiday Workout in for
+  // this day. The day number stays; the kind / title / focus / exercises come
+  // from state.holiday. Its band moves log against this cell, so the day's own
+  // exercises stay un-logged and previousSets resumes against the last normal week.
+  // The holiday body is structurally read-only here (the template is edited once in
+  // renderHolidayEdit), so the inline sets / remove / add zone are suppressed.
+  const holiday = !!state.log[cell + ".holiday"];
+  const ed = holiday ? { ...state.holiday, day: d.day } : d;
   let body;
-  if (d.kind === "strength") body = renderStrength(d, wk, cell);
-  else if (d.kind === "recovery") body = renderRecovery(d, wk, cell);
+  if (ed.kind === "strength") body = renderStrength(ed, wk, cell, editing && !holiday);
+  else if (ed.kind === "recovery") body = renderRecovery(ed, wk, cell);
   else body = renderRest(cell);
 
-  return '<div class="day ' + d.kind + (collapsed ? " is-collapsed" : "") + '" data-cell="' + cell + '">' +
+  return '<div class="day ' + ed.kind + (collapsed ? " is-collapsed" : "") + (holiday ? " is-holiday" : "") + '" data-cell="' + cell + '">' +
     '<div class="day-head">' +
       '<div class="day-head-main">' +
         '<button class="day-collapse" type="button" data-action="toggle-day" aria-label="Collapse or expand this day" aria-expanded="' + (!collapsed) + '">▾</button>' +
-        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check"><span class="day-title">Day ' + d.day + ": " + esc(d.title) + "</span></label>" +
+        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check"><span class="day-title">Day ' + d.day + ": " + esc(ed.title) +
+          (holiday ? ' <span class="holiday-badge">🏝 Holiday</span>' : "") + "</span></label>" +
       "</div>" +
-      '<input type="date" class="day-date" data-k="' + cell + '.date" data-type="text" aria-label="Date trained">' +
+      '<div class="day-head-side">' +
+        // The 🏝 toggle is a logged per-cell flag (like .done), shown on every day so
+        // any day can be swapped to the band workout while you're away from your kit.
+        '<label class="holiday-toggle" title="Swap in your Holiday Workout (bands only) for this day">' +
+          '<input type="checkbox" data-k="' + cell + '.holiday" data-type="check" aria-label="Use the Holiday Workout for this day">' +
+          '<span aria-hidden="true">🏝</span></label>' +
+        '<input type="date" class="day-date" data-k="' + cell + '.date" data-type="text" aria-label="Date trained">' +
+      "</div>" +
     "</div>" +
-    '<div class="day-focus">' + esc(d.focus) + "</div>" +
-    daySummary(block, d, wk, cell) +
+    '<div class="day-focus">' + esc(ed.focus) + "</div>" +
+    daySummary(block, ed, wk, cell) +
     // .day-collapsible is a one-row grid (1fr ↔ 0fr) so the inner height animates
     // to the content's natural size; the inner clips during the slide.
     '<div class="day-collapsible"><div class="day-collapsible-inner">' +
       '<div class="day-body">' + body + "</div>" +
-      (editing && d.kind !== "rest" ? renderAddZone(d) : "") +
+      (editing && ed.kind !== "rest" && !holiday ? renderAddZone(d) : "") +
       renderClasses(cell, kg) +
     "</div></div>" +
     "</div>";
@@ -136,6 +153,37 @@ function renderClasses(cell, kg) {
         '<button type="button" class="link" data-action="form-cancel">Cancel</button></div>' +
       "</form>" +
     "</div></div>";
+}
+
+// Edit-mode editor for the shared Holiday Workout — the band-only day any day can
+// swap in via its 🏝 toggle. Structural only (no per-set logging): each move shows
+// its sets stepper + loading controls + remove, plus the add picker. Edits apply
+// everywhere it's ticked in, since it's one shared definition; the placement
+// handlers reach it through the data-day="holiday" sentinel (dayDef → state.holiday).
+function renderHolidayEdit() {
+  const hd = state.holiday;
+  const moves = hd.exercises.map((place) => {
+    const ex = state.library[place.id];
+    if (!ex) return "";
+    const sets = place.sets || DEFAULT_SETS;
+    return '<div class="exercise" data-ex="' + place.id + '">' +
+      '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
+      (ex.targetReps ? '<span class="ex-target">' + esc(ex.targetReps) + "</span>" : "") +
+      '<button class="remove" type="button" data-action="remove-exercise" data-day="holiday" data-ex="' + place.id + '" aria-label="Remove">×</button>' +
+      "</div>" +
+      '<div class="sets-edit">Sets ' +
+        '<button class="step" type="button" data-action="sets-dec" data-day="holiday" data-ex="' + place.id + '" aria-label="Fewer sets">−</button>' +
+        '<span class="sets-count">' + sets + "</span>" +
+        '<button class="step" type="button" data-action="sets-inc" data-day="holiday" data-ex="' + place.id + '" aria-label="More sets">＋</button>' +
+        loadingEdit(hd, ex) +
+      "</div></div>";
+  }).join("");
+  return '<div class="holiday-edit">' +
+    '<h2 class="holiday-edit-h">🏝 Holiday Workout</h2>' +
+    '<p class="muted small">A band-only day you can swap into any day with its 🏝 toggle — for when you’re away from your kit. It logs separately, so your normal progression picks up where it left off.</p>' +
+    '<div class="day-body">' + moves + "</div>" +
+    renderAddZone({ kind: hd.kind, day: "holiday" }) +
+    "</div>";
 }
 
 // Edit-mode editor for the class-type calorie rates (kcal/min/kg). One row per
@@ -206,7 +254,11 @@ function volumeLine(cell, v) {
   return '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(v) + " kg</strong></div>";
 }
 
-function renderStrength(d, wk, cell) {
+// `editStruct` gates the per-exercise structural edit chrome (sets stepper,
+// loading controls, remove). It's the global `editing` for a normal day, but
+// false for a holiday-substituted day — that day's structure is the shared
+// Holiday Workout, edited once in renderHolidayEdit, not per placed day.
+function renderStrength(d, wk, cell, editStruct) {
   const bi = currentBlockIndex();
   const body = d.exercises.map((place) => {
     const exId = place.id;
@@ -239,7 +291,7 @@ function renderStrength(d, wk, cell) {
       ? '<div class="last">Last: ' + prev.map((s) => (s.w ? esc(s.w) + " kg × " : "") + (s.r ? esc(s.r) : "–")).join(", ") + "</div>"
       : "";
     const bandRow = banded ? bandPicker(cell, exId, ex) : ""; // the per-session band selector
-    const setsEdit = editing
+    const setsEdit = editStruct
       ? '<div class="sets-edit">Sets <button class="step" type="button" data-action="sets-dec" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Fewer sets">−</button>' +
         '<span class="sets-count">' + sets + "</span>" +
         '<button class="step" type="button" data-action="sets-inc" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="More sets">＋</button>' +
@@ -251,7 +303,7 @@ function renderStrength(d, wk, cell) {
       '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
       (ex.targetReps ? '<span class="ex-target">' + esc(ex.targetReps) + "</span>" : "") +
       (ex.setup ? '<button class="info" type="button" data-action="toggle-setup" aria-label="How to do this">ⓘ</button>' : "") +
-      (editing ? '<button class="remove" type="button" data-action="remove-exercise" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
+      (editStruct ? '<button class="remove" type="button" data-action="remove-exercise" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
       "</div>" +
       (ex.setup ? '<div class="setup">' + esc(ex.setup) + "</div>" : "") +
       setsEdit +
@@ -606,5 +658,5 @@ export function repopulate(zone, query) {
   const picker = zone.querySelector(".picker");
   if (!picker) return;
   if (zone.dataset.picker === "measure") populateMeasurePicker(picker, query);
-  else populatePicker(picker, Number(zone.dataset.day), query);
+  else populatePicker(picker, parseDay(zone.dataset.day), query);
 }
