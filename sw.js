@@ -16,6 +16,7 @@ const ASSETS = [
   "./helpers.js",
   "./constants.js",
   "./off.js",
+  "./scan.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",

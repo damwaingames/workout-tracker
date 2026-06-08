@@ -476,6 +476,13 @@ textarea { width: 100%; resize: vertical; }
 .food-finder[hidden] { display: none; }
 .food-search-row { display: flex; gap: .4rem; }
 .food-search { flex: 1; min-width: 0; }
+.food-scan-btn { white-space: nowrap; }
+/* The camera preview (Chrome/Android — ADR-0003), revealed by Scan. */
+.food-scanner { display: flex; flex-direction: column; gap: .4rem; align-items: center; }
+/* display:flex above outweighs the UA [hidden]{display:none}; make hidden win, the
+ * same gotcha the .food-quick-form[hidden] rule guards against. */
+.food-scanner[hidden] { display: none; }
+.scan-video { width: 100%; max-width: 22rem; aspect-ratio: 4 / 3; background: #000; border-radius: 8px; object-fit: cover; }
 .food-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .3rem; max-height: 14rem; overflow-y: auto; }
 .food-result { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .5rem; }
 .food-result-pick { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; text-align: left; background: #fff; border: 1px solid var(--border); border-radius: 6px; padding: .35rem .5rem; font: inherit; cursor: pointer; }

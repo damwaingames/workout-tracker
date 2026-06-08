@@ -16,6 +16,7 @@ import {
   render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
 } from "./render.js";
 import { lookupBarcode, searchFoods } from "./off.js";
+import { scanBarcode } from "./scan.js";
 
 /* ---------------------------------------------------------------------- *
  * Events                                                                  *
@@ -106,6 +107,8 @@ export function handleClick(e) {
     case "food-open": foodOpen(el); break;
     case "food-close": foodClose(el); break;
     case "food-find": foodFind(el); break;
+    case "food-scan": foodScan(el); break;
+    case "food-scan-cancel": foodScanCancel(); break;
     case "food-pick": foodPick(el); break;
     case "toggle-day": toggleDay(el); break;
     case "export": exportBackup(); break;
@@ -220,6 +223,7 @@ function foodOpen(el) {
 }
 
 function foodClose(el) {
+  if (activeScan) activeScan.cancel(); // stop the camera if a scan is mid-flight
   const finder = el.closest(".food-finder");
   finder.hidden = true;
   const btn = finder.parentNode.querySelector(".food-add-btn");
@@ -233,12 +237,19 @@ function foodSearch(el) {
   el.closest(".food-finder").querySelector(".food-results").innerHTML = foodResultsHTML(pantryList(el.value));
 }
 
-// Find on Open Food Facts: an all-digits query is a barcode lookup, anything else a name
-// search. A network failure (offline) falls back to the Pantry / a quick entry.
+// Find on Open Food Facts from the typed query.
 async function foodFind(el) {
   const finder = el.closest(".food-finder");
   const q = finder.querySelector(".food-search").value.trim();
-  if (!q) return;
+  if (q) await runFinderQuery(finder, q);
+}
+
+// Run an Open Food Facts lookup for `q` and paint the results in place (no full render,
+// so the finder stays open across it). An all-digits query of ≥ 8 chars is a barcode
+// lookup, anything else a name search. A network failure (offline) falls back to the
+// Pantry / a quick entry. Shared by the Find button and a successful camera scan — a
+// scanned barcode is just an all-digits query routed through the same path.
+async function runFinderQuery(finder, q) {
   const results = finder.querySelector(".food-results");
   results.innerHTML = '<li class="food-result-empty muted small">Searching Open Food Facts…</li>';
   const digits = q.replace(/\D/g, "");
@@ -254,6 +265,38 @@ async function foodFind(el) {
     results.innerHTML = '<li class="food-result-empty muted small">Can’t reach Open Food Facts (offline?) — pick from your foods or add a quick entry.</li>';
   }
 }
+
+/* --- Camera scan (ADR-0003): scan.js owns the stream + BarcodeDetector loop; here we
+ * just reveal the preview and route a decoded barcode through the same lookup the Find
+ * button uses. The Scan button is feature-detected away off Chrome/Android (render.js),
+ * so this only runs where the API exists. --- */
+// The in-flight scan (one finder open at a time), so Cancel / closing the finder can
+// stop the camera.
+let activeScan = null;
+
+async function foodScan(el) {
+  const finder = el.closest(".food-finder");
+  const scanner = finder.querySelector(".food-scanner");
+  const results = finder.querySelector(".food-results");
+  scanner.hidden = false;
+  activeScan = scanBarcode(scanner.querySelector(".scan-video"));
+  try {
+    const barcode = await activeScan.done;
+    scanner.hidden = true;
+    finder.querySelector(".food-search").value = barcode; // show what was scanned
+    await runFinderQuery(finder, barcode);
+  } catch (err) {
+    scanner.hidden = true;
+    // A real failure (no camera / permission denied) gets a note; a user Cancel is silent.
+    if (!err || err.name !== "AbortError") {
+      results.innerHTML = '<li class="food-result-empty muted small">Couldn’t start the camera — check the permission, or type the barcode in.</li>';
+    }
+  } finally {
+    activeScan = null;
+  }
+}
+
+function foodScanCancel() { if (activeScan) activeScan.cancel(); }
 
 // Pick a found / pantry food: cache it into the Pantry (re-finding then picking refreshes
 // a cached one with the new OFF data — ADR-0004), then reveal its grams form to confirm

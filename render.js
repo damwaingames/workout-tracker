@@ -14,6 +14,7 @@ import {
   previousSets, dayLoad, holidaySwap, previousDayTotal, previousMeasure, bmiFor, nutritionTotals, dayNutrition, entryNutrition,
   classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
+import { scanSupported } from "./scan.js";
 
 export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderNutrition(); renderClassTotal(); }
 
@@ -606,8 +607,18 @@ function renderDayFood(cell, label) {
         '<div class="food-search-row">' +
           '<input class="food-search" data-fh="food-search" placeholder="Search foods or barcode…" autocomplete="off" aria-label="Search foods or enter a barcode">' +
           '<button type="button" data-action="food-find">Find</button>' +
+          // Camera scan is native-BarcodeDetector only (Chrome/Android) — the button is
+          // drawn solely where the API exists, so it's deliberately absent elsewhere
+          // (ADR-0003); the search / barcode-type / Pantry / quick-entry paths stand alone.
+          (scanSupported() ? '<button type="button" class="food-scan-btn" data-action="food-scan" aria-label="Scan a barcode with the camera">Scan</button>' : "") +
         "</div>" +
         '<ul class="food-results"></ul>' +
+        // Live camera preview, revealed by Scan: the <video> the scanner decodes against
+        // plus a Cancel. playsinline + muted so a phone autoplays it inline.
+        '<div class="food-scanner" hidden>' +
+          '<video class="scan-video" playsinline muted></video>' +
+          '<button type="button" class="link food-scan-cancel" data-action="food-scan-cancel">Cancel</button>' +
+        "</div>" +
         '<div class="food-quick">' +
           '<button type="button" class="link" data-action="form-open">Quick entry (no barcode)</button>' +
           '<form class="food-quick-form" hidden>' +
