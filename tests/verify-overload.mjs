@@ -54,11 +54,20 @@ verify(async ({ page, ck, ls, reset }) => {
   await page.click(`${day(G2)} .day-collapse`); // expand again
   await page.waitForTimeout(80);
 
-  // ---- Like-for-like only: a holiday week isn't compared against a normal week ----
+  // ---- A holiday day itself shows no delta (holiday weeks aren't a tracking surface) ----
   await page.click(`${day(G2)} input[data-k="${G2}.holiday"]`);
   await page.waitForTimeout(80);
   await page.fill(`[data-k="${G2}.ex.banded-monster-walks.s0.r"]`, "10"); // gives the holiday day some volume
   await page.waitForTimeout(60);
   ck("holiday day carries volume", /kg/.test(await page.textContent(`${day(G2)} .day-volume`)));
-  ck("holiday week vs normal week shows no delta (not like-for-like)", (await bodyDelta(G2)).trim() === "");
+  ck("a holiday day shows no delta", (await bodyDelta(G2)).trim() === "");
+
+  // ---- A normal week skips an intervening holiday week, comparing to the last
+  // normal session: week 1 (500, normal) · week 2 (holiday) · week 3 (normal). ----
+  await page.click('[data-action="week"][data-week="3"]');
+  await page.waitForTimeout(60);
+  await setW("b1.w3.d1", "goblet-squats", 0, "70"); // 700 vs week 1's 500 (week 2 holiday, skipped)
+  await setR("b1.w3.d1", "goblet-squats", 0, "10");
+  await page.waitForTimeout(60);
+  ck("week 3 skips the holiday week 2 and compares to week 1 (+200 kg)", (await bodyDelta("b1.w3.d1")).includes("+200 kg"));
 });

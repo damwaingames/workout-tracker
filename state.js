@@ -432,24 +432,31 @@ export function dayLoad(block, wk, d) {
   return { total, loadBearing };
 }
 
-// The same day's load one week earlier — wk-1 in this block, or the previous block's
-// last week at a week-1 boundary — for the progressive-overload delta on the day's
-// volume line. Only a like-for-like comparison: null when the earlier same-day cell's
-// holiday state differs from this one's (a band-only holiday day vs a free-weight day
-// isn't a meaningful delta), or when there's no earlier same-day cell at all.
+// The load of the most recent *normal* (non-holiday) session of this day number,
+// earlier than the cursor — for the progressive-overload delta on the day's volume
+// line. Scans back across weeks and block boundaries (rank like previousSets, but per
+// day number), skipping holiday weeks and any week the day carried no load, so the
+// delta always compares against the last time the real workout was actually done:
+// week-1-normal · week-2-holiday · week-3-normal → week 3 compares to week 1. Null on
+// a holiday day itself (holiday weeks aren't a tracking surface) or when none earlier.
 export function previousDayTotal(block, wk, d) {
-  const curHoliday = !!state.log[cellKey(block.id, wk, d.day) + ".holiday"];
-  let pBlock, pWk;
-  if (wk > 1) { pBlock = block; pWk = wk - 1; }
-  else {
-    const bi = state.blocks.findIndex((b) => b.id === block.id);
-    if (bi <= 0) return null;
-    pBlock = state.blocks[bi - 1]; pWk = WEEKS;
-  }
-  const pd = pBlock.days.find((x) => x.day === d.day);
-  if (!pd) return null;
-  if (!!state.log[cellKey(pBlock.id, pWk, pd.day) + ".holiday"] !== curHoliday) return null;
-  return dayLoad(pBlock, pWk, pd).total;
+  if (state.log[cellKey(block.id, wk, d.day) + ".holiday"]) return null;
+  const curBi = Math.max(0, state.blocks.findIndex((b) => b.id === block.id));
+  const rank = (bi, w) => bi * (WEEKS + 1) + w;
+  const cutoff = rank(curBi, wk);
+  let best = null;
+  state.blocks.forEach((b, bi) => {
+    const pd = b.days.find((x) => x.day === d.day);
+    if (!pd) return;
+    for (let w = 1; w <= WEEKS; w++) {
+      const order = rank(bi, w);
+      if (order >= cutoff) continue;
+      if (state.log[cellKey(b.id, w, pd.day) + ".holiday"]) continue; // skip holiday weeks
+      const total = dayLoad(b, w, pd).total;
+      if (total > 0 && (!best || order > best.order)) best = { order, total };
+    }
+  });
+  return best ? best.total : null;
 }
 
 // Most recent earlier value of a measurement, scanning (block, week) like

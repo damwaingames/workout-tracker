@@ -76,9 +76,11 @@ separate and deliberately not redefined here.
   normal exercises, so the scan reads the normal exercise as empty there and resumes
   against the last non-holiday week. The scan has no holiday-specific code — see ADR-0002.
 - **Day-volume delta** (`previousDayTotal`) — the progressive-overload change for a day
-  vs the **same day one week earlier** (wk-1 in the block, or the prior block's last
-  week at a week-1 boundary), shown on the day-volume line as a signed `+N kg` / `−N kg`
-  chip (green up / amber down). Like-for-like only: returns null when the earlier cell's
-  holiday state differs (a band-only day isn't compared against a free-weight one), so a
-  misleading cross-workout delta never shows. `renderVolumes` patches it live, in both
-  the body line and the collapsed summary (shared `data-vol-delta`).
+  vs the **most recent *normal* (non-holiday) session of that day number** — scanning
+  back across weeks and block boundaries (rank like `previousSets`, per day number) for
+  the latest earlier same-day that carried load, **skipping holiday weeks** and unlogged
+  weeks. So `normal · holiday · normal` compares the third week to the first, not the
+  holiday one in between. Null on a holiday day itself (holiday weeks aren't a tracking
+  surface) or when there's no earlier normal session. Shown on the day-volume line as a
+  signed `+N kg` / `−N kg` chip (green up / amber down); `renderVolumes` patches it live
+  in both the body line and the collapsed summary (shared `data-vol-delta`).
