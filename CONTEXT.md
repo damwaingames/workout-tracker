@@ -72,7 +72,9 @@ separate and deliberately not redefined here.
 - **Cell** — a `block/week/day` coordinate (`cellKey`); the prefix every day-scoped log
   key is hung off. The `block.id` prefix is load-bearing: `purgeBlockLog(blockId)` deletes
   a block's whole log in one prefix sweep (the rule, made executable). `logList(k)` owns
-  the one structured shape a key can hold (a class list under a cell). Scalar reads stay
+  the one structured shape a key can hold (a list under a cell) and `logPush`/`logRemoveAt`
+  are its only mutators (append / remove-at, deleting the key once its last item goes), so
+  that empty-delete invariant lives in one place rather than at each call site. Scalar reads stay
   at the call site — they hide no invariant, so wrapping them would only add shallow seams.
 
 ## Conventions
@@ -80,7 +82,8 @@ separate and deliberately not redefined here.
 - **Dispatch by `data-*` tag → map.** Every event routes through a lookup map keyed by a
   data attribute, never a class scan: `data-action` (clicks → `handleClick`), `data-fh`
   (special field handlers → `fieldByName`), `data-refresh` (which running total a logged
-  field re-patches live → `refreshBy`). CSS classes are for styling and test selection
+  field re-patches live → `refreshBy`), `data-after` (which post-toggle effect a stateful
+  checkbox runs → `afterCheck`). CSS classes are for styling and test selection
   only — they don't route behaviour.
 
 ## Queries
