@@ -9,7 +9,7 @@ import {
   nonNegSec, slugify, uniqueId, today, bandKey, classesKey, foodKey, parseDay,
 } from "./helpers.js";
 import {
-  state, editing, setState, setEditing, save, setLog, logList, purgeBlockLog,
+  state, editing, setState, setEditing, save, setLog, logPush, logRemoveAt, purgeBlockLog,
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
@@ -169,18 +169,12 @@ function addClass(form) {
   const known = findClassType(type);
   const canonical = known ? known.name : type;
   if (!known) state.classTypes.push({ name: canonical, rate: 0 });
-  const key = classesKey(cell);
-  const list = logList(key);
-  list.push({ type: canonical, desc, mins });
-  setLog(key, list);
+  logPush(classesKey(cell), { type: canonical, desc, mins });
   render();
 }
 
 function removeClass(cell, i) {
-  const key = classesKey(cell);
-  const list = logList(key).slice();
-  list.splice(i, 1);
-  setLog(key, list.length ? list : ""); // "" deletes the key once the last class goes
+  logRemoveAt(classesKey(cell), i);
   render();
 }
 
@@ -200,18 +194,12 @@ function addQuickEntry(form) {
     if (v > 0) any = true;
   });
   if (!any) return;
-  const key = foodKey(cell);
-  const list = logList(key);
-  list.push(entry);
-  setLog(key, list);
+  logPush(foodKey(cell), entry);
   render();
 }
 
 function removeFood(cell, i) {
-  const key = foodKey(cell);
-  const list = logList(key).slice();
-  list.splice(i, 1);
-  setLog(key, list.length ? list : ""); // "" deletes the key once the last entry goes
+  logRemoveAt(foodKey(cell), i);
   render();
 }
 
@@ -344,10 +332,7 @@ function addFoodEntry(form) {
   const barcode = form.dataset.barcode;
   const grams = parseFloat(new FormData(form).get("grams"));
   if (!state.pantry[barcode] || !(grams > 0)) return;
-  const key = foodKey(cell);
-  const list = logList(key);
-  list.push({ barcode, grams });
-  setLog(key, list);
+  logPush(foodKey(cell), { barcode, grams });
   render();
 }
 
@@ -483,6 +468,17 @@ const refreshBy = {
   bmi: renderBmi,          // a measurement value → the BMI line
 };
 
+// What a stateful checkbox runs after it logs, keyed by its data-after tag — the same
+// data-*→map dispatch as refreshBy / fieldByName, rather than the handler sniffing the
+// log-key suffix (behaviour routes off a tag, never a string — the CONTEXT.md rule). A
+// plain checkbox (a circuit round tick) carries no data-after and just logs.
+//   done    — stamp the date, auto-collapse, re-sync the flags + progress.
+//   holiday — swap the whole day body in/out (a full render).
+const afterCheck = {
+  done: afterDone,
+  holiday: render,
+};
+
 export function handleField(e) {
   const el = e.target;
   if (el.id && Object.prototype.hasOwnProperty.call(fieldById, el.id)) return fieldById[el.id](el);
@@ -493,9 +489,8 @@ export function handleField(e) {
   if (!k) return;
   if (el.dataset.type === "check") {
     setLog(k, el.checked);
-    if (k.slice(-5) === ".done") afterDone(el, k);
-    // Toggling the holiday flag swaps the whole day body in/out, so re-render.
-    else if (k.slice(-8) === ".holiday") render();
+    const a = el.dataset.after; // which post-toggle effect this checkbox declares (if any)
+    if (a && Object.prototype.hasOwnProperty.call(afterCheck, a)) afterCheck[a](el, k);
   } else {
     setLog(k, el.value);
     const r = el.dataset.refresh; // which running total this field feeds (if any)

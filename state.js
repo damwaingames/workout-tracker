@@ -9,7 +9,7 @@
  * for the importer). Property mutation (state.log[k] = …) works from anywhere. */
 
 import {
-  WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES,
+  WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
 import {
   today, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey, foodKey,
@@ -265,9 +265,8 @@ function migrateCircuit(s) {
 // zeros). Idempotent — once a day's scalars are gone it's a no-op — and additive,
 // so old backups migrate on import. Scans every cell, like nutritionTotals.
 function migrateNutrition(s) {
-  const weeks = Array.from({ length: WEEKS }, (_, i) => i + 1);
   s.blocks.forEach((b) => {
-    weeks.forEach((wk) => {
+    ALL_WEEKS.forEach((wk) => {
       (b.days || []).forEach((d) => {
         const cell = cellKey(b.id, wk, d.day);
         const vals = {};
@@ -367,6 +366,12 @@ export function setLog(k, v) {
 // readers, not at each call site. logList owns the one structured shape — a class
 // list stored under a cell — returning the stored array or an empty one.
 export function logList(k) { return Array.isArray(state.log[k]) ? state.log[k] : []; }
+// The two mutators of that shape, paired with logList so the "a key holds a list, and
+// it's deleted when its last item goes" rule lives beside the reader rather than
+// copy-pasted at each call site. logPush appends; logRemoveAt drops index i off a copy
+// (so the stored array isn't touched before setLog decides whether to keep or delete it).
+export function logPush(k, item) { const l = logList(k); l.push(item); setLog(k, l); }
+export function logRemoveAt(k, i) { const l = logList(k).slice(); l.splice(i, 1); setLog(k, l.length ? l : ""); }
 
 // Purge every log key belonging to a block. The cell-key grammar guarantees every
 // day / measure / food / class / band key is hung off a `block.id`-prefixed
