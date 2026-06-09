@@ -1,6 +1,10 @@
 /* Shared constants — imported by every other module. No dependencies of its own. */
 
 export const WEEKS = 4;
+// 1..WEEKS as a list, for the all-weeks scans (block totals, the nutrition migration) —
+// named once so the `Array.from(…, i + 1)` incantation isn't rebuilt at each call site.
+// Read-only by every consumer (forEach / map), so a single shared array is safe.
+export const ALL_WEEKS = Array.from({ length: WEEKS }, (_, i) => i + 1);
 export const STORAGE_KEY = "workout-tracker-v2";
 export const MIN_SETS = 1, MAX_SETS = 6, DEFAULT_SETS = 2;
 export const MIN_ROUNDS = 1, MAX_ROUNDS = 6;
@@ -66,4 +70,4 @@ export const DEFAULT_CLASS_TYPES = [
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "1.11.0";
+export const APP_VERSION = "1.11.1";

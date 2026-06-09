@@ -3,7 +3,7 @@
  * entry points (render + the focus-preserving live patchers) are what events.js
  * calls after a mutation. */
 
-import { WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
+import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey,
   circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, parseDay, esc, fmt,
@@ -81,14 +81,14 @@ function renderDay(block, d, wk, kg) {
     '<div class="day-head">' +
       '<div class="day-head-main">' +
         '<button class="day-collapse" type="button" data-action="toggle-day" aria-label="Collapse or expand this day" aria-expanded="' + (!collapsed) + '">▾</button>' +
-        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check"><span class="day-title">Day ' + d.day + ": " + esc(ed.title) +
+        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check" data-after="done"><span class="day-title">Day ' + d.day + ": " + esc(ed.title) +
           (holiday ? ' <span class="holiday-badge">🏝 Holiday</span>' : "") + "</span></label>" +
       "</div>" +
       '<div class="day-head-side">' +
         // The 🏝 toggle is a logged per-cell flag (like .done), shown on every day so
         // any day can be swapped to the band workout while you're away from your kit.
         '<label class="holiday-toggle" title="Swap in your Holiday Workout (bands only) for this day">' +
-          '<input type="checkbox" data-k="' + cell + '.holiday" data-type="check" aria-label="Use the Holiday Workout for this day">' +
+          '<input type="checkbox" data-k="' + cell + '.holiday" data-type="check" data-after="holiday" aria-label="Use the Holiday Workout for this day">' +
           '<span aria-hidden="true">🏝</span></label>' +
         '<input type="date" class="day-date" data-k="' + cell + '.date" data-type="text" aria-label="Date trained">' +
       "</div>" +
@@ -223,7 +223,7 @@ export function renderClassTotal() {
   if (!el) return;
   const b = currentBlock();
   const week = classTotals(b, [state.ui.week]);
-  const block = classTotals(b, Array.from({ length: WEEKS }, (_, i) => i + 1));
+  const block = classTotals(b, ALL_WEEKS);
   const part = (t) => "<strong>" + fmt(t.mins) + " min</strong>" + (t.kcal > 0 ? " · <strong>~" + fmt(t.kcal) + " kcal</strong>" : "");
   el.innerHTML = (week.mins || block.mins)
     ? "Classes · " + part(week) + " this week · " + part(block) + " this block"
@@ -576,9 +576,8 @@ function renderNutrition() {
   if (!card) return;
   const block = currentBlock();
   const wk = state.ui.week;
-  const allWeeks = Array.from({ length: WEEKS }, (_, i) => i + 1);
   const week = nutritionTotals(block, [wk]);
-  const all = nutritionTotals(block, allWeeks);
+  const all = nutritionTotals(block, ALL_WEEKS);
   const perDay = (t) => (t.kcalDays ? fmt(t.kcal / t.kcalDays) + " kcal/day" : "—");
   const totalLine = (label, t) =>
     '<div class="nut-total-line"><span class="nut-total-label">' + label + "</span> " +
