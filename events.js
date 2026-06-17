@@ -9,7 +9,7 @@ import {
   nonNegSec, slugify, uniqueId, today, bandKey, classesKey, foodKey, parseDay,
 } from "./helpers.js";
 import {
-  state, editing, setState, setEditing, save, setLog, logPush, logRemoveAt, purgeBlockLog,
+  state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
   currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
@@ -110,6 +110,11 @@ export function handleClick(e) {
     case "food-scan": foodScan(el); break;
     case "food-scan-cancel": foodScanCancel(); break;
     case "food-pick": foodPick(el); break;
+    case "food-add-local": foodAddLocal(el); break;
+    case "food-edit": foodEdit(el); break;
+    case "food-grams-edit": revealRowEdit(el, ".food-grams-edit-form"); break;
+    case "food-quick-edit": revealRowEdit(el, ".food-quick-edit-form"); break;
+    case "food-edit-cancel": { const f = el.closest("form"); f.hidden = true; f.reset(); break; }
     case "toggle-day": toggleDay(el); break;
     case "day-tab": dayTab(el); break;
     case "export": exportBackup(); break;
@@ -145,6 +150,12 @@ export function handleSubmit(e) {
   if (foodForm) { e.preventDefault(); return addQuickEntry(foodForm); }
   const gramsForm = e.target.closest(".food-grams-form");
   if (gramsForm) { e.preventDefault(); return addFoodEntry(gramsForm); }
+  const gramsEditForm = e.target.closest(".food-grams-edit-form");
+  if (gramsEditForm) { e.preventDefault(); return saveGramsEdit(gramsEditForm); }
+  const quickEditForm = e.target.closest(".food-quick-edit-form");
+  if (quickEditForm) { e.preventDefault(); return saveQuickEdit(quickEditForm); }
+  const detailForm = e.target.closest(".food-detail-form");
+  if (detailForm) { e.preventDefault(); return saveFoodDetail(detailForm); }
   const form = e.target.closest(".picker-form");
   if (!form) return;
   e.preventDefault();
@@ -178,28 +189,71 @@ function removeClass(cell, i) {
   render();
 }
 
-// Log an ad-hoc quick entry on a day cell — un-barcoded food (loose fruit, meals out)
-// that carries its own kcal + macros, the snapshot exception to the pantry-reference
-// model (ADR-0004). A name is optional; at least one nutrient must be > 0 (an all-zero
-// entry would add a blank row and shift no total, so it's dropped). Food entries are an
-// array under one cell key, exactly like classes.
-function addQuickEntry(form) {
-  const cell = form.closest(".food").dataset.cell;
+// Read the NUTRIENTS fields off a form as { values, any } — `any` flags whether any nutrient
+// is > 0, so callers can reject an all-zero set ("a blank set adds nothing", in one place).
+// Shared by the quick-entry forms and the Food-details form.
+function readNutrients(fd) {
+  const values = {}; let any = false;
+  NUTRIENTS.forEach((n) => { const v = parseFloat(fd.get(n.id)); values[n.id] = v > 0 ? v : 0; if (v > 0) any = true; });
+  return { values, any };
+}
+
+// Read a quick entry { name, kcal, carb, fat, protein } from a form, or null when every
+// nutrient is zero (a blank row would add nothing and shift no total). A name is optional.
+// Shared by the add form and the in-place edit form, so they can't drift apart.
+function readQuickEntry(form) {
   const fd = new FormData(form);
-  const entry = { name: String(fd.get("name") || "").trim() };
-  let any = false;
-  NUTRIENTS.forEach((n) => {
-    const v = parseFloat(fd.get(n.id));
-    entry[n.id] = v > 0 ? v : 0;
-    if (v > 0) any = true;
-  });
-  if (!any) return;
-  logPush(foodKey(cell), entry);
+  const { values, any } = readNutrients(fd);
+  return any ? { name: String(fd.get("name") || "").trim(), ...values } : null;
+}
+
+// Log an ad-hoc quick entry on a day cell — un-barcoded food (loose fruit, meals out) that
+// carries its own kcal + macros, the snapshot exception to the pantry-reference model
+// (ADR-0004). Food entries are an array under one cell key, exactly like classes.
+function addQuickEntry(form) {
+  const entry = readQuickEntry(form);
+  if (!entry) return;
+  logPush(foodKey(form.closest(".food").dataset.cell), entry);
   render();
 }
 
 function removeFood(cell, i) {
   logRemoveAt(foodKey(cell), i);
+  render();
+}
+
+// Reveal a hidden form and focus/select its first input. Shared by the row editors, the
+// Food-details author tail, and foodPick's grams reveal.
+function reveal(form) {
+  form.hidden = false;
+  const first = form.querySelector("input");
+  if (first) { first.focus(); first.select(); }
+}
+
+// Reveal a logged row's in-place edit form (grams for a pantry row, name + nutrients for a
+// quick row). Shared by both row editors.
+function revealRowEdit(el, cls) {
+  reveal(el.closest(".food-item").querySelector(cls));
+}
+
+// Save an in-place grams edit: replace the entry at its index, preserving the barcode
+// (read from the stored entry, not the DOM). Re-renders so the row + day total re-derive.
+function saveGramsEdit(form) {
+  const cell = form.dataset.cell;
+  const i = Number(form.dataset.i);
+  const grams = parseFloat(new FormData(form).get("grams"));
+  const entry = logList(foodKey(cell))[i];
+  if (!entry || !entry.barcode || !(grams > 0)) return;
+  logReplaceAt(foodKey(cell), i, { barcode: entry.barcode, grams });
+  render();
+}
+
+// Save an in-place quick-entry edit: same shape + all-zero guard as the add form (shared
+// readQuickEntry), but replacing the entry at its index rather than appending.
+function saveQuickEdit(form) {
+  const entry = readQuickEntry(form);
+  if (!entry) return;
+  logReplaceAt(foodKey(form.dataset.cell), Number(form.dataset.i), entry);
   render();
 }
 
@@ -209,6 +263,17 @@ function removeFood(cell, i) {
 // The most recent Find's hits, by barcode, so foodPick can cache the chosen one (its
 // fresh OFF data) into the Pantry. Cleared whenever the local Pantry view is shown.
 let foundFoods = {};
+
+// Is a barcode a *trusted* Pantry record — numbers hand-vouched, not OFF's (ADR-0004
+// amendment)? The single predicate, read by the re-lookup short-circuit and freshestFood.
+const isTrusted = (barcode) => !!(state.pantry[barcode] && state.pantry[barcode].trusted);
+
+// The record to use for a barcode, with the trusted-vs-OFF precedence in one place: a trusted
+// Pantry record wins over any OFF hit (ADR-0004 amendment), else the just-found OFF data, else
+// whatever's cached. Used by foodPick (what to log) and foodEdit (what to prefill).
+function freshestFood(barcode) {
+  return isTrusted(barcode) ? state.pantry[barcode] : (foundFoods[barcode] || state.pantry[barcode]);
+}
 
 // Hide a finder and restore its "＋ Add food" trigger — the close half, shared by the
 // Close button and the one-finder-at-a-time sweep in foodOpen.
@@ -262,15 +327,26 @@ async function foodFind(el) {
 // scanned barcode is just an all-digits query routed through the same path.
 async function runFinderQuery(finder, q) {
   const results = finder.querySelector(".food-results");
-  results.innerHTML = '<li class="food-result-empty muted small">Searching Open Food Facts…</li>';
   const digits = q.replace(/\D/g, "");
+  const isBarcode = digits.length >= 8 && digits === q;
+  // A trusted barcode resolves from the Pantry — OFF is never consulted, so a hand-vouched
+  // record can't be clobbered by a re-lookup, and it works offline (ADR-0004 amendment).
+  if (isBarcode && isTrusted(digits)) {
+    foundFoods = {};
+    results.innerHTML = foodResultsHTML([state.pantry[digits]]);
+    return;
+  }
+  results.innerHTML = '<li class="food-result-empty muted small">Searching Open Food Facts…</li>';
   try {
-    const foods = digits.length >= 8 && digits === q
-      ? [await lookupBarcode(digits)].filter(Boolean)
-      : await searchFoods(q);
+    const foods = isBarcode ? [await lookupBarcode(digits)].filter(Boolean) : await searchFoods(q);
     foundFoods = {};
     foods.forEach((f) => { foundFoods[f.barcode] = f; });
-    results.innerHTML = foods.length ? foodResultsHTML(foods)
+    if (foods.length) { results.innerHTML = foodResultsHTML(foods); return; }
+    // A barcode miss can be authored locally (it has a barcode to hang a Food on); a name
+    // miss can't, so it still routes to a quick entry (ADR-0004: no barcode ⇒ quick entry).
+    results.innerHTML = isBarcode
+      ? '<li class="food-result-empty muted small">Not on Open Food Facts — ' +
+        '<button type="button" class="link" data-action="food-add-local" data-barcode="' + digits + '">add it to your foods</button>.</li>'
       : '<li class="food-result-empty muted small">No Open Food Facts match — add a quick entry instead.</li>';
   } catch (err) {
     results.innerHTML = '<li class="food-result-empty muted small">Can’t reach Open Food Facts (offline?) — pick from your foods or add a quick entry.</li>';
@@ -309,20 +385,19 @@ async function foodScan(el) {
 
 function foodScanCancel() { if (activeScan) activeScan.cancel(); }
 
-// Pick a found / pantry food: cache it into the Pantry (re-finding then picking refreshes
-// a cached one with the new OFF data — ADR-0004), then reveal its grams form to confirm
-// the portion. A plain Pantry pick reuses the cached record, no network.
+// Pick a found / pantry food: cache the chosen record into the Pantry (freshestFood applies
+// the trusted-vs-OFF precedence — re-finding an untrusted one refreshes it from OFF, a
+// trusted one is never overwritten; ADR-0004), then reveal its grams form to confirm the
+// portion. A plain Pantry pick reuses the cached record, no network.
 function foodPick(el) {
   const barcode = el.dataset.barcode;
-  const food = foundFoods[barcode] || state.pantry[barcode];
+  const food = freshestFood(barcode);
   if (!food) return;
   state.pantry[barcode] = food;
   save();
   const form = el.closest(".food-result").querySelector(".food-grams-form");
   el.closest(".food-finder").querySelectorAll(".food-grams-form").forEach((f) => { if (f !== form) f.hidden = true; });
-  form.hidden = false;
-  const g = form.querySelector('input[name="grams"]');
-  g.focus(); g.select();
+  reveal(form);
 }
 
 // Confirm the portion: push a pantry entry { barcode, grams } onto the day, then render
@@ -334,6 +409,61 @@ function addFoodEntry(form) {
   if (!state.pantry[barcode] || !(grams > 0)) return;
   logPush(foodKey(cell), { barcode, grams });
   render();
+}
+
+/* --- Trusted Foods (ADR-0004 amendment): author a Food locally when OFF has no record of a
+ * barcode, or hand-correct one's numbers. Either way the Food is marked `trusted`, so a later
+ * re-lookup won't clobber it. One "Food details" form serves both, revealed + prefilled by
+ * openFoodDetail; dataset.mode tells saveFoodDetail what to do once it's written. --- */
+
+// Reveal + prefill the Food details form. `food` is null when authoring (blank fields) or
+// the record being corrected (prefilled). mode is "author" | "correct".
+function openFoodDetail(form, barcode, mode, food) {
+  form.hidden = false;
+  form.dataset.barcode = barcode;
+  form.dataset.mode = mode;
+  form.querySelector('input[name="name"]').value = (food && food.name) || "";
+  form.querySelector('input[name="brand"]').value = (food && food.brand) || "";
+  const per = (food && food.per100g) || {};
+  NUTRIENTS.forEach((n) => { form.querySelector('input[name="' + n.id + '"]').value = parseFloat(per[n.id]) || ""; });
+  form.querySelector('input[name="name"]').focus();
+}
+
+// Author a not-found barcode: open the form blank, the barcode preserved from the message.
+function foodAddLocal(el) {
+  openFoodDetail(el.closest(".food").querySelector(".food-detail-form"), el.dataset.barcode, "author", null);
+}
+
+// Correct a food's details (from a finder result row or a logged day row): open the Food
+// details form prefilled in correct mode, with the freshest record for the barcode (a trusted
+// Pantry record beats a possibly-stale same-barcode OFF hit — see freshestFood).
+function foodEdit(el) {
+  const barcode = el.dataset.barcode;
+  openFoodDetail(el.closest(".food").querySelector(".food-detail-form"), barcode, "correct", freshestFood(barcode));
+}
+
+// Save the Food details form: write a trusted Food to the Pantry (the user vouches for these
+// numbers from the label). Authoring then drops into logging a portion (the new food, grams
+// open); correcting just re-renders, so the corrected numbers propagate to every day (ADR-0004).
+function saveFoodDetail(form) {
+  const barcode = form.dataset.barcode;
+  if (!barcode) return;
+  const fd = new FormData(form);
+  const { values: per100g, any } = readNutrients(fd);
+  const name = String(fd.get("name") || "").trim();
+  if (!any && !name) return; // nothing worth storing
+  state.pantry[barcode] = { barcode, name, brand: String(fd.get("brand") || "").trim(), per100g, trusted: true };
+  save();
+  if (form.dataset.mode === "author") {
+    // Drop straight into logging a portion: show the new food as a pickable row, grams open.
+    const results = form.closest(".food").querySelector(".food-results");
+    results.innerHTML = foodResultsHTML([state.pantry[barcode]]);
+    form.hidden = true;
+    const grams = results.querySelector(".food-grams-form");
+    if (grams) reveal(grams);
+  } else {
+    render(); // correction: reflect the new numbers everywhere (ADR-0004 propagation)
+  }
 }
 
 function addNewExercise(form, day) {

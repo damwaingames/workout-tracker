@@ -70,4 +70,4 @@ export const DEFAULT_CLASS_TYPES = [
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "1.11.1";
+export const APP_VERSION = "1.12.0";
