@@ -114,7 +114,7 @@ export function handleClick(e) {
     case "food-edit": foodEdit(el); break;
     case "food-grams-edit": revealRowEdit(el, ".food-grams-edit-form"); break;
     case "food-quick-edit": revealRowEdit(el, ".food-quick-edit-form"); break;
-    case "food-edit-cancel": el.closest("form").hidden = true; break;
+    case "food-edit-cancel": { const f = el.closest("form"); f.hidden = true; f.reset(); break; }
     case "toggle-day": toggleDay(el); break;
     case "day-tab": dayTab(el); break;
     case "export": exportBackup(); break;
@@ -189,15 +189,22 @@ function removeClass(cell, i) {
   render();
 }
 
+// Read the NUTRIENTS fields off a form as { values, any } — `any` flags whether any nutrient
+// is > 0, so callers can reject an all-zero set ("a blank set adds nothing", in one place).
+// Shared by the quick-entry forms and the Food-details form.
+function readNutrients(fd) {
+  const values = {}; let any = false;
+  NUTRIENTS.forEach((n) => { const v = parseFloat(fd.get(n.id)); values[n.id] = v > 0 ? v : 0; if (v > 0) any = true; });
+  return { values, any };
+}
+
 // Read a quick entry { name, kcal, carb, fat, protein } from a form, or null when every
 // nutrient is zero (a blank row would add nothing and shift no total). A name is optional.
 // Shared by the add form and the in-place edit form, so they can't drift apart.
 function readQuickEntry(form) {
   const fd = new FormData(form);
-  const entry = { name: String(fd.get("name") || "").trim() };
-  let any = false;
-  NUTRIENTS.forEach((n) => { const v = parseFloat(fd.get(n.id)); entry[n.id] = v > 0 ? v : 0; if (v > 0) any = true; });
-  return any ? entry : null;
+  const { values, any } = readNutrients(fd);
+  return any ? { name: String(fd.get("name") || "").trim(), ...values } : null;
 }
 
 // Log an ad-hoc quick entry on a day cell — un-barcoded food (loose fruit, meals out) that
@@ -215,13 +222,18 @@ function removeFood(cell, i) {
   render();
 }
 
-// Reveal a logged row's in-place edit form (grams for a pantry row, name + nutrients for a
-// quick row) and focus its first field. Shared by both row editors.
-function revealRowEdit(el, cls) {
-  const form = el.closest(".food-item").querySelector(cls);
+// Reveal a hidden form and focus/select its first input. Shared by the row editors, the
+// Food-details author tail, and foodPick's grams reveal.
+function reveal(form) {
   form.hidden = false;
   const first = form.querySelector("input");
   if (first) { first.focus(); first.select(); }
+}
+
+// Reveal a logged row's in-place edit form (grams for a pantry row, name + nutrients for a
+// quick row). Shared by both row editors.
+function revealRowEdit(el, cls) {
+  reveal(el.closest(".food-item").querySelector(cls));
 }
 
 // Save an in-place grams edit: replace the entry at its index, preserving the barcode
@@ -251,6 +263,17 @@ function saveQuickEdit(form) {
 // The most recent Find's hits, by barcode, so foodPick can cache the chosen one (its
 // fresh OFF data) into the Pantry. Cleared whenever the local Pantry view is shown.
 let foundFoods = {};
+
+// Is a barcode a *trusted* Pantry record — numbers hand-vouched, not OFF's (ADR-0004
+// amendment)? The single predicate, read by the re-lookup short-circuit and freshestFood.
+const isTrusted = (barcode) => !!(state.pantry[barcode] && state.pantry[barcode].trusted);
+
+// The record to use for a barcode, with the trusted-vs-OFF precedence in one place: a trusted
+// Pantry record wins over any OFF hit (ADR-0004 amendment), else the just-found OFF data, else
+// whatever's cached. Used by foodPick (what to log) and foodEdit (what to prefill).
+function freshestFood(barcode) {
+  return isTrusted(barcode) ? state.pantry[barcode] : (foundFoods[barcode] || state.pantry[barcode]);
+}
 
 // Hide a finder and restore its "＋ Add food" trigger — the close half, shared by the
 // Close button and the one-finder-at-a-time sweep in foodOpen.
@@ -308,7 +331,7 @@ async function runFinderQuery(finder, q) {
   const isBarcode = digits.length >= 8 && digits === q;
   // A trusted barcode resolves from the Pantry — OFF is never consulted, so a hand-vouched
   // record can't be clobbered by a re-lookup, and it works offline (ADR-0004 amendment).
-  if (isBarcode && state.pantry[digits] && state.pantry[digits].trusted) {
+  if (isBarcode && isTrusted(digits)) {
     foundFoods = {};
     results.innerHTML = foodResultsHTML([state.pantry[digits]]);
     return;
@@ -362,22 +385,19 @@ async function foodScan(el) {
 
 function foodScanCancel() { if (activeScan) activeScan.cancel(); }
 
-// Pick a found / pantry food: cache it into the Pantry (re-finding then picking refreshes a
-// cached one with the new OFF data — ADR-0004), then reveal its grams form to confirm the
-// portion. A *trusted* record is never overwritten by an OFF hit, even one reached via a name
-// search (ADR-0004 amendment). A plain Pantry pick reuses the cached record, no network.
+// Pick a found / pantry food: cache the chosen record into the Pantry (freshestFood applies
+// the trusted-vs-OFF precedence — re-finding an untrusted one refreshes it from OFF, a
+// trusted one is never overwritten; ADR-0004), then reveal its grams form to confirm the
+// portion. A plain Pantry pick reuses the cached record, no network.
 function foodPick(el) {
   const barcode = el.dataset.barcode;
-  const existing = state.pantry[barcode];
-  const food = (existing && existing.trusted) ? existing : (foundFoods[barcode] || existing);
+  const food = freshestFood(barcode);
   if (!food) return;
   state.pantry[barcode] = food;
   save();
   const form = el.closest(".food-result").querySelector(".food-grams-form");
   el.closest(".food-finder").querySelectorAll(".food-grams-form").forEach((f) => { if (f !== form) f.hidden = true; });
-  form.hidden = false;
-  const g = form.querySelector('input[name="grams"]');
-  g.focus(); g.select();
+  reveal(form);
 }
 
 // Confirm the portion: push a pantry entry { barcode, grams } onto the day, then render
@@ -415,15 +435,11 @@ function foodAddLocal(el) {
 }
 
 // Correct a food's details (from a finder result row or a logged day row): open the Food
-// details form prefilled, in correct mode. Reads the freshest record — an OFF hit if one was
-// just found, else the Pantry copy.
+// details form prefilled in correct mode, with the freshest record for the barcode (a trusted
+// Pantry record beats a possibly-stale same-barcode OFF hit — see freshestFood).
 function foodEdit(el) {
   const barcode = el.dataset.barcode;
-  const pantry = state.pantry[barcode];
-  // Prefer a trusted Pantry record (the authoritative version to correct) over a possibly
-  // stale same-barcode OFF hit; else the freshly-found OFF data, else whatever's cached.
-  const food = (pantry && pantry.trusted) ? pantry : (foundFoods[barcode] || pantry);
-  openFoodDetail(el.closest(".food").querySelector(".food-detail-form"), barcode, "correct", food);
+  openFoodDetail(el.closest(".food").querySelector(".food-detail-form"), barcode, "correct", freshestFood(barcode));
 }
 
 // Save the Food details form: write a trusted Food to the Pantry (the user vouches for these
@@ -433,22 +449,20 @@ function saveFoodDetail(form) {
   const barcode = form.dataset.barcode;
   if (!barcode) return;
   const fd = new FormData(form);
-  const per100g = {};
-  let any = false;
-  NUTRIENTS.forEach((n) => { const v = parseFloat(fd.get(n.id)); per100g[n.id] = v > 0 ? v : 0; if (v > 0) any = true; });
+  const { values: per100g, any } = readNutrients(fd);
   const name = String(fd.get("name") || "").trim();
   if (!any && !name) return; // nothing worth storing
   state.pantry[barcode] = { barcode, name, brand: String(fd.get("brand") || "").trim(), per100g, trusted: true };
   save();
   if (form.dataset.mode === "author") {
-    const finder = form.closest(".food").querySelector(".food-finder");
-    const results = finder.querySelector(".food-results");
+    // Drop straight into logging a portion: show the new food as a pickable row, grams open.
+    const results = form.closest(".food").querySelector(".food-results");
     results.innerHTML = foodResultsHTML([state.pantry[barcode]]);
     form.hidden = true;
     const grams = results.querySelector(".food-grams-form");
-    if (grams) { grams.hidden = false; const g = grams.querySelector('input[name="grams"]'); g.focus(); g.select(); }
+    if (grams) reveal(grams);
   } else {
-    render();
+    render(); // correction: reflect the new numbers everywhere (ADR-0004 propagation)
   }
 }
 

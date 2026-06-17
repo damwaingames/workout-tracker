@@ -589,53 +589,58 @@ function renderNutrition() {
     '<p class="nut-avg muted small">Avg ' + perDay(week) + " this week · " + perDay(all) + " this block</p>";
 }
 
+// NUTRIENTS as a row of number inputs. `value(n)` prefills the field (edit forms) or is
+// omitted (add forms, blank); `per100g` switches the placeholder suffix + aria-label to
+// per-100-gram wording. One builder for the add / quick-edit / Food-details forms.
+function nutrientInputs(value, per100g) {
+  return NUTRIENTS.map((n) => {
+    const v = value ? value(n) : "";
+    return '<input type="number" inputmode="decimal" min="0" name="' + n.id +
+      '" placeholder="' + esc(n.head) + (per100g ? " /100g" : "") +
+      '" aria-label="' + esc(n.label) + (per100g ? " per 100 g" : " (" + esc(n.unit) + ")") + '"' +
+      (v === "" ? "" : ' value="' + v + '"') + ">";
+  }).join("");
+}
+
+// One logged food row: name + portion/own numbers + the full macro line, plus its in-place
+// editors. A pantry row edits grams (logReplaceAt, barcode preserved) and can correct the
+// *food's* nutrition (→ trusted, propagates — ADR-0004); a quick row edits its own numbers.
+function foodItemHTML(e, i, cell) {
+  const n = entryNutrition(e);
+  const food = e.barcode ? state.pantry[e.barcode] : null;
+  const name = e.barcode ? ((food && food.name) || e.barcode) : (e.name || "Quick entry");
+  const detail = e.barcode ? ' <span class="food-detail">' + fmt(parseFloat(e.grams) || 0) + " g</span>" : "";
+  const macros = macroLine(n);
+  const edit = e.barcode
+    ? '<button class="link food-edit-btn" type="button" data-action="food-grams-edit" aria-label="Edit grams" title="Edit grams">✎ g</button>' +
+      '<button class="link food-edit-btn" type="button" data-action="food-edit" data-barcode="' + esc(e.barcode) + '" aria-label="Correct nutrition" title="Correct nutrition">✎ kcal</button>' +
+      '<form class="food-grams-edit-form" hidden data-cell="' + cell + '" data-i="' + i + '">' +
+        '<input type="number" inputmode="decimal" min="0" name="grams" value="' + (parseFloat(e.grams) || 0) + '" aria-label="Grams">' +
+        '<span class="food-grams-unit">g</span><button type="submit">Save</button>' +
+        '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button>' +
+      "</form>"
+    : '<button class="link food-edit-btn" type="button" data-action="food-quick-edit" aria-label="Edit entry">✎</button>' +
+      '<form class="food-quick-edit-form" hidden data-cell="' + cell + '" data-i="' + i + '">' +
+        '<input name="name" placeholder="Food (optional)" autocomplete="off" value="' + esc(e.name || "") + '">' +
+        nutrientInputs((nt) => parseFloat(e[nt.id]) || 0) +
+        '<div class="form-actions"><button type="submit">Save</button>' +
+        '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button></div>' +
+      "</form>";
+  return '<li class="food-item"><span class="food-text">' +
+    '<span class="food-name">' + esc(name) + "</span>" + detail +
+    ' <span class="food-kcal">' + fmt(n.kcal) + " kcal</span>" +
+    (macros ? ' <span class="food-macros">' + macros + "</span>" : "") + "</span>" +
+    edit +
+    '<button class="remove" type="button" data-action="food-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove food">×</button></li>';
+}
+
 // One day's food block — its list of entries, the derived day total, and the add finder
 // (search / barcode / scan / Pantry pick / quick entry). Lives in the day card's
 // Nutrition tab; the container carries data-cell so the food handlers resolve the cell.
 // A pantry entry shows its Food's name + grams; a quick entry shows its name.
 function renderDayFood(cell) {
   const list = logList(foodKey(cell));
-  const items = list.map((e, i) => {
-    const n = entryNutrition(e);
-    const food = e.barcode ? state.pantry[e.barcode] : null;
-    const name = e.barcode ? ((food && food.name) || e.barcode) : (e.name || "Quick entry");
-    const detail = e.barcode ? ' <span class="food-detail">' + fmt(parseFloat(e.grams) || 0) + " g</span>" : "";
-    // A pantry row's grams are editable in place (logReplaceAt) — its ✎ reveals a small
-    // grams form; the barcode is preserved from the stored entry on save.
-    const gramsEdit = e.barcode
-      ? '<button class="link food-edit-btn" type="button" data-action="food-grams-edit" aria-label="Edit grams" title="Edit grams">✎ g</button>' +
-        // Correct the *food's* nutrition (→ trusted) — propagates to every day (ADR-0004).
-        '<button class="link food-edit-btn" type="button" data-action="food-edit" data-barcode="' + esc(e.barcode) + '" aria-label="Correct nutrition" title="Correct nutrition">✎ kcal</button>' +
-        '<form class="food-grams-edit-form" hidden data-cell="' + cell + '" data-i="' + i + '">' +
-          '<input type="number" inputmode="decimal" min="0" name="grams" value="' + (parseFloat(e.grams) || 0) + '" aria-label="Grams">' +
-          '<span class="food-grams-unit">g</span><button type="submit">Save</button>' +
-          '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button>' +
-        "</form>"
-      : "";
-    // A quick row carries its own numbers (the snapshot exception), so its ✎ edits those
-    // in place (name + per-portion nutrients) — distinct from a pantry row's grams edit.
-    const quickEdit = !e.barcode
-      ? '<button class="link food-edit-btn" type="button" data-action="food-quick-edit" aria-label="Edit entry">✎</button>' +
-        '<form class="food-quick-edit-form" hidden data-cell="' + cell + '" data-i="' + i + '">' +
-          '<input name="name" placeholder="Food (optional)" autocomplete="off" value="' + esc(e.name || "") + '">' +
-          NUTRIENTS.map((nt) => '<input type="number" inputmode="decimal" min="0" name="' + nt.id +
-            '" placeholder="' + esc(nt.head) + '" aria-label="' + esc(nt.label) + " (" + esc(nt.unit) +
-            ')" value="' + (parseFloat(e[nt.id]) || 0) + '">').join("") +
-          '<div class="form-actions"><button type="submit">Save</button>' +
-          '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button></div>' +
-        "</form>"
-      : "";
-    const macros = macroLine(n);
-    return '<li class="food-item"><span class="food-text">' +
-      '<span class="food-name">' + esc(name) + "</span>" + detail +
-      ' <span class="food-kcal">' + fmt(n.kcal) + " kcal</span>" +
-      (macros ? ' <span class="food-macros">' + macros + "</span>" : "") + "</span>" +
-      gramsEdit + quickEdit +
-      '<button class="remove" type="button" data-action="food-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove food">×</button></li>';
-  }).join("");
-  const fields = NUTRIENTS.map((n) =>
-    '<input type="number" inputmode="decimal" min="0" name="' + n.id + '" placeholder="' + esc(n.head) + '" aria-label="' + esc(n.label) + " (" + esc(n.unit) + ')">'
-  ).join("");
+  const items = list.map((e, i) => foodItemHTML(e, i, cell)).join("");
   return '<div class="food" data-cell="' + cell + '">' +
     (list.length ? '<ul class="food-list">' + items + "</ul>" : "") +
     (list.length ? '<div class="food-total">' + nutritionLine(dayNutrition(cell)) + "</div>" : "") +
@@ -661,7 +666,7 @@ function renderDayFood(cell) {
           '<button type="button" class="link" data-action="form-open">Quick entry (no barcode)</button>' +
           '<form class="food-quick-form" hidden>' +
             '<input name="name" placeholder="Food (optional)" autocomplete="off">' +
-            fields +
+            nutrientInputs() +
             '<div class="form-actions"><button type="submit">Add</button>' +
             '<button type="button" class="link" data-action="form-cancel">Cancel</button></div>' +
           "</form>" +
@@ -675,8 +680,7 @@ function renderDayFood(cell) {
       '<p class="food-detail-head muted small">Nutrition per 100 g — straight off the label.</p>' +
       '<input name="name" placeholder="Name" autocomplete="off">' +
       '<input name="brand" placeholder="Brand (optional)" autocomplete="off">' +
-      NUTRIENTS.map((nt) => '<input type="number" inputmode="decimal" min="0" name="' + nt.id +
-        '" placeholder="' + esc(nt.head) + ' /100g" aria-label="' + esc(nt.label) + ' per 100 g">').join("") +
+      nutrientInputs(null, true) +
       '<div class="form-actions"><button type="submit">Save</button>' +
       '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button></div>' +
     "</form>" +
