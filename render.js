@@ -622,6 +622,13 @@ function nutrientInputs({ value, per100g } = {}) {
   }).join("");
 }
 
+// The grams portion input — one shared validation contract (step="any" so tenths submit,
+// PR #21), used by both the finder pick form and the in-place row edit so the two can't
+// drift apart on it again (this bug was a per-call-site step). Mirrors nutrientInputs.
+function gramsInput(value) {
+  return '<input type="number" inputmode="decimal" step="any" min="0" name="grams" value="' + value + '" aria-label="Grams">';
+}
+
 // One logged food row: name + portion/own numbers + the full macro line, plus its in-place
 // editors. A pantry row edits grams (logReplaceAt, barcode preserved) and can correct the
 // *food's* nutrition (→ trusted, propagates — ADR-0004); a quick row edits its own numbers.
@@ -638,7 +645,7 @@ function foodItemHTML(e, i, cell) {
     ? '<button class="link food-edit-btn" type="button" data-action="food-grams-edit" aria-label="Edit grams" title="Edit grams">✎ g</button>' +
       '<button class="link food-edit-btn" type="button" data-action="food-edit" data-barcode="' + esc(e.barcode) + '" aria-label="Correct nutrition" title="Correct nutrition">✎ kcal</button>' +
       '<form class="food-grams-edit-form" hidden data-cell="' + cell + '" data-i="' + i + '">' +
-        '<input type="number" inputmode="decimal" step="any" min="0" name="grams" value="' + (parseFloat(e.grams) || 0) + '" aria-label="Grams">' +
+        gramsInput(parseFloat(e.grams) || 0) +
         '<span class="food-grams-unit">g</span><button type="submit">Save</button>' +
         '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button>' +
       "</form>"
@@ -726,7 +733,7 @@ export function foodResultsHTML(foods) {
       // ✎ corrects this food's numbers (→ trusted) before logging — ADR-0004 amendment.
       '<button type="button" class="link food-edit-btn" data-action="food-edit" data-barcode="' + esc(f.barcode) + '" aria-label="Edit nutrition">✎</button>' +
       '<form class="food-grams-form" hidden data-barcode="' + esc(f.barcode) + '">' +
-        '<input type="number" inputmode="decimal" step="any" min="0" name="grams" value="100" aria-label="Grams">' +
+        gramsInput(100) +
         '<span class="food-grams-unit">g</span><button type="submit">Add</button>' +
       "</form>" +
     "</li>"
