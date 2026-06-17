@@ -6,12 +6,12 @@ verify(async ({ page, ck, ls, reset, key }) => {
   const num = async (sel) => Number((await page.textContent(sel)).replace(/[^0-9.]/g, ""));
   const line = (scope) => page.textContent(`#nutrition-card [data-nut-line="${scope}"]`);
 
-  // Food lives in each day card's Nutrition tab (slice 4): switch to it, then address the
+  // Food lives in each routine card's Nutrition tab (slice 4): switch to it, then address the
   // cell's food block. The #nutrition-card keeps only the Week / Block roll-ups + avg.
-  const foodSel = (cell) => `#week-view .day[data-cell="${cell}"] .food`;
-  const nutTab = (cell) => page.click(`#week-view .day[data-cell="${cell}"] .day-tab[data-tab="nutrition"]`);
+  const foodSel = (cell) => `#week-view .routine[data-cell="${cell}"] .food`;
+  const nutTab = (cell) => page.click(`#week-view .routine[data-cell="${cell}"] .routine-tab[data-tab="nutrition"]`);
 
-  // Open a day's Nutrition tab → finder → quick-entry form, fill it, submit. Keyed by cell.
+  // Open a routine's Nutrition tab → finder → quick-entry form, fill it, submit. Keyed by cell.
   const addFood = async (cell, { name, kcal, carb, fat, protein }) => {
     const sel = foodSel(cell);
     await nutTab(cell);                                    // reveal the Nutrition tab
@@ -27,8 +27,8 @@ verify(async ({ page, ck, ls, reset, key }) => {
 
   // ---- card shape ----
   ck("nutrition totals card present", await page.isVisible("#nutrition-card"));
-  ck("7 day food blocks (one per day card)", (await page.$$("#week-view .food")).length === 7);
-  ck("each day has an Add food button", (await page.$$('#week-view .food [data-action="food-open"]')).length === 7);
+  ck("7 routine food blocks (one per routine card)", (await page.$$("#week-view .food")).length === 7);
+  ck("each routine has an Add food button", (await page.$$('#week-view .food [data-action="food-open"]')).length === 7);
   const d1 = foodSel("b1.w1.d1");
   await nutTab("b1.w1.d1");
   ck("Nutrition tab reveals the food block", await page.isVisible(d1));
@@ -38,7 +38,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await addFood("b1.w1.d1", { name: "Oats", kcal: 2000, carb: 200, fat: 70, protein: 150 });
   ck("entry shows its name", (await page.textContent(d1 + " .food-name")) === "Oats");
   ck("entry shows its kcal = 2000", (await num(d1 + " .food-kcal")) === 2000);
-  ck("day total line shows kcal + macros", /2[,.]?000 cal/.test(await page.textContent(d1 + " .food-total")) &&
+  ck("routine total line shows kcal + macros", /2[,.]?000 cal/.test(await page.textContent(d1 + " .food-total")) &&
     /200c/.test(await page.textContent(d1 + " .food-total")) && /70f/.test(await page.textContent(d1 + " .food-total")) && /150p/.test(await page.textContent(d1 + " .food-total")));
 
   const s1 = await ls();
@@ -47,22 +47,22 @@ verify(async ({ page, ck, ls, reset, key }) => {
     s1.log["b1.w1.d1.food"][0].name === "Oats" && s1.log["b1.w1.d1.food"][0].kcal === 2000 &&
     s1.log["b1.w1.d1.food"][0].carb === 200 && !("barcode" in s1.log["b1.w1.d1.food"][0]));
 
-  // ---- collapsed summary carries the day's macro line (slice 4) ----
+  // ---- collapsed summary carries the routine's macro line (slice 4) ----
   // The .tab flag persists, so collapsing then reading the summary needs no re-switch.
-  await page.click('#week-view .day[data-cell="b1.w1.d1"] .day-collapse');
+  await page.click('#week-view .routine[data-cell="b1.w1.d1"] .routine-collapse');
   await page.waitForTimeout(40);
-  const sum = await page.textContent('#week-view .day[data-cell="b1.w1.d1"] .day-summary');
+  const sum = await page.textContent('#week-view .routine[data-cell="b1.w1.d1"] .routine-summary');
   ck("collapsed summary carries the macro line",
     /2[,.]?000 cal/.test(sum) && /200c/.test(sum) && /70f/.test(sum) && /150p/.test(sum));
-  await page.click('#week-view .day[data-cell="b1.w1.d1"] .day-collapse'); // expand again
+  await page.click('#week-view .routine[data-cell="b1.w1.d1"] .routine-collapse'); // expand again
   await page.waitForTimeout(40);
 
-  // ---- second entry, another day: week + block accumulate, avg over kcal-days ----
+  // ---- second entry, another routine: week + block accumulate, avg over kcal-routines ----
   await addFood("b1.w1.d2", { kcal: 1000 });
   ck("week line kcal = 3000", /3[,.]?000 cal/.test(await line("week")));
   ck("week line carries macros 200/70/150", /200c/.test(await line("week")) && /70f/.test(await line("week")) && /150p/.test(await line("week")));
   ck("block line kcal = 3000 (only week 1 logged)", /3[,.]?000 cal/.test(await line("block")));
-  ck("avg = 1500 kcal/day this week (3000 over 2 logged days)", /1[,.]?500\s*kcal\/day this week/.test(await page.textContent("#nutrition-card .nut-avg")));
+  ck("avg = 1500 kcal/day this week (3000 over 2 logged routines)", /1[,.]?500\s*kcal\/day this week/.test(await page.textContent("#nutrition-card .nut-avg")));
 
   // ---- empty-nutrient entry is dropped (at least one nutrient must be > 0) ----
   await addFood("b1.w1.d3", { name: "ghost" });
@@ -71,7 +71,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   // ---- week switch: week isolates, block accumulates ----
   await page.click('#week-nav [data-action="week"][data-week="2"]');
   await page.waitForTimeout(40);
-  ck("week 2 day blocks start empty (no food-list)", (await page.$$("#week-view .food-list")).length === 0);
+  ck("week 2 routine blocks start empty (no food-list)", (await page.$$("#week-view .food-list")).length === 0);
   ck("week 2 line = 0 cal", /^0 cal/.test((await line("week")).trim()));
   ck("block line still 3000 across weeks", /3[,.]?000 cal/.test(await line("block")));
   await addFood("b1.w2.d1", { kcal: 500 });
@@ -110,7 +110,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await nutTab("b1.w1.d4");
   ck("migrated scalars show as a quick entry", (await page.textContent(d4 + " .food-list")).includes("Logged total"));
   ck("migrated entry kcal = 1850", (await num(d4 + " .food-kcal")) === 1850);
-  ck("migrated day total carries the macros", /77c/.test(await page.textContent(d4 + " .food-total")) &&
+  ck("migrated routine total carries the macros", /77c/.test(await page.textContent(d4 + " .food-total")) &&
     /45f/.test(await page.textContent(d4 + " .food-total")) && /154p/.test(await page.textContent(d4 + " .food-total")));
 
   // A save (adding any entry) persists the migrated state → assert the scalars are gone.

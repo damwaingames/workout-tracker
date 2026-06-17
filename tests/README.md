@@ -67,7 +67,7 @@ WT_URL=https://damwaingames.github.io/workout-tracker/ node verify-version.mjs
 | `verify-rename` | Inline block rename in Edit mode: live picker-label patch, focus retention, persistence |
 | `verify-bodystats` | Measurements card: log/track/create/remove, BMI, previous-value ghost, additive migration, key purge |
 | `verify-pickers` | Shared picker chrome: open/search/add/create/cancel/remove for exercises and measurements |
-| `verify-crosstype` | Day-kind ↔ exercise-type rule: pickers and create forms respect strength vs recovery |
+| `verify-crosstype` | Routine-kind ↔ exercise-type rule: pickers and create forms respect strength vs recovery |
 | `verify-circuit` | Recovery circuit timing: defaults, rounds stepper, live work/rest patch, clone, migration |
 | `verify-backups` | Export/import/reset paths (the cross-module `setState`/`setEditing` reassignments) |
 | `verify-nutrition` | Daily nutrition grid: `.nut.` persistence, live week/block totals, avg kcal/day, week isolation, clear-deletes-key |

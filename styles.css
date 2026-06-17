@@ -123,7 +123,7 @@ nav.weeks {
   max-width: 60%;
 }
 
-.day {
+.routine {
   background: var(--card);
   border: 1px solid var(--border);
   border-left: 4px solid var(--muted);
@@ -132,18 +132,18 @@ nav.weeks {
   margin-bottom: .9rem;
   box-shadow: var(--shadow);
 }
-.day.strength { border-left-color: var(--workout); }
-.day.recovery { border-left-color: var(--recovery); }
-.day.rest { border-left-color: var(--rest); }
-.day.is-done { background: var(--done-bg); border-left-color: var(--done-border); }
-.day.is-holiday { border-left-color: var(--holiday); }
+.routine.strength { border-left-color: var(--workout); }
+.routine.recovery { border-left-color: var(--recovery); }
+.routine.rest { border-left-color: var(--rest); }
+.routine.is-done { background: var(--done-bg); border-left-color: var(--done-border); }
+.routine.is-holiday { border-left-color: var(--holiday); }
 
 /* Wrap so the side cluster (🏝 toggle + date) drops to its own right-aligned line
-   on a narrow phone rather than squeezing the day title onto extra lines. */
-.day-head { display: flex; align-items: center; justify-content: space-between; gap: .4rem .6rem; flex-wrap: wrap; }
-.day-head-main { display: flex; align-items: center; gap: .4rem; min-width: 0; }
-.day-head-side { display: flex; align-items: center; gap: .4rem; flex: 0 0 auto; margin-left: auto; }
-/* The 🏝 holiday toggle: unobtrusive until hovered or active (it sits on every day). */
+   on a narrow phone rather than squeezing the routine title onto extra lines. */
+.routine-head { display: flex; align-items: center; justify-content: space-between; gap: .4rem .6rem; flex-wrap: wrap; }
+.routine-head-main { display: flex; align-items: center; gap: .4rem; min-width: 0; }
+.routine-head-side { display: flex; align-items: center; gap: .4rem; flex: 0 0 auto; margin-left: auto; }
+/* The 🏝 holiday toggle: unobtrusive until hovered or active (it sits on every routine). */
 .holiday-toggle {
   display: inline-flex; align-items: center; gap: .2rem;
   cursor: pointer; user-select: none; font-size: .95rem; line-height: 1;
@@ -152,24 +152,24 @@ nav.weeks {
 }
 .holiday-toggle:hover { opacity: 1; background: var(--done-bg); }
 .holiday-toggle input { width: 1rem; height: 1rem; cursor: pointer; flex: 0 0 auto; }
-.day.is-holiday .holiday-toggle { opacity: 1; }
+.routine.is-holiday .holiday-toggle { opacity: 1; }
 .holiday-badge {
   font-size: .66rem; font-weight: 600; color: var(--holiday);
   background: var(--chip); padding: .08rem .4rem; border-radius: 6px;
   white-space: nowrap; vertical-align: middle;
 }
-.day-collapse {
+.routine-collapse {
   background: none; border: 0; cursor: pointer;
   color: var(--muted); font-size: .8rem; line-height: 1;
   padding: .2rem .3rem; border-radius: 6px; flex: 0 0 auto;
   transition: transform .25s ease, background .15s ease, color .15s ease;
 }
-.day-collapse:hover { background: var(--done-bg); color: var(--text); }
-.day.is-collapsed .day-collapse { transform: rotate(-90deg); } /* ▾ caret → points right */
+.routine-collapse:hover { background: var(--done-bg); color: var(--text); }
+.routine.is-collapsed .routine-collapse { transform: rotate(-90deg); } /* ▾ caret → points right */
 .done-toggle { display: flex; align-items: center; gap: .55rem; cursor: pointer; user-select: none; }
 .done-toggle input { width: 1.15rem; height: 1.15rem; cursor: pointer; flex: 0 0 auto; }
-.day-title { font-weight: 700; font-size: 1rem; }
-.day-date {
+.routine-title { font-weight: 700; font-size: 1rem; }
+.routine-date {
   font: inherit;
   font-size: .78rem;
   color: var(--muted);
@@ -178,51 +178,51 @@ nav.weeks {
   padding: .2rem .35rem;
   background: #fff;
 }
-.day-focus { font-size: .8rem; color: var(--muted); margin: .15rem 0 0 1.9rem; }
+.routine-focus { font-size: .8rem; color: var(--muted); margin: .15rem 0 0 1.9rem; }
 
-/* Collapsed day: show the totals summary, hide everything below the header. */
-.day-summary {
+/* Collapsed routine: show the totals summary, hide everything below the header. */
+.routine-summary {
   margin: .45rem 0 0 1.9rem;
   font-size: .78rem; color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.day:not(.is-collapsed) .day-summary { display: none; }
+.routine:not(.is-collapsed) .routine-summary { display: none; }
 /* Animate the body open/closed via a 1fr↔0fr grid row, which transitions to the
    content's natural height; the inner clips during the slide. A transition (not an
    animation) only fires on an interactive toggle — a fresh render of an already-
-   collapsed day stays at 0fr instantly, so switching weeks doesn't re-animate. */
-.day-collapsible {
+   collapsed routine stays at 0fr instantly, so switching weeks doesn't re-animate. */
+.routine-collapsible {
   display: grid;
   grid-template-rows: 1fr;
   transition: grid-template-rows .28s ease;
 }
-.day.is-collapsed .day-collapsible { grid-template-rows: 0fr; }
-.day-collapsible-inner { overflow: hidden; min-height: 0; }
+.routine.is-collapsed .routine-collapsible { grid-template-rows: 0fr; }
+.routine-collapsible-inner { overflow: hidden; min-height: 0; }
 @media (prefers-reduced-motion: reduce) {
-  .day-collapse, .day-collapsible { transition: none; }
+  .routine-collapse, .routine-collapsible { transition: none; }
 }
 
-/* Per-day Workout | Nutrition tabs. Both panels render; CSS shows the one matching the
-   day's .tab-nutrition class (set by hydrate / dayTab), so switching is instant. Workout
+/* Per-routine Workout | Nutrition tabs. Both panels render; CSS shows the one matching the
+   routine's .tab-nutrition class (set by hydrate / routineTab), so switching is instant. Workout
    is the default (flag absent). The active tab's underline is derived from that same
    class, so the buttons need no own state class. */
-.day-tabs { display: flex; gap: .4rem; margin-top: .85rem; border-bottom: 1px solid var(--border); }
-.day-tab {
+.routine-tabs { display: flex; gap: .4rem; margin-top: .85rem; border-bottom: 1px solid var(--border); }
+.routine-tab {
   background: none; border: 0; cursor: pointer; font: inherit;
   font-size: .82rem; color: var(--muted);
   padding: .35rem .15rem; margin-bottom: -1px;
   border-bottom: 2px solid transparent;
 }
-.day-tab:hover { color: var(--text); }
-.day:not(.tab-nutrition) .day-tab[data-tab="workout"],
-.day.tab-nutrition .day-tab[data-tab="nutrition"] {
+.routine-tab:hover { color: var(--text); }
+.routine:not(.tab-nutrition) .routine-tab[data-tab="workout"],
+.routine.tab-nutrition .routine-tab[data-tab="nutrition"] {
   color: var(--text); font-weight: 600; border-bottom-color: var(--workout);
 }
-.day-panel-nutrition { display: none; padding-top: .85rem; }
-.day.tab-nutrition .day-panel-workout { display: none; }
-.day.tab-nutrition .day-panel-nutrition { display: block; }
+.routine-panel-nutrition { display: none; padding-top: .85rem; }
+.routine.tab-nutrition .routine-panel-workout { display: none; }
+.routine.tab-nutrition .routine-panel-nutrition { display: block; }
 
-.day-body { margin-top: .85rem; display: flex; flex-direction: column; gap: .8rem; }
+.routine-body { margin-top: .85rem; display: flex; flex-direction: column; gap: .8rem; }
 
 .exercise { border-top: 1px solid #f0f1f4; padding-top: .7rem; }
 .exercise:first-child { border-top: none; padding-top: 0; }
@@ -265,22 +265,22 @@ nav.weeks {
 .set .x { color: var(--muted); }
 .set .unit { font-size: .72rem; color: var(--muted); flex: 0 0 auto; }
 .last { font-size: .72rem; color: var(--muted); margin-top: .35rem; }
-.day-volume {
+.routine-volume {
   margin-top: .75rem;
   padding-top: .6rem;
   border-top: 1px dashed var(--border);
   font-size: .78rem;
   color: var(--muted);
 }
-.day-volume strong { color: var(--text); font-variant-numeric: tabular-nums; }
-/* Progressive-overload delta chip vs the same day last week (empty when nothing to
+.routine-volume strong { color: var(--text); font-variant-numeric: tabular-nums; }
+/* Progressive-overload delta chip vs the same routine last week (empty when nothing to
    compare). Up = heavier than last week (green), down = lighter (amber). */
 .vol-delta { margin-left: .4rem; font-weight: 700; font-variant-numeric: tabular-nums; }
 .vol-delta:empty { margin-left: 0; }
 .vol-delta.up { color: var(--done-border); }
 .vol-delta.down { color: var(--rest); }
 
-/* Per-day class logger — a separated section under each day, like day-volume. */
+/* Per-routine class logger — a separated section under each routine, like routine-volume. */
 .classes { margin-top: .75rem; padding-top: .6rem; border-top: 1px dashed var(--border); }
 .class-list { list-style: none; margin: 0 0 .4rem; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
 .class-item { display: flex; align-items: center; gap: .5rem; font-size: .82rem; }
@@ -289,10 +289,10 @@ nav.weeks {
 .class-desc { color: var(--muted); }
 .class-mins { color: var(--workout); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .class-kcal { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* Edit-mode Holiday Workout editor — the shared band-only day, defined once. */
+/* Edit-mode Holiday Workout editor — the shared band-only routine, defined once. */
 .holiday-edit { margin: .5rem 0 1rem; padding: .7rem .8rem; border: 1px solid var(--border); border-left: 3px solid var(--holiday); border-radius: 8px; background: #fafafa; }
 .holiday-edit-h { font-size: 1rem; margin: 0 0 .2rem; }
-.holiday-edit .day-body { margin-top: .6rem; }
+.holiday-edit .routine-body { margin-top: .6rem; }
 
 /* Edit-mode class burn-rate editor. */
 .class-types-edit { margin: .5rem 0 1rem; padding: .6rem .7rem; border: 1px solid var(--border); border-radius: 8px; background: #fafafa; }
@@ -303,7 +303,7 @@ nav.weeks {
 .class-add-btn { padding: .2rem 0; }
 .class-form { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
 /* display:flex above defeats the UA [hidden]{display:none}, so the add form showed
- * unprompted on every day — same gotcha as .picker-form[hidden]. Make hidden win. */
+ * unprompted on every routine — same gotcha as .picker-form[hidden]. Make hidden win. */
 .class-form[hidden] { display: none; }
 .class-form input[name="type"] { flex: 1 1 8rem; }
 .class-form input[name="desc"] { flex: 2 1 10rem; }
@@ -476,8 +476,8 @@ textarea { width: 100%; resize: vertical; }
 .measure-height { margin-top: .7rem; }
 .measure-height input { width: 5rem; }
 
-/* Food block — a day's list of entries, a derived day total, and the add finder. Lives
- * in each day card's Nutrition tab (.day-panel-nutrition); the .food-* styling is shared
+/* Food block — a routine's list of entries, a derived routine total, and the add finder. Lives
+ * in each routine card's Nutrition tab (.routine-panel-nutrition); the .food-* styling is shared
  * with the Nutrition card's Week / Block roll-ups below. */
 .food-list { list-style: none; margin: .35rem 0 .3rem; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
 .food-item { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-size: .82rem; }
@@ -562,5 +562,5 @@ footer .muted { margin-top: .85rem; line-height: 1.5; }
 
 @media (max-width: 520px) {
   h1 { font-size: 1.05rem; }
-  .day-focus, .day-summary { margin-left: 1.7rem; }
+  .routine-focus, .routine-summary { margin-left: 1.7rem; }
 }

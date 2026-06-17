@@ -15,31 +15,31 @@ export function today() {
 
 // The log-key grammar lives here and nowhere else — renderers (data-k) and
 // readers must build keys through these so the format stays authoritative.
-export const cellKey = (blockId, wk, day) => blockId + ".w" + wk + ".d" + day;
+export const cellKey = (blockId, wk, routine) => blockId + ".w" + wk + ".d" + routine;
 export const setKey = (cell, exId, i, f) => cell + ".ex." + exId + ".s" + i + "." + f; // f: "w" | "r"
 export const roundKey = (cell, exId, r) => cell + ".ex." + exId + ".r" + r;
-// Banded moves: the chosen band tier for one exercise on one day cell (".band",
+// Banded moves: the chosen band tier for one exercise on one routine cell (".band",
 // distinct from ".sN"/".rN"), plus per-round reps for a banded circuit move
 // (".rr" + r — separate from the ".r" + r round checkbox of a normal circuit).
 export const bandKey = (cell, exId) => cell + ".ex." + exId + ".band";
 export const roundRepKey = (cell, exId, r) => cell + ".ex." + exId + ".rr" + r;
 // Weekly body measurement (one value per block/week/measurement). Shares
-// state.log — the ".m." segment can't collide with a day's ".dN" cells, and
+// state.log — the ".m." segment can't collide with a routine's ".dN" cells, and
 // the block.id prefix means deleteBlock's purge sweeps these up for free.
 export const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mId;
-// Legacy daily nutrition scalar — one per block/week/day/field. Superseded by the
+// Legacy daily nutrition scalar — one per block/week/routine/field. Superseded by the
 // food-entry list (foodKey); read only by migrateNutrition, which folds any of these
 // it finds into a single quick entry and deletes them. Kept so old saves still migrate.
 export const nutKey = (cell, field) => cell + ".nut." + field;
-// Classes logged on a day cell — a single ".classes" key holding an array of
+// Classes logged on a routine cell — a single ".classes" key holding an array of
 // { type, desc, mins } (variable length, so not the scalar data-k path). The
 // block.id prefix (via cell) means deleteBlock's purge sweeps it up too.
 export const classesKey = (cell) => cell + ".classes";
-// Food eaten on a day — a single ".food" key holding an array of food entries:
+// Food eaten on a routine — a single ".food" key holding an array of food entries:
 // a pantry entry { barcode, grams } (nutrition read live from state.pantry) or an
 // ad-hoc quick entry { name, kcal, carb, fat, protein }. Variable length like
 // classes, so not the scalar path; the block.id prefix (via cell) means deleteBlock's
-// purge sweeps it up too. The day's kcal + macros are the derived sum (dayNutrition).
+// purge sweeps it up too. The routine's kcal + macros are the derived sum (routineNutrition).
 export const foodKey = (cell) => cell + ".food";
 
 // Round and clamp an int into [min, max]; non-numeric (missing) → fallback.
@@ -53,24 +53,24 @@ export const clampRounds = (n) => clampInt(n, MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DE
 export const nonNegSec = (n) => { n = Math.round(+n); return Number.isFinite(n) && n > 0 ? n : 0; };
 
 // The single place that knows a placement's shape: strength placements own a
-// (clamped) set count; circuit placements carry none (the day owns the timing).
+// (clamped) set count; circuit placements carry none (the routine owns the timing).
 export function placement(type, id, sets) {
   return type === "strength" ? { id, sets: clampSets(sets) } : { id };
 }
-// The exercise type a day accepts: strength days take strength exercises,
-// every other non-rest day (recovery) takes circuits. The single source of the
-// day-kind ↔ exercise-type rule, so the picker and the create form agree and a
+// The exercise type a routine accepts: strength routines take strength exercises,
+// every other non-rest routine (recovery) takes circuits. The single source of the
+// routine-kind ↔ exercise-type rule, so the picker and the create form agree and a
 // mismatched placement can't be built.
 export function kindType(kind) { return kind === "strength" ? "strength" : "circuit"; }
-// A day reference from a data-day attribute: a number for a real day, or the
-// "holiday" sentinel for the shared Holiday Workout (which dayDef resolves to
+// A routine reference from a data-routine attribute: a number for a real routine, or the
+// "holiday" sentinel for the shared Holiday Workout (which routineDef resolves to
 // state.holiday). Kept here so every parse site (clicks, submit, the picker)
 // coerces identically and Number("holiday")=NaN can't leak through.
-export const parseDay = (v) => (v === "holiday" ? "holiday" : Number(v));
+export const parseRoutine = (v) => (v === "holiday" ? "holiday" : Number(v));
 
 // The loading-mode record for an exercise (default standard). An absent/unknown
 // `ex.loadMode` resolves to the first LOAD_MODES entry. Pure — both the renderer
-// (input labels) and dayLoad (the tonnage multipliers) read through this, so
+// (input labels) and routineLoad (the tonnage multipliers) read through this, so
 // they can't disagree on what a mode means.
 const LOAD_MODE_BY_ID = Object.fromEntries(LOAD_MODES.map((m) => [m.id, m]));
 export function loadMode(ex) {
@@ -82,7 +82,7 @@ export function loadMode(ex) {
 // (only ever "/side" or undefined), so it needs no escaping.
 export const repsLabel = (m) => "reps" + (m.rUnit || "");
 
-// Band helpers — pure, so the renderer (picker + labels) and dayLoad (the kg
+// Band helpers — pure, so the renderer (picker + labels) and routineLoad (the kg
 // that feeds tonnage) read bands the same way. The chosen tier for a session is
 // the logged value, falling back to the exercise's default; bandKg turns a tier
 // id into its approximate kg (0 when unset/unknown, so it contributes no load).
@@ -90,7 +90,7 @@ const BAND_BY_ID = Object.fromEntries(BANDS.map((b) => [b.id, b]));
 export function bandFor(ex, logged) { return logged || (ex && ex.defaultBand) || ""; }
 export function bandKg(id) { const b = BAND_BY_ID[id]; return b ? b.kg : 0; }
 
-// A recovery day's circuit settings, normalised (defaults applied, types coerced).
+// A recovery routine's circuit settings, normalised (defaults applied, types coerced).
 // The single read-side accessor so the renderer and the time maths agree.
 export function circuitOf(d) {
   return {
@@ -117,12 +117,12 @@ function fmtSecs(sec) {
   return s ? m + " min " + s + " sec" : m + " min";
 }
 // The circuit's estimated total time, formatted ("≈ 12 min 30 sec"). The headline
-// figure from circuitSummary, exposed on its own for the collapsed day summary —
+// figure from circuitSummary, exposed on its own for the collapsed routine summary —
 // where only the total matters, not the round / work / rest breakdown.
 export function circuitTimeLabel(d) {
   return "≈ " + fmtSecs(circuitTime(d.exercises.length, circuitOf(d)));
 }
-// The one-line circuit summary shown under a recovery day: structure + estimate.
+// The one-line circuit summary shown under a recovery routine: structure + estimate.
 export function circuitSummary(d) {
   const c = circuitOf(d);
   const parts = [

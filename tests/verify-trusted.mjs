@@ -26,8 +26,8 @@ verify(async ({ page, ck, ls, reset }) => {
     return json({ status: 0 }); // any other barcode → not found
   });
 
-  const foodSel = (cell) => `#week-view .day[data-cell="${cell}"] .food`;
-  const nutTab = (cell) => page.click(`#week-view .day[data-cell="${cell}"] .day-tab[data-tab="nutrition"]`);
+  const foodSel = (cell) => `#week-view .routine[data-cell="${cell}"] .food`;
+  const nutTab = (cell) => page.click(`#week-view .routine[data-cell="${cell}"] .routine-tab[data-tab="nutrition"]`);
   const find = async (cell, query) => {
     const sel = foodSel(cell);
     await nutTab(cell);
@@ -83,14 +83,14 @@ verify(async ({ page, ck, ls, reset }) => {
     s2.log["b1.w1.d2.food"][0].name === "Banana, large");
   ck("quick edit re-renders kcal = 120", (await num(`${q} .food-kcal`)) === 120);
 
-  // ---- Slice 3: full macro line on day rows + pick cards (not just kcal) ----
+  // ---- Slice 3: full macro line on routine rows + pick cards (not just kcal) ----
   const md = await find("b1.w1.d3", "5000159461122");
   await page.waitForSelector(`${md} .food-result[data-barcode="5000159461122"]`);
   const cardMeta = await page.textContent(`${md} .food-result-meta`);
   ck("pick card shows macros per 100g", /65c/.test(cardMeta) && /17f/.test(cardMeta) && /4p/.test(cardMeta));
   await pick(md, "5000159461122", 100);
   const rowMacros = await page.textContent(`${md} .food-item .food-macros`);
-  ck("day row shows the entry's macro contribution", /65c/.test(rowMacros) && /17f/.test(rowMacros) && /4p/.test(rowMacros));
+  ck("routine row shows the entry's macro contribution", /65c/.test(rowMacros) && /17f/.test(rowMacros) && /4p/.test(rowMacros));
 
   // ---- Slice 4: author a local Food on a not-found barcode (→ trusted, then logged) ----
   const la = await find("b1.w1.d4", "0000000000000");
@@ -147,20 +147,20 @@ verify(async ({ page, ck, ls, reset }) => {
     s7.pantry["5000159461122"].per100g.kcal === 500 && s7.pantry["5000159461122"].trusted === true);
   ck("logged entry derives from the trusted 500, not OFF's 449", (await num(`${ng} .food-kcal`)) === 500);
 
-  // ---- Slice 8: correcting a food from a day row propagates to every day that logged it ----
+  // ---- Slice 8: correcting a food from a routine row propagates to every routine that logged it ----
   // Mars (trusted, 500) is logged on d3 (100g) and d7 (100g) — correct it from d3's row.
   const d3sel = foodSel("b1.w1.d3"), d7sel = foodSel("b1.w1.d7");
   ck("d3 + d7 both derive the trusted 500 before correction",
     (await num(`${d3sel} .food-kcal`)) === 500 && (await num(`${d7sel} .food-kcal`)) === 500);
   await page.click(`${d3sel} .food-item [data-action="food-edit"]`);
-  ck("day-row correct prefills the trusted record (500), not a stale OFF hit",
+  ck("routine-row correct prefills the trusted record (500), not a stale OFF hit",
     (await page.inputValue(`${d3sel} .food-detail-form input[name="kcal"]`)) === "500");
   await page.fill(`${d3sel} .food-detail-form input[name="kcal"]`, "600");
   await page.click(`${d3sel} .food-detail-form button[type="submit"]`);
   await page.waitForTimeout(50);
-  ck("correction shows on the day it was edited (d3 → 600)", (await num(`${d3sel} .food-kcal`)) === 600);
-  ck("correction propagates to another day that logged it (d7 → 600)", (await num(`${d7sel} .food-kcal`)) === 600);
+  ck("correction shows on the routine it was edited (d3 → 600)", (await num(`${d3sel} .food-kcal`)) === 600);
+  ck("correction propagates to another routine that logged it (d7 → 600)", (await num(`${d7sel} .food-kcal`)) === 600);
   const s8 = await ls();
-  ck("food stays trusted after a day-row correction",
+  ck("food stays trusted after a routine-row correction",
     s8.pantry["5000159461122"].trusted === true && s8.pantry["5000159461122"].per100g.kcal === 600);
 });

@@ -29,10 +29,10 @@ verify(async ({ page, ck, ls, reset, ignoreError }) => {
     return json({ status: 0 }); // any other barcode → not found
   });
 
-  // Food now lives in each day card's Nutrition tab (slice 4). Switch the day to that
+  // Food now lives in each routine card's Nutrition tab (slice 4). Switch the routine to that
   // tab, then address its food block by the cell-scoped selector.
-  const foodSel = (cell) => `#week-view .day[data-cell="${cell}"] .food`;
-  const nutTab = (cell) => page.click(`#week-view .day[data-cell="${cell}"] .day-tab[data-tab="nutrition"]`);
+  const foodSel = (cell) => `#week-view .routine[data-cell="${cell}"] .food`;
+  const nutTab = (cell) => page.click(`#week-view .routine[data-cell="${cell}"] .routine-tab[data-tab="nutrition"]`);
   // Open finder, run a Find, wait for the results list to settle.
   const find = async (cell, query) => {
     const sel = foodSel(cell);
@@ -57,7 +57,7 @@ verify(async ({ page, ck, ls, reset, ignoreError }) => {
   ck("empty pantry shows empty-state row", await page.isVisible(`${foodSel("b1.w1.d1")} .food-result-empty`));
   await page.click(`${foodSel("b1.w1.d1")} [data-action="food-close"]`);
 
-  // ---- one finder open at a time: opening another day's finder closes the first ----
+  // ---- one finder open at a time: opening another routine's finder closes the first ----
   // (foundFoods is module-global, so a stale open finder's hits would otherwise strand a
   // pick on it — foodOpen sweeps other finders shut so the invariant the code assumes holds.)
   await nutTab("b1.w1.d1");
@@ -83,7 +83,7 @@ verify(async ({ page, ck, ls, reset, ignoreError }) => {
     s1.pantry && s1.pantry["111"] && s1.pantry["111"].name === "Greek Yogurt" && s1.pantry["111"].per100g.kcal === 97);
   ck("entry shows the cached food's name", (await page.textContent(d1 + " .food-name")) === "Greek Yogurt");
   ck("derived kcal = 97×200/100 = 194", (await num(d1 + " .food-kcal")) === 194);
-  ck("day total derives macros (8c/10f/18p)", /8c/.test(await page.textContent(d1 + " .food-total")) &&
+  ck("routine total derives macros (8c/10f/18p)", /8c/.test(await page.textContent(d1 + " .food-total")) &&
     /10f/.test(await page.textContent(d1 + " .food-total")) && /18p/.test(await page.textContent(d1 + " .food-total")));
 
   // ---- barcode lookup → pick ----

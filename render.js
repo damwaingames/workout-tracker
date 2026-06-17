@@ -6,12 +6,12 @@
 import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey,
-  circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, parseDay, esc, fmt,
+  circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, parseRoutine, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
-  currentBlock, currentBlockIndex, dayDef,
-  previousSets, dayLoad, holidaySwap, previousDayTotal, previousMeasure, bmiFor, nutritionTotals, dayNutrition, entryNutrition,
+  currentBlock, currentBlockIndex, routineDef,
+  previousSets, routineLoad, holidaySwap, previousRoutineTotal, previousMeasure, bmiFor, nutritionTotals, routineNutrition, entryNutrition,
   classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
 import { scanSupported } from "./scan.js";
@@ -40,7 +40,7 @@ function renderHeader() {
 function renderWeek() {
   const block = currentBlock();
   const wk = state.ui.week;
-  const kg = weekBodyweight(block, wk); // per-week value — hoisted out of the days loop (each renderClasses needs it)
+  const kg = weekBodyweight(block, wk); // per-week value — hoisted out of the routines loop (each renderClasses needs it)
   // In Edit mode the block name becomes an inline input; otherwise it's static.
   const nameHtml = editing
     ? '<input type="text" id="block-name-input" class="block-name-input" value="' + esc(block.name) + '" placeholder="Block name" aria-label="Block name" maxlength="40">'
@@ -53,99 +53,99 @@ function renderWeek() {
     '<datalist id="class-types">' + state.classTypes.map((t) => '<option value="' + esc(t.name) + '">').join("") + "</datalist>" +
     (editing ? renderHolidayEdit() : "") +
     (editing ? renderClassTypesEdit() : "") +
-    block.days.map((d) => renderDay(block, d, wk, kg)).join("");
+    block.routines.map((d) => renderRoutine(block, d, wk, kg)).join("");
   hydrate();
 }
 
-function renderDay(block, d, wk, kg) {
-  const cell = cellKey(block.id, wk, d.day);
+function renderRoutine(block, d, wk, kg) {
+  const cell = cellKey(block.id, wk, d.routine);
   // Collapse is a persisted per-cell flag (absent = expanded), set on completion
-  // and toggleable by hand. The collapsed view shows only day-head + focus + the
-  // totals summary; everything else lives in .day-collapsible, hidden by CSS.
+  // and toggleable by hand. The collapsed view shows only routine-head + focus + the
+  // totals summary; everything else lives in .routine-collapsible, hidden by CSS.
   const collapsed = !!state.log[cell + ".collapsed"];
   // Holiday: another per-cell flag that swaps the shared Holiday Workout in for
-  // this day. The day number stays; the kind / title / focus / exercises come
-  // from state.holiday. Its band moves log against this cell, so the day's own
+  // this routine. The routine number stays; the kind / title / focus / exercises come
+  // from state.holiday. Its band moves log against this cell, so the routine's own
   // exercises stay un-logged and previousSets resumes against the last normal week.
   // The holiday body is structurally read-only here (the template is edited once in
   // renderHolidayEdit), so the inline sets / remove / add zone are suppressed.
   const eff = holidaySwap(cell, d);
   const holiday = eff !== d;
-  const ed = holiday ? { ...eff, day: d.day } : d; // keep the real day number for previousSets / the cell
+  const ed = holiday ? { ...eff, routine: d.routine } : d; // keep the real routine number for previousSets / the cell
   let body;
   if (ed.kind === "strength") body = renderStrength(ed, wk, cell, editing && !holiday);
   else if (ed.kind === "recovery") body = renderRecovery(ed, wk, cell);
   else body = renderRest(cell);
 
-  return '<div class="day ' + ed.kind + (collapsed ? " is-collapsed" : "") + (holiday ? " is-holiday" : "") + '" data-cell="' + cell + '">' +
-    '<div class="day-head">' +
-      '<div class="day-head-main">' +
-        '<button class="day-collapse" type="button" data-action="toggle-day" aria-label="Collapse or expand this day" aria-expanded="' + (!collapsed) + '">▾</button>' +
-        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check" data-after="done"><span class="day-title">Day ' + d.day + ": " + esc(ed.title) +
+  return '<div class="routine ' + ed.kind + (collapsed ? " is-collapsed" : "") + (holiday ? " is-holiday" : "") + '" data-cell="' + cell + '">' +
+    '<div class="routine-head">' +
+      '<div class="routine-head-main">' +
+        '<button class="routine-collapse" type="button" data-action="toggle-routine" aria-label="Collapse or expand this day" aria-expanded="' + (!collapsed) + '">▾</button>' +
+        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check" data-after="done"><span class="routine-title">Day ' + d.routine + ": " + esc(ed.title) +
           (holiday ? ' <span class="holiday-badge">🏝 Holiday</span>' : "") + "</span></label>" +
       "</div>" +
-      '<div class="day-head-side">' +
-        // The 🏝 toggle is a logged per-cell flag (like .done), shown on every day so
-        // any day can be swapped to the band workout while you're away from your kit.
+      '<div class="routine-head-side">' +
+        // The 🏝 toggle is a logged per-cell flag (like .done), shown on every routine so
+        // any routine can be swapped to the band workout while you're away from your kit.
         '<label class="holiday-toggle" title="Swap in your Holiday Workout (bands only) for this day">' +
           '<input type="checkbox" data-k="' + cell + '.holiday" data-type="check" data-after="holiday" aria-label="Use the Holiday Workout for this day">' +
           '<span aria-hidden="true">🏝</span></label>' +
-        '<input type="date" class="day-date" data-k="' + cell + '.date" data-type="text" aria-label="Date trained">' +
+        '<input type="date" class="routine-date" data-k="' + cell + '.date" data-type="text" aria-label="Date trained">' +
       "</div>" +
     "</div>" +
-    '<div class="day-focus">' + esc(ed.focus) + "</div>" +
-    daySummary(block, ed, wk, cell) +
-    // .day-collapsible is a one-row grid (1fr ↔ 0fr) so the inner height animates
+    '<div class="routine-focus">' + esc(ed.focus) + "</div>" +
+    routineSummary(block, ed, wk, cell) +
+    // .routine-collapsible is a one-row grid (1fr ↔ 0fr) so the inner height animates
     // to the content's natural size; the inner clips during the slide.
-    '<div class="day-collapsible"><div class="day-collapsible-inner">' +
-      // Per-day tabs: Workout (exercises/circuit + classes) ↔ Nutrition (food entries +
+    '<div class="routine-collapsible"><div class="routine-collapsible-inner">' +
+      // Per-routine tabs: Workout (exercises/circuit + classes) ↔ Nutrition (food entries +
       // derived totals). The active tab is the persisted .tab cell flag (absent =
       // workout), reflected by hydrate; both panels render and CSS shows the active one,
       // so switching is instant and an open finder survives a tab away-and-back.
-      '<div class="day-tabs" role="tablist">' +
-        '<button class="day-tab" type="button" role="tab" data-action="day-tab" data-tab="workout" aria-selected="true">Workout</button>' +
-        '<button class="day-tab" type="button" role="tab" data-action="day-tab" data-tab="nutrition" aria-selected="false">Nutrition</button>' +
+      '<div class="routine-tabs" role="tablist">' +
+        '<button class="routine-tab" type="button" role="tab" data-action="routine-tab" data-tab="workout" aria-selected="true">Workout</button>' +
+        '<button class="routine-tab" type="button" role="tab" data-action="routine-tab" data-tab="nutrition" aria-selected="false">Nutrition</button>' +
       "</div>" +
-      '<div class="day-panel day-panel-workout">' +
-        '<div class="day-body">' + body + "</div>" +
+      '<div class="routine-panel routine-panel-workout">' +
+        '<div class="routine-body">' + body + "</div>" +
         (editing && ed.kind !== "rest" && !holiday ? renderAddZone(d) : "") +
         renderClasses(cell, kg) +
       "</div>" +
-      '<div class="day-panel day-panel-nutrition">' + renderDayFood(cell) + "</div>" +
+      '<div class="routine-panel routine-panel-nutrition">' + renderRoutineFood(cell) + "</div>" +
     "</div></div>" +
     "</div>";
 }
 
-// The collapsed day's one-line totals (CSS-hidden while expanded). Strength days
-// show tonnage; recovery days show the circuit's estimated total time, plus tonnage
-// when a banded move makes the day load-bearing; any day adds logged class minutes.
-// Empty (no line) for a rest day with nothing logged.
-function daySummary(block, d, wk, cell) {
+// The collapsed routine's one-line totals (CSS-hidden while expanded). Strength routines
+// show tonnage; recovery routines show the circuit's estimated total time, plus tonnage
+// when a banded move makes the routine load-bearing; any routine adds logged class minutes.
+// Empty (no line) for a rest routine with nothing logged.
+function routineSummary(block, d, wk, cell) {
   const bits = [];
-  // The volume figure carries the SAME data-vol-cell as the body's day-volume line,
+  // The volume figure carries the SAME data-vol-cell as the body's routine-volume line,
   // so renderVolumes patches both (querySelectorAll) on every volume-affecting edit.
-  // They are two views of one dayLoad().total and must never be patched independently
-  // — collapse then just reveals an already-fresh number, no work in toggleDay/afterDone.
+  // They are two views of one routineLoad().total and must never be patched independently
+  // — collapse then just reveals an already-fresh number, no work in toggleRoutine/afterDone.
   const volBit = (total) => 'Volume <strong data-vol-cell="' + cell + '">' + fmt(total) + ' kg</strong><span class="vol-delta" data-vol-delta="' + cell + '"></span>';
   if (d.kind === "recovery") {
     bits.push(circuitTimeLabel(d));
-    const { total, loadBearing } = dayLoad(block, wk, d);
+    const { total, loadBearing } = routineLoad(block, wk, d);
     if (loadBearing) bits.push(volBit(total));
   } else if (d.kind === "strength") {
-    bits.push(volBit(dayLoad(block, wk, d).total));
+    bits.push(volBit(routineLoad(block, wk, d).total));
   }
   const mins = logList(classesKey(cell)).reduce((s, c) => s + (parseFloat(c.mins) || 0), 0);
   if (mins > 0) bits.push("Classes " + fmt(mins) + " min");
-  // Nutrition: once any food is logged, the day's derived kcal + full macro line — so a
-  // collapsed day still shows what it ate (CONTEXT.md "Collapsed day"). Rebuilt on every
+  // Nutrition: once any food is logged, the routine's derived kcal + full macro line — so a
+  // collapsed routine still shows what it ate (CONTEXT.md "Collapsed routine"). Rebuilt on every
   // full render (food add/remove renders), so it needs no live-patch hook like volume.
-  if (logList(foodKey(cell)).length) bits.push(nutritionLine(dayNutrition(cell)));
-  return bits.length ? '<div class="day-summary">' + bits.join(" · ") + "</div>" : "";
+  if (logList(foodKey(cell)).length) bits.push(nutritionLine(routineNutrition(cell)));
+  return bits.length ? '<div class="routine-summary">' + bits.join(" · ") + "</div>" : "";
 }
 
-// The per-day class logger — a list of logged classes (type · note · minutes ·
-// ~kcal, each removable) and an add form, on every day kind. Classes are logged
-// activity (shown in both modes), not part of the day template. `kg` is the
+// The per-routine class logger — a list of logged classes (type · note · minutes ·
+// ~kcal, each removable) and an add form, on every routine kind. Classes are logged
+// activity (shown in both modes), not part of the routine template. `kg` is the
 // week's bodyweight, used (with the type's rate) to estimate each class's burn.
 function renderClasses(cell, kg) {
   const list = logList(classesKey(cell));
@@ -172,11 +172,11 @@ function renderClasses(cell, kg) {
     "</div></div>";
 }
 
-// Edit-mode editor for the shared Holiday Workout — the band-only day any day can
+// Edit-mode editor for the shared Holiday Workout — the band-only routine any routine can
 // swap in via its 🏝 toggle. Structural only (no per-set logging): each move shows
 // its sets stepper + loading controls + remove, plus the add picker. Edits apply
 // everywhere it's ticked in, since it's one shared definition; the placement
-// handlers reach it through the data-day="holiday" sentinel (dayDef → state.holiday).
+// handlers reach it through the data-routine="holiday" sentinel (routineDef → state.holiday).
 function renderHolidayEdit() {
   const hd = state.holiday;
   const moves = hd.exercises.map((place) => {
@@ -186,20 +186,20 @@ function renderHolidayEdit() {
     return '<div class="exercise" data-ex="' + place.id + '">' +
       '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
       (ex.targetReps ? '<span class="ex-target">' + esc(ex.targetReps) + "</span>" : "") +
-      '<button class="remove" type="button" data-action="remove-exercise" data-day="holiday" data-ex="' + place.id + '" aria-label="Remove">×</button>' +
+      '<button class="remove" type="button" data-action="remove-exercise" data-routine="holiday" data-ex="' + place.id + '" aria-label="Remove">×</button>' +
       "</div>" +
       '<div class="sets-edit">Sets ' +
-        '<button class="step" type="button" data-action="sets-dec" data-day="holiday" data-ex="' + place.id + '" aria-label="Fewer sets">−</button>' +
+        '<button class="step" type="button" data-action="sets-dec" data-routine="holiday" data-ex="' + place.id + '" aria-label="Fewer sets">−</button>' +
         '<span class="sets-count">' + sets + "</span>" +
-        '<button class="step" type="button" data-action="sets-inc" data-day="holiday" data-ex="' + place.id + '" aria-label="More sets">＋</button>' +
+        '<button class="step" type="button" data-action="sets-inc" data-routine="holiday" data-ex="' + place.id + '" aria-label="More sets">＋</button>' +
         loadingEdit(hd, ex) +
       "</div></div>";
   }).join("");
   return '<div class="holiday-edit">' +
     '<h2 class="holiday-edit-h">🏝 Holiday Workout</h2>' +
     '<p class="muted small">A band-only day you can swap into any day with its 🏝 toggle — for when you’re away from your kit. It logs separately, so your normal progression picks up where it left off.</p>' +
-    '<div class="day-body">' + moves + "</div>" +
-    renderAddZone({ kind: hd.kind, day: "holiday" }) +
+    '<div class="routine-body">' + moves + "</div>" +
+    renderAddZone({ kind: hd.kind, routine: "holiday" }) +
     "</div>";
 }
 
@@ -232,7 +232,7 @@ export function renderClassTotal() {
 
 // The per-session band picker for a banded move (logged via bandKey, so it gets
 // no data-k — hydrate would blank an unlogged select; we pre-select the resolved
-// tier here and let the band-pick handler persist changes). Shown on both day
+// tier here and let the band-pick handler persist changes). Shown on both routine
 // kinds, above the move's reps.
 function bandPicker(cell, exId, ex) {
   const cur = bandFor(ex, state.log[bandKey(cell, exId)]);
@@ -265,17 +265,17 @@ function loadingEdit(d, ex) {
   return toggle + bandDefault + modePicker;
 }
 
-// The day's tonnage line. One source for the markup, since renderVolumes patches
-// the inner <strong> (by data-vol-cell) during live edits — both day kinds emit it.
+// The routine's tonnage line. One source for the markup, since renderVolumes patches
+// the inner <strong> (by data-vol-cell) during live edits — both routine kinds emit it.
 function volumeLine(cell, v) {
-  return '<div class="day-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(v) + ' kg</strong>' +
+  return '<div class="routine-volume">Day volume <strong data-vol-cell="' + cell + '">' + fmt(v) + ' kg</strong>' +
     '<span class="vol-delta" data-vol-delta="' + cell + '"></span></div>';
 }
 
-// Fill (or clear) a day-volume delta chip: the progressive-overload change vs the
-// same day last week, as a signed "+N kg" / "−N kg" coloured up (green) / down. Empty
-// when there's nothing to compare — no prior same-day load, the day not yet logged,
-// or an exact match. previousDayTotal already gates to like-for-like (holiday) weeks.
+// Fill (or clear) a routine-volume delta chip: the progressive-overload change vs the
+// same routine last week, as a signed "+N kg" / "−N kg" coloured up (green) / down. Empty
+// when there's nothing to compare — no prior same-routine load, the routine not yet logged,
+// or an exact match. previousRoutineTotal already gates to like-for-like (holiday) weeks.
 function setVolDelta(el, cur, prev) {
   el.classList.remove("up", "down");
   if (!(cur > 0) || !(prev > 0) || cur === prev) { el.textContent = ""; return; }
@@ -285,9 +285,9 @@ function setVolDelta(el, cur, prev) {
 }
 
 // `editStruct` gates the per-exercise structural edit chrome (sets stepper,
-// loading controls, remove). It's the global `editing` for a normal day, but
-// false for a holiday-substituted day — that day's structure is the shared
-// Holiday Workout, edited once in renderHolidayEdit, not per placed day.
+// loading controls, remove). It's the global `editing` for a normal routine, but
+// false for a holiday-substituted routine — that routine's structure is the shared
+// Holiday Workout, edited once in renderHolidayEdit, not per placed routine.
 function renderStrength(d, wk, cell, editStruct) {
   const bi = currentBlockIndex();
   const body = d.exercises.map((place) => {
@@ -299,7 +299,7 @@ function renderStrength(d, wk, cell, editStruct) {
     const m = loadMode(ex); // free-weight tonnage multipliers + per-mode labels
     // Last session's sets (band moves track reps too — they log a reps field, so the
     // "most-recent non-empty" scan finds them just like a free-weight move).
-    const prev = previousSets(exId, bi, wk, d.day);
+    const prev = previousSets(exId, bi, wk, d.routine);
     let rows = "";
     for (let i = 0; i < sets; i++) {
       const p = prev && prev[i];
@@ -324,9 +324,9 @@ function renderStrength(d, wk, cell, editStruct) {
       : "";
     const bandRow = banded ? bandPicker(cell, exId, ex) : ""; // the per-session band selector
     const setsEdit = editStruct
-      ? '<div class="sets-edit">Sets <button class="step" type="button" data-action="sets-dec" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Fewer sets">−</button>' +
+      ? '<div class="sets-edit">Sets <button class="step" type="button" data-action="sets-dec" data-routine="' + d.routine + '" data-ex="' + exId + '" aria-label="Fewer sets">−</button>' +
         '<span class="sets-count">' + sets + "</span>" +
-        '<button class="step" type="button" data-action="sets-inc" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="More sets">＋</button>' +
+        '<button class="step" type="button" data-action="sets-inc" data-routine="' + d.routine + '" data-ex="' + exId + '" aria-label="More sets">＋</button>' +
         // How this exercise is loaded (band vs free weight, and its tonnage mode) —
         // a property of the exercise, so it persists on the library record.
         loadingEdit(d, ex) + "</div>"
@@ -335,7 +335,7 @@ function renderStrength(d, wk, cell, editStruct) {
       '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
       (ex.targetReps ? '<span class="ex-target">' + esc(ex.targetReps) + "</span>" : "") +
       (ex.setup ? '<button class="info" type="button" data-action="toggle-setup" aria-label="How to do this">ⓘ</button>' : "") +
-      (editStruct ? '<button class="remove" type="button" data-action="remove-exercise" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
+      (editStruct ? '<button class="remove" type="button" data-action="remove-exercise" data-routine="' + d.routine + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
       "</div>" +
       (ex.setup ? '<div class="setup">' + esc(ex.setup) + "</div>" : "") +
       setsEdit +
@@ -343,9 +343,9 @@ function renderStrength(d, wk, cell, editStruct) {
       '<div class="sets">' + rows + "</div>" + last +
       "</div>";
   }).join("");
-  // Compute the day's load inline so a fresh render is already correct;
+  // Compute the routine's load inline so a fresh render is already correct;
   // renderVolumes() only re-patches the total during live (keystroke) edits.
-  const { total, loadBearing } = dayLoad(currentBlock(), wk, d);
+  const { total, loadBearing } = routineLoad(currentBlock(), wk, d);
   return body + (loadBearing ? volumeLine(cell, total) : "");
 }
 
@@ -375,14 +375,14 @@ function renderRecovery(d, wk, cell) {
     }
     return '<div class="exercise circuit" data-ex="' + exId + '">' +
       '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
-      (editing ? '<button class="remove" type="button" data-action="remove-exercise" data-day="' + d.day + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
+      (editing ? '<button class="remove" type="button" data-action="remove-exercise" data-routine="' + d.routine + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
       "</div>" +
       (editing ? '<div class="sets-edit">' + loadingEdit(d, ex) + "</div>" : "") +
       inner + "</div>";
   }).join("");
-  // Recovery days are usually load-free; the day-volume line shows only once a
-  // banded move makes the day load-bearing (so pure-cardio days stay uncluttered).
-  const { total, loadBearing } = dayLoad(currentBlock(), wk, d);
+  // Recovery routines are usually load-free; the routine-volume line shows only once a
+  // banded move makes the routine load-bearing (so pure-cardio routines stay uncluttered).
+  const { total, loadBearing } = routineLoad(currentBlock(), wk, d);
   const volLine = loadBearing ? volumeLine(cell, total) : "";
   return moves +
     (editing ? renderCircuitEdit(d) : "") +
@@ -399,22 +399,22 @@ function renderCircuitEdit(d) {
   const c = circuitOf(d);
   const secField = (field, label, val) =>
     '<label class="circuit-field-l">' + label +
-    ' <input type="number" inputmode="numeric" min="0" class="circuit-field" data-fh="circuit-field" data-day="' + d.day + '" data-field="' + field + '" value="' + val + '">s</label>';
+    ' <input type="number" inputmode="numeric" min="0" class="circuit-field" data-fh="circuit-field" data-routine="' + d.routine + '" data-field="' + field + '" value="' + val + '">s</label>';
   return '<div class="circuit-edit">' +
     '<div class="rounds-edit">Rounds ' +
-      '<button class="step" type="button" data-action="rounds-dec" data-day="' + d.day + '" aria-label="Fewer rounds">−</button>' +
+      '<button class="step" type="button" data-action="rounds-dec" data-routine="' + d.routine + '" aria-label="Fewer rounds">−</button>' +
       '<span class="sets-count">' + c.rounds + "</span>" +
-      '<button class="step" type="button" data-action="rounds-inc" data-day="' + d.day + '" aria-label="More rounds">＋</button></div>' +
+      '<button class="step" type="button" data-action="rounds-inc" data-routine="' + d.routine + '" aria-label="More rounds">＋</button></div>' +
     secField("workSec", "Work", c.workSec) +
     secField("restSec", "Rest", c.restSec) +
     secField("roundRestSec", "Round rest", c.roundRestSec) +
     "</div>";
 }
 
-// Live-patch a recovery day's summary line when its work/rest seconds change,
+// Live-patch a recovery routine's summary line when its work/rest seconds change,
 // so the second input keeps focus mid-type (rounds re-render via the stepper).
 export function patchCircuitTime(d) {
-  const el = document.querySelector('[data-circuit-cell="' + cellKey(currentBlock().id, state.ui.week, d.day) + '"]');
+  const el = document.querySelector('[data-circuit-cell="' + cellKey(currentBlock().id, state.ui.week, d.routine) + '"]');
   if (el) el.textContent = circuitSummary(d);
 }
 
@@ -425,11 +425,11 @@ function renderRest(cell) {
 
 // Shared picker chrome — an add button, search box, result list, a create-new
 // link, and a create form whose fields differ per kind. data-picker (+ optional
-// data-day) drives the generic open/search/create handlers; only the catalogue,
+// data-routine) drives the generic open/search/create handlers; only the catalogue,
 // row markup, and these form fields are kind-specific.
 function pickerZone(o) {
-  const dayAttr = o.day != null ? ' data-day="' + o.day + '"' : "";
-  return '<div class="add-zone" data-picker="' + o.kind + '"' + dayAttr + ">" +
+  const routineAttr = o.routine != null ? ' data-routine="' + o.routine + '"' : "";
+  return '<div class="add-zone" data-picker="' + o.kind + '"' + routineAttr + ">" +
     '<button class="add-btn" type="button" data-action="picker-open">' + o.addLabel + "</button>" +
     '<div class="picker" hidden>' +
       '<input type="text" class="picker-search" data-fh="picker-search" placeholder="' + o.searchPlaceholder + '">' +
@@ -443,13 +443,13 @@ function pickerZone(o) {
 }
 
 function renderAddZone(d) {
-  // The day's kind fixes the exercise type, so there's no type picker: a
-  // strength day's form collects reps + sets, a recovery day's collects neither
+  // The routine's kind fixes the exercise type, so there's no type picker: a
+  // strength routine's form collects reps + sets, a recovery routine's collects neither
   // (circuits use fixed rounds). This is what stops a mismatched placement.
   const strength = d.kind === "strength";
   return pickerZone({
     kind: "exercise",
-    day: d.day,
+    routine: d.routine,
     addLabel: strength ? "＋ Add exercise" : "＋ Add move",
     searchPlaceholder: strength ? "Search strength exercises…" : "Search circuit moves…",
     createLabel: strength ? "＋ Create a new exercise" : "＋ Create a new move",
@@ -466,40 +466,40 @@ function renderAddZone(d) {
 
 export function renderProgress() {
   const b = currentBlock();
-  const days = b.days.length;
+  const routines = b.routines.length;
   let weekDone = 0, blockDone = 0;
   for (let wk = 1; wk <= WEEKS; wk++) {
-    for (let i = 0; i < days; i++) {
-      if (state.log[cellKey(b.id, wk, b.days[i].day) + ".done"]) {
+    for (let i = 0; i < routines; i++) {
+      if (state.log[cellKey(b.id, wk, b.routines[i].routine) + ".done"]) {
         blockDone++;
         if (wk === state.ui.week) weekDone++;
       }
     }
   }
   document.getElementById("progress").innerHTML =
-    "<strong>" + weekDone + "</strong> / " + days + " this week · <strong>" + blockDone + "</strong> / " + (days * WEEKS) + " this block";
+    "<strong>" + weekDone + "</strong> / " + routines + " this week · <strong>" + blockDone + "</strong> / " + (routines * WEEKS) + " this block";
 }
 
-// The focus-preserving live updater: re-patches the visible week's day volumes
+// The focus-preserving live updater: re-patches the visible week's routine volumes
 // plus the week/block totals without a re-render, so a weight/reps input keeps
-// focus mid-edit. Full renders already emit correct day volumes via renderStrength.
+// focus mid-edit. Full renders already emit correct routine volumes via renderStrength.
 export function renderVolumes() {
   const b = currentBlock();
   const wk = state.ui.week;
   let weekVol = 0, blockVol = 0;
   for (let w = 1; w <= WEEKS; w++) {
-    b.days.forEach((d) => {
-      const v = dayLoad(b, w, d).total;
+    b.routines.forEach((d) => {
+      const v = routineLoad(b, w, d).total;
       blockVol += v;
       if (w === wk) {
         weekVol += v;
-        const cell = cellKey(b.id, w, d.day);
-        // All matches: the body day-volume line AND the collapsed summary's figure.
+        const cell = cellKey(b.id, w, d.routine);
+        // All matches: the body routine-volume line AND the collapsed summary's figure.
         document.querySelectorAll('[data-vol-cell="' + cell + '"]')
           .forEach((el) => { el.textContent = fmt(v) + " kg"; });
-        // Progressive-overload delta vs the same day last week — patched here too so it
+        // Progressive-overload delta vs the same routine last week — patched here too so it
         // tracks live edits, alongside both views' totals (same data-vol-delta on each).
-        const prev = previousDayTotal(b, w, d);
+        const prev = previousRoutineTotal(b, w, d);
         document.querySelectorAll('[data-vol-delta="' + cell + '"]').forEach((el) => setVolDelta(el, v, prev));
       }
     });
@@ -569,7 +569,7 @@ export function renderBmi() {
 }
 
 // The Nutrition card: the week / block kcal + macro totals and an avg kcal/day line.
-// The per-day food breakdown moved into each day card's Nutrition tab (renderDayFood);
+// The per-routine food breakdown moved into each routine card's Nutrition tab (renderRoutineFood);
 // this card keeps only the roll-ups — the one place to read how the week is tracking.
 function renderNutrition() {
   const card = document.getElementById("nutrition-card");
@@ -635,16 +635,16 @@ function foodItemHTML(e, i, cell) {
     '<button class="remove" type="button" data-action="food-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove food">×</button></li>';
 }
 
-// One day's food block — its list of entries, the derived day total, and the add finder
-// (search / barcode / scan / Pantry pick / quick entry). Lives in the day card's
+// One routine's food block — its list of entries, the derived routine total, and the add finder
+// (search / barcode / scan / Pantry pick / quick entry). Lives in the routine card's
 // Nutrition tab; the container carries data-cell so the food handlers resolve the cell.
 // A pantry entry shows its Food's name + grams; a quick entry shows its name.
-function renderDayFood(cell) {
+function renderRoutineFood(cell) {
   const list = logList(foodKey(cell));
   const items = list.map((e, i) => foodItemHTML(e, i, cell)).join("");
   return '<div class="food" data-cell="' + cell + '">' +
     (list.length ? '<ul class="food-list">' + items + "</ul>" : "") +
-    (list.length ? '<div class="food-total">' + nutritionLine(dayNutrition(cell)) + "</div>" : "") +
+    (list.length ? '<div class="food-total">' + nutritionLine(routineNutrition(cell)) + "</div>" : "") +
     '<div class="food-add">' +
       '<button class="link food-add-btn" type="button" data-action="food-open">＋ Add food</button>' +
       '<div class="food-finder" hidden>' +
@@ -711,21 +711,21 @@ export function foodResultsHTML(foods) {
   ).join("");
 }
 
-// Compact one-line nutrition figure shared by the day total and the Week / Block totals:
+// Compact one-line nutrition figure shared by the routine total and the Week / Block totals:
 // "1850 cal · 77c / 45f / 154p". Macros use their id initial (c/f/p); kcal leads. Reads
-// a { kcal, carb, fat, protein } object (dayNutrition / nutritionTotals).
+// a { kcal, carb, fat, protein } object (routineNutrition / nutritionTotals).
 function nutritionLine(n) {
   const macros = macroLine(n);
   return fmt(n.kcal) + " cal" + (macros ? " · " + macros : "");
 }
 // Just the macros ("65c / 17f / 4p"), kcal omitted — id initials (c/f/p). Shared so the
-// day total, the per-entry rows, and the pick cards format macros identically.
+// routine total, the per-entry rows, and the pick cards format macros identically.
 function macroLine(n) {
   return NUTRIENTS.filter((x) => x.id !== "kcal").map((x) => fmt(n[x.id]) + x.id[0]).join(" / ");
 }
 
 // Reflect the log onto the existing #week-view DOM without rebuilding it: every
-// data-k input, plus the per-cell day flags on each .day (completion styling, collapse
+// data-k input, plus the per-cell routine flags on each .routine (completion styling, collapse
 // state + its caret, and the active tab — all absent-or-set flags on the cell). Because
 // it patches in place, afterDone can re-sync through here and still animate the
 // collapse. Exported so afterDone reuses this one reflect path rather than
@@ -736,18 +736,18 @@ export function hydrate() {
     if (el.dataset.type === "check") el.checked = !!state.log[k];
     else el.value = state.log[k] != null ? state.log[k] : "";
   });
-  document.querySelectorAll("#week-view .day[data-cell]").forEach((dayEl) => {
-    const cell = dayEl.dataset.cell;
-    dayEl.classList.toggle("is-done", !!state.log[cell + ".done"]);
+  document.querySelectorAll("#week-view .routine[data-cell]").forEach((routineEl) => {
+    const cell = routineEl.dataset.cell;
+    routineEl.classList.toggle("is-done", !!state.log[cell + ".done"]);
     const collapsed = !!state.log[cell + ".collapsed"];
-    dayEl.classList.toggle("is-collapsed", collapsed);
-    const chevron = dayEl.querySelector(".day-collapse");
+    routineEl.classList.toggle("is-collapsed", collapsed);
+    const chevron = routineEl.querySelector(".routine-collapse");
     if (chevron) chevron.setAttribute("aria-expanded", String(!collapsed));
     // Active tab: another absent-or-set per-cell flag (absent = Workout). CSS shows the
     // matching panel off this class; mirror the buttons' aria-selected for a11y.
     const nutrition = state.log[cell + ".tab"] === "nutrition";
-    dayEl.classList.toggle("tab-nutrition", nutrition);
-    dayEl.querySelectorAll(".day-tab").forEach((b) =>
+    routineEl.classList.toggle("tab-nutrition", nutrition);
+    routineEl.querySelectorAll(".routine-tab").forEach((b) =>
       b.setAttribute("aria-selected", String((b.dataset.tab === "nutrition") === nutrition)));
   });
 }
@@ -773,17 +773,17 @@ function renderPickList(picker, catalogue, chosenIds, query, rowHtml, keep) {
     : '<p class="muted small">No matches — create a new one below.</p>';
 }
 
-function populatePicker(picker, day, query) {
-  // Only offer exercises whose type matches the day's kind, so a circuit can't
-  // be added to a strength day (or vice versa). The Holiday Workout is band-only
-  // (its skip relies on banded moves carrying no cross-day history — ADR-0002), so
+function populatePicker(picker, routine, query) {
+  // Only offer exercises whose type matches the routine's kind, so a circuit can't
+  // be added to a strength routine (or vice versa). The Holiday Workout is band-only
+  // (its skip relies on banded moves carrying no cross-routine history — ADR-0002), so
   // its picker is further narrowed to banded moves. (Create-new isn't constrained;
   // see the ADR caveat — adding a non-banded move there is the user's own choice.)
-  const type = kindType(dayDef(day).kind);
-  renderPickList(picker, state.library, dayDef(day).exercises.map((p) => p.id), query, (ex) =>
-    '<button class="pick" type="button" data-action="add-ex" data-day="' + day + '" data-ex="' + ex.id + '">' +
+  const type = kindType(routineDef(routine).kind);
+  renderPickList(picker, state.library, routineDef(routine).exercises.map((p) => p.id), query, (ex) =>
+    '<button class="pick" type="button" data-action="add-ex" data-routine="' + routine + '" data-ex="' + ex.id + '">' +
     esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>",
-    (ex) => ex.type === type && (day !== "holiday" || ex.banded));
+    (ex) => ex.type === type && (routine !== "holiday" || ex.banded));
 }
 
 function populateMeasurePicker(picker, query) {
@@ -798,5 +798,5 @@ export function repopulate(zone, query) {
   const picker = zone.querySelector(".picker");
   if (!picker) return;
   if (zone.dataset.picker === "measure") populateMeasurePicker(picker, query);
-  else populatePicker(picker, parseDay(zone.dataset.day), query);
+  else populatePicker(picker, parseRoutine(zone.dataset.routine), query);
 }
