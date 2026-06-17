@@ -6,11 +6,11 @@
 import { DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
   placement, clampSets, clampRounds, circuitOf, kindType,
-  nonNegSec, slugify, uniqueId, today, bandKey, classesKey, foodKey, parseDay,
+  nonNegSec, slugify, uniqueId, today, bandKey, classesKey, foodKey, parseRoutine,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
-  currentBlock, dayDef, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
+  currentBlock, routineDef, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
   render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
@@ -25,8 +25,8 @@ export function handleClick(e) {
   const el = e.target.closest("[data-action]");
   if (!el) return;
   // "holiday" sentinel (the shared Holiday Workout editor) survives the parse; a
-  // real day stays a number. dayDef resolves "holiday" → state.holiday.
-  const day = el.dataset.day ? parseDay(el.dataset.day) : null;
+  // real routine stays a number. routineDef resolves "holiday" → state.holiday.
+  const routine = el.dataset.routine ? parseRoutine(el.dataset.routine) : null;
   switch (el.dataset.action) {
     case "week":
       state.ui.week = Number(el.dataset.week); save(); render(); break;
@@ -35,13 +35,13 @@ export function handleClick(e) {
     case "edit-block": setEditing(!editing); render(); break;
     case "toggle-setup": el.closest(".exercise").classList.toggle("open"); break;
     case "remove-exercise": {
-      const d = dayDef(day);
+      const d = routineDef(routine);
       d.exercises = d.exercises.filter((p) => p.id !== el.dataset.ex);
       save(); render(); break;
     }
     case "sets-inc":
     case "sets-dec": {
-      const p = dayDef(day).exercises.find((x) => x.id === el.dataset.ex);
+      const p = routineDef(routine).exercises.find((x) => x.id === el.dataset.ex);
       if (p) {
         p.sets = clampSets((p.sets || DEFAULT_SETS) + (el.dataset.action === "sets-inc" ? 1 : -1));
         save(); render();
@@ -50,7 +50,7 @@ export function handleClick(e) {
     }
     case "rounds-inc":
     case "rounds-dec": {
-      const d = dayDef(day);
+      const d = routineDef(routine);
       if (d) {
         // Rounds change the R-checkbox count per station, so re-render fully.
         d.rounds = clampRounds(circuitOf(d).rounds + (el.dataset.action === "rounds-inc" ? 1 : -1));
@@ -90,7 +90,7 @@ export function handleClick(e) {
     }
     case "add-ex": {
       const ex = state.library[el.dataset.ex];
-      dayDef(day).exercises.push(placement(ex && ex.type, el.dataset.ex, DEFAULT_SETS));
+      routineDef(routine).exercises.push(placement(ex && ex.type, el.dataset.ex, DEFAULT_SETS));
       save(); render(); break;
     }
     case "m-add": {
@@ -115,32 +115,32 @@ export function handleClick(e) {
     case "food-grams-edit": revealRowEdit(el, ".food-grams-edit-form"); break;
     case "food-quick-edit": revealRowEdit(el, ".food-quick-edit-form"); break;
     case "food-edit-cancel": { const f = el.closest("form"); f.hidden = true; f.reset(); break; }
-    case "toggle-day": toggleDay(el); break;
-    case "day-tab": dayTab(el); break;
+    case "toggle-routine": toggleRoutine(el); break;
+    case "routine-tab": routineTab(el); break;
     case "export": exportBackup(); break;
     case "reset": resetAll(); break;
   }
 }
 
-// Collapse / expand a day in place — a CSS class flip plus the persisted flag, no
+// Collapse / expand a routine in place — a CSS class flip plus the persisted flag, no
 // full render (snappy, and the collapsed summary is already in the DOM). setLog
-// deletes the key on `false`, so expanded = absent, which is what renderDay reads.
-function toggleDay(el) {
-  const dayEl = el.closest(".day");
-  const collapsed = dayEl.classList.toggle("is-collapsed"); // CSS rotates the caret + slides the body
-  setLog(dayEl.dataset.cell + ".collapsed", collapsed);
+// deletes the key on `false`, so expanded = absent, which is what renderRoutine reads.
+function toggleRoutine(el) {
+  const routineEl = el.closest(".routine");
+  const collapsed = routineEl.classList.toggle("is-collapsed"); // CSS rotates the caret + slides the body
+  setLog(routineEl.dataset.cell + ".collapsed", collapsed);
   el.setAttribute("aria-expanded", String(!collapsed));
 }
 
-// Switch a day's Workout / Nutrition tab in place — a CSS class flip plus the persisted
+// Switch a routine's Workout / Nutrition tab in place — a CSS class flip plus the persisted
 // .tab flag, no full render (both panels are already in the DOM, so it's instant and an
 // open finder survives). setLog deletes on "", so Workout = absent (the default).
-function dayTab(el) {
-  const dayEl = el.closest(".day");
+function routineTab(el) {
+  const routineEl = el.closest(".routine");
   const nutrition = el.dataset.tab === "nutrition";
-  dayEl.classList.toggle("tab-nutrition", nutrition);
-  setLog(dayEl.dataset.cell + ".tab", nutrition ? "nutrition" : "");
-  dayEl.querySelectorAll(".day-tab").forEach((b) => b.setAttribute("aria-selected", String(b === el)));
+  routineEl.classList.toggle("tab-nutrition", nutrition);
+  setLog(routineEl.dataset.cell + ".tab", nutrition ? "nutrition" : "");
+  routineEl.querySelectorAll(".routine-tab").forEach((b) => b.setAttribute("aria-selected", String(b === el)));
 }
 
 export function handleSubmit(e) {
@@ -161,10 +161,10 @@ export function handleSubmit(e) {
   e.preventDefault();
   const zone = form.closest(".add-zone");
   if (zone && zone.dataset.picker === "measure") return addNewMeasurement(form);
-  addNewExercise(form, zone ? parseDay(zone.dataset.day) : NaN);
+  addNewExercise(form, zone ? parseRoutine(zone.dataset.routine) : NaN);
 }
 
-// Log a class on a day cell: type (required) + free-text note + minutes (>0).
+// Log a class on a routine cell: type (required) + free-text note + minutes (>0).
 // Classes are an array under one cell key; a brand-new type is remembered in the
 // editable classTypes list so the datalist offers it next time.
 function addClass(form) {
@@ -207,7 +207,7 @@ function readQuickEntry(form) {
   return any ? { name: String(fd.get("name") || "").trim(), ...values } : null;
 }
 
-// Log an ad-hoc quick entry on a day cell — un-barcoded food (loose fruit, meals out) that
+// Log an ad-hoc quick entry on a routine cell — un-barcoded food (loose fruit, meals out) that
 // carries its own kcal + macros, the snapshot exception to the pantry-reference model
 // (ADR-0004). Food entries are an array under one cell key, exactly like classes.
 function addQuickEntry(form) {
@@ -237,7 +237,7 @@ function revealRowEdit(el, cls) {
 }
 
 // Save an in-place grams edit: replace the entry at its index, preserving the barcode
-// (read from the stored entry, not the DOM). Re-renders so the row + day total re-derive.
+// (read from the stored entry, not the DOM). Re-renders so the row + routine total re-derive.
 function saveGramsEdit(form) {
   const cell = form.dataset.cell;
   const i = Number(form.dataset.i);
@@ -285,7 +285,7 @@ function closeFinder(finder) {
 
 // Reveal the finder, seeding its results with the whole Pantry — the offline quick-pick.
 function foodOpen(el) {
-  // One finder open at a time: stop any scan and close a finder left open on another day
+  // One finder open at a time: stop any scan and close a finder left open on another routine
   // card first, so the module-global foundFoods only ever holds THIS finder's hits. A
   // stale finder's OFF results are cleared here and were never cached to the Pantry, so
   // without this a pick on one would silently no-op — this makes that invariant real.
@@ -400,7 +400,7 @@ function foodPick(el) {
   reveal(form);
 }
 
-// Confirm the portion: push a pantry entry { barcode, grams } onto the day, then render
+// Confirm the portion: push a pantry entry { barcode, grams } onto the routine, then render
 // (which closes the finder). The food is already in the Pantry from foodPick.
 function addFoodEntry(form) {
   const cell = form.closest(".food").dataset.cell;
@@ -434,7 +434,7 @@ function foodAddLocal(el) {
   openFoodDetail(el.closest(".food").querySelector(".food-detail-form"), el.dataset.barcode, "author", null);
 }
 
-// Correct a food's details (from a finder result row or a logged day row): open the Food
+// Correct a food's details (from a finder result row or a logged routine row): open the Food
 // details form prefilled in correct mode, with the freshest record for the barcode (a trusted
 // Pantry record beats a possibly-stale same-barcode OFF hit — see freshestFood).
 function foodEdit(el) {
@@ -444,7 +444,7 @@ function foodEdit(el) {
 
 // Save the Food details form: write a trusted Food to the Pantry (the user vouches for these
 // numbers from the label). Authoring then drops into logging a portion (the new food, grams
-// open); correcting just re-renders, so the corrected numbers propagate to every day (ADR-0004).
+// open); correcting just re-renders, so the corrected numbers propagate to every routine (ADR-0004).
 function saveFoodDetail(form) {
   const barcode = form.dataset.barcode;
   if (!barcode) return;
@@ -466,23 +466,23 @@ function saveFoodDetail(form) {
   }
 }
 
-function addNewExercise(form, day) {
+function addNewExercise(form, routine) {
   const fd = new FormData(form);
   const name = String(fd.get("name") || "").trim();
   if (!name) return;
-  // Type follows the day's kind, not a form field — so a created exercise is
-  // always valid for the day it's added to.
-  const type = kindType(dayDef(day).kind);
+  // Type follows the routine's kind, not a form field — so a created exercise is
+  // always valid for the routine it's added to.
+  const type = kindType(routineDef(routine).kind);
   const id = uniqueId(slugify(name), (x) => state.library[x]);
   const ex = { id, name, type };
   const setup = String(fd.get("setup") || "").trim();
   if (setup) ex.setup = setup;
   // Strength moves carry a rep target; circuit moves carry nothing extra
-  // (rounds/timing live on the recovery day).
+  // (rounds/timing live on the recovery routine).
   if (type === "strength") ex.targetReps = String(fd.get("targetReps") || "").trim() || "8–12";
   state.library[id] = ex;
   // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0).
-  dayDef(day).exercises.push(placement(type, id, parseFloat(fd.get("sets"))));
+  routineDef(routine).exercises.push(placement(type, id, parseFloat(fd.get("sets"))));
   save(); render();
 }
 
@@ -531,12 +531,12 @@ function pickerSearch(el) {
   if (zone) repopulate(zone, el.value);
 }
 function circuitField(el) {
-  const d = dayDef(Number(el.dataset.day));
+  const d = routineDef(Number(el.dataset.routine));
   if (d) { d[el.dataset.field] = nonNegSec(el.value); save(); patchCircuitTime(d); }
 }
 // Loading mode lives on the library record (not the placement), so changing it
 // here updates the exercise everywhere it appears; a full render relabels its
-// inputs and recomputes every affected day/week/block volume.
+// inputs and recomputes every affected routine/week/block volume.
 function loadModeField(el) {
   const ex = state.library[el.dataset.ex];
   if (!ex) return;
@@ -559,7 +559,7 @@ function bandedToggleField(el) {
   // Store false verbatim rather than deleting — an absent flag reads as "never
   // chosen" to migrateLibrary, which would re-band a seeded move on the next
   // load. false ≠ null, so the migration leaves the user's choice alone, and
-  // both dayLoad and the renderer treat false exactly like not-banded.
+  // both routineLoad and the renderer treat false exactly like not-banded.
   if (el.checked) { ex.banded = true; if (!ex.defaultBand) ex.defaultBand = DEFAULT_BAND; }
   else ex.banded = false;
   save(); render();
@@ -594,7 +594,7 @@ const fieldByName = {
 // shouldn't double as routing). The full render already emits correct totals; these
 // only re-patch in place so the edited input keeps focus mid-type.
 const refreshBy = {
-  volumes: renderVolumes,  // weight / reps / banded round-reps → day + week + block tonnage
+  volumes: renderVolumes,  // weight / reps / banded round-reps → routine + week + block tonnage
   bmi: renderBmi,          // a measurement value → the BMI line
 };
 
@@ -603,7 +603,7 @@ const refreshBy = {
 // log-key suffix (behaviour routes off a tag, never a string — the CONTEXT.md rule). A
 // plain checkbox (a circuit round tick) carries no data-after and just logs.
 //   done    — stamp the date, auto-collapse, re-sync the flags + progress.
-//   holiday — swap the whole day body in/out (a full render).
+//   holiday — swap the whole routine body in/out (a full render).
 const afterCheck = {
   done: afterDone,
   holiday: render,
@@ -632,12 +632,12 @@ function afterDone(el, k) {
   const cell = k.slice(0, -5);
   const done = el.checked;
   if (done && !state.log[cell + ".date"]) setLog(cell + ".date", today());
-  // Completing a day auto-collapses it (less to scroll past); reopening expands it.
+  // Completing a routine auto-collapses it (less to scroll past); reopening expands it.
   // setLog deletes on false, so un-completing clears the flag → expanded.
   setLog(cell + ".collapsed", done);
   // Reflect the changed flags through hydrate — the canonical "log → existing DOM"
   // pass (is-done, is-collapsed + caret, the date stamp). It patches in place rather
-  // than rebuilding, so the collapse still animates; then refresh the one off-day
+  // than rebuilding, so the collapse still animates; then refresh the one off-routine
   // thing it doesn't own: the header progress count.
   hydrate();
   renderProgress();
@@ -654,9 +654,9 @@ function newBlock() {
   const id = uniqueId("b" + num, (x) => taken[x]);
   const nb = {
     id, name: "Block " + num, createdAt: today(),
-    // Spread the day so all its fields (incl. recovery circuit timing) carry
+    // Spread the routine so all its fields (incl. recovery circuit timing) carry
     // over; only exercises need a deep copy so placements aren't shared.
-    days: src.days.map((d) => ({ ...d, exercises: d.exercises.map((p) => ({ ...p })) })),
+    routines: src.routines.map((d) => ({ ...d, exercises: d.exercises.map((p) => ({ ...p })) })),
   };
   state.blocks.push(nb);
   state.ui.block = id;

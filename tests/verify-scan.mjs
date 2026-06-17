@@ -7,10 +7,10 @@ import { verify } from "./harness.mjs";
  * secure origin) so scanSupported() reads false and the Scan button isn't drawn. */
 verify(async ({ page, ck, reset, ls }) => {
   const BARCODE = "5000159461122";
-  // Food lives in each day card's Nutrition tab (slice 4): switch to it, then address
+  // Food lives in each routine card's Nutrition tab (slice 4): switch to it, then address
   // the cell's food block.
-  const foodSel = (cell) => `#week-view .day[data-cell="${cell}"] .food`;
-  const nutTab = (cell) => page.click(`#week-view .day[data-cell="${cell}"] .day-tab[data-tab="nutrition"]`);
+  const foodSel = (cell) => `#week-view .routine[data-cell="${cell}"] .food`;
+  const nutTab = (cell) => page.click(`#week-view .routine[data-cell="${cell}"] .routine-tab[data-tab="nutrition"]`);
 
   // ---- 1) Unsupported: BarcodeDetector absent → no Scan button, other paths intact ----
   // Walk the prototype chain to delete the native BarcodeDetector, so the feature

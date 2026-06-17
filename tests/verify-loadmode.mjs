@@ -40,7 +40,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await fill(D1, "goblet-squats", "10", "10");   // standard → 10×10 = 100
   ck("standard 10×10 = 100 kg", (await dayVol(D1)).trim() === "100 kg");
   await fill(D1, "bent-over-rows", "10", "10");   // two-dumbbell → (10×2)×10 = 200
-  ck("two-dumbbell 10×10 adds 200 → day = 300 kg", (await dayVol(D1)).trim() === "300 kg");
+  ck("two-dumbbell 10×10 adds 200 → routine = 300 kg", (await dayVol(D1)).trim() === "300 kg");
   await fill(D5, "donkey-kicks", "5", "10");      // per-side → 5×(10×2) = 100
   ck("per-side 5×10 = 100 kg (reps doubled)", (await dayVol(D5)).trim() === "100 kg");
 

@@ -1,10 +1,10 @@
 import { verify } from "./harness.mjs";
 
-/* Per-day class logger: add/remove, multiple per day, any day kind, the editable
+/* Per-routine class logger: add/remove, multiple per routine, any routine kind, the editable
  * type list (datalist), week/block minute totals, and the classTypes migration. */
 verify(async ({ page, ck, ls, reset, key }) => {
-  const D1 = "b1.w1.d1"; // strength day
-  const D7 = "b1.w1.d7"; // rest day
+  const D1 = "b1.w1.d1"; // strength routine
+  const D7 = "b1.w1.d7"; // rest routine
   const cz = (cell) => `.classes[data-cell="${cell}"]`;
   const classesLog = async (cell) => (await ls()).log[`${cell}.classes`];
   const total = () => page.innerHTML("#class-total");
@@ -20,9 +20,9 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await reset();
   await page.waitForTimeout(120);
 
-  // ---- Zone present on every day kind; total hidden until something's logged ----
-  ck("class zone on a strength day", !!(await page.$(cz(D1))));
-  ck("class zone on a rest day", !!(await page.$(cz(D7))));
+  // ---- Zone present on every routine kind; total hidden until something's logged ----
+  ck("class zone on a strength routine", !!(await page.$(cz(D1))));
+  ck("class zone on a rest routine", !!(await page.$(cz(D7))));
   ck("class total hidden when nothing logged", (await page.textContent("#class-total")).trim() === "");
 
   // ---- Add a class: renders, logs as an array, totals appear ----
@@ -38,9 +38,9 @@ verify(async ({ page, ck, ls, reset, key }) => {
   ck("total shows 45 min week + block",
     /45 min<\/strong> this week/.test(await total()) && /45 min<\/strong> this block/.test(await total()));
 
-  // ---- Multiple per day ----
+  // ---- Multiple per routine ----
   await addClass(D1, "Yoga", "", 30);
-  ck("two classes on the day", (await page.$$(`${cz(D1)} .class-item`)).length === 2);
+  ck("two classes on the routine", (await page.$$(`${cz(D1)} .class-item`)).length === 2);
   ck("week total now 75 min", /75 min<\/strong> this week/.test(await total()));
 
   // ---- A brand-new type is remembered (classTypes + datalist), rate starts 0 ----
@@ -56,15 +56,15 @@ verify(async ({ page, ck, ls, reset, key }) => {
   const log2 = await classesLog(D1);
   ck("removed from the logged array", log2.length === 2 && !log2.some((c) => c.type === "Pilates"));
 
-  // ---- Rest day holds a class; week total spans all days ----
+  // ---- Rest routine holds a class; week total spans all routines ----
   await addClass(D7, "Yoga", "wind-down", 20);
-  ck("rest day holds a class", (await page.$$(`${cz(D7)} .class-item`)).length === 1);
-  ck("week total sums across days (Yoga 30 + Spin 40 + 20 = 90)", /90 min<\/strong> this week/.test(await total()));
+  ck("rest routine holds a class", (await page.$$(`${cz(D7)} .class-item`)).length === 1);
+  ck("week total sums across routines (Yoga 30 + Spin 40 + 20 = 90)", /90 min<\/strong> this week/.test(await total()));
 
-  // ---- Emptying a day deletes its classes key ----
+  // ---- Emptying a routine deletes its classes key ----
   await page.click(`${cz(D7)} .class-item:nth-child(1) .remove`);
   await page.waitForTimeout(60);
-  ck("emptying a day deletes its classes key", (await classesLog(D7)) === undefined);
+  ck("emptying a routine deletes its classes key", (await classesLog(D7)) === undefined);
 
   // ---- Calorie burn: rate × minutes × bodyweight ----
   // D1 now holds Yoga(30) + Spin(40, rate 0). Log 60 kg, then add Pilates(45):

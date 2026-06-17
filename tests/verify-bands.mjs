@@ -1,7 +1,7 @@
 import { verify } from "./harness.mjs";
 
 /* Banded moves: seed flags, the per-session band picker (logged), reps-only
- * strength sets and per-round circuit reps, tonnage on BOTH day kinds (band kg ×
+ * strength sets and per-round circuit reps, tonnage on BOTH routine kinds (band kg ×
  * reps), the edit-mode Banded toggle, and the backfill migration. */
 verify(async ({ page, ck, ls, reset, key }) => {
   const D1 = '[data-cell="b1.w1.d1"]'; // Workout A — has banded-clamshells (strength)
@@ -59,7 +59,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await page.click('[data-action="week"][data-week="1"]'); // back to week 1 for the rest
   await page.waitForTimeout(60);
 
-  // ---- Circuit banded UI: band picker + per-round reps, day-volume line appears ----
+  // ---- Circuit banded UI: band picker + per-round reps, routine-volume line appears ----
   ck("circuit banded: band picker defaults to medium",
     (await page.inputValue(`${HIP} select.band-pick`)) === "medium");
   ck("circuit banded: per-round reps inputs (2 rounds)", (await page.$$(`${HIP} .round-rep`)).length === 2);
@@ -70,9 +70,9 @@ verify(async ({ page, ck, ls, reset, key }) => {
   // ---- Circuit banded tonnage: medium (8kg) × (12+10) reps = 176 ----
   await page.fill(`${HIP} .rounds.reps .round:nth-child(1) .round-rep`, "12");
   await page.fill(`${HIP} .rounds.reps .round:nth-child(2) .round-rep`, "10");
-  ck("circuit banded: recovery day now carries tonnage = 176 kg", (await dayVol(D4)).trim() === "176 kg");
+  ck("circuit banded: recovery routine now carries tonnage = 176 kg", (await dayVol(D4)).trim() === "176 kg");
 
-  // ---- Week/block totals fold in both band days (clamshells 352 + hip-abd 176) ----
+  // ---- Week/block totals fold in both band routines (clamshells 352 + hip-abd 176) ----
   const vol = await page.textContent("#volume");
   ck("week + block totals include circuit bands (528)",
     vol.includes("528 kg") && vol.indexOf("528 kg") !== vol.lastIndexOf("528 kg"));

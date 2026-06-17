@@ -26,7 +26,7 @@ function S(id, name, setup, targetReps, loadMode) {
   if (loadMode) ex.loadMode = loadMode;
   return ex;
 }
-// Circuit moves are just a name + type now — rounds and timing live on the day
+// Circuit moves are just a name + type now — rounds and timing live on the routine
 // (the circuit), not the individual move.
 function C(id, name) {
   return { id, name, type: "circuit" };
@@ -66,7 +66,7 @@ function seedLibrary() {
     S("banded-tricep-kickbacks", "Banded Tricep Kickbacks", "Hinge forward stepping on one end of a mini-band. Hold the other end and extend your arm straight back.", "10–15 each arm", "per-side"),
     S("plank-dumbbell-pull-throughs", "Plank Dumbbell Pull-Throughs", "High plank. Reach under your torso with one hand to pull a dumbbell across to the other side.", "8–12"),
     S("banded-bicycle-crunches", "Banded Bicycle Crunches", "Band around feet arches. Lie on back, alternate bringing your elbow to the opposite knee against band resistance.", "10–15"),
-    // Holiday-day band moves — a minimal-kit strength session (the seedHoliday
+    // Holiday-routine band moves — a minimal-kit strength session (the seedHoliday
     // workout below places these). All banded; per-side ones double their reps.
     S("banded-monster-walks", "Banded Monster Walks", "Heavy band around your ankles (and another above the knees). Drop to a half-squat and take controlled lateral steps.", "10–15 each way", "per-side"),
     S("banded-glute-bridges", "Banded Glute Bridges", "Heavy band above your knees. Drive your hips up and push your knees outward against the band at the top.", "10–15"),
@@ -85,9 +85,9 @@ function seedLibrary() {
   ];
   const lib = keyById(list);
   // Banded moves take their load from a resistance band, not free weight (across
-  // both day kinds). They log a band tier (defaulting to `defaultBand`) plus reps,
+  // both routine kinds). They log a band tier (defaulting to `defaultBand`) plus reps,
   // and their tonnage is band kg × reps × the loading-mode rep factor. `banded` is
-  // what render/dayLoad branch on; `defaultBand` just pre-selects a sensible tier
+  // what render/routineLoad branch on; `defaultBand` just pre-selects a sensible tier
   // the user can change per session.
   const band = (id, tier) => { lib[id].banded = true; lib[id].defaultBand = tier; };
   band("banded-clamshells", "light");
@@ -103,10 +103,10 @@ function seedLibrary() {
   return lib;
 }
 
-// The shared Holiday Workout: a single band-only strength day any day can swap in
-// (per-cell, via its 🏝 toggle). Day-shaped so the renderer / dayLoad treat it like
-// a normal strength day, but app-level (one definition reused across blocks) — its
-// band moves log against whichever cell ticks it in, leaving that day's own
+// The shared Holiday Workout: a single band-only strength routine any routine can swap in
+// (per-cell, via its 🏝 toggle). Day-shaped so the renderer / routineLoad treat it like
+// a normal strength routine, but app-level (one definition reused across blocks) — its
+// band moves log against whichever cell ticks it in, leaving that routine's own
 // exercises un-logged, so previousSets resumes normal progression after the break.
 function seedHoliday() {
   return {
@@ -137,24 +137,24 @@ function seedMeasurements() {
 }
 
 function seedBlock(id, name) {
-  // Sets live on each placement, not the exercise — the program's strength days
+  // Sets live on each placement, not the exercise — the program's strength routines
   // all start at 2 sets; circuit placements carry none (rounds/timing live on
-  // the recovery day itself).
-  const day = (n, kind, title, focus, ids) => ({
-    day: n, kind, title, focus,
+  // the recovery routine itself).
+  const routine = (n, kind, title, focus, ids) => ({
+    routine: n, kind, title, focus,
     exercises: ids.map((exId) => placement(kind, exId, DEFAULT_SETS)),
     ...(kind === "recovery" ? { ...CIRCUIT_DEFAULTS } : {}),
   });
   return {
     id, name, createdAt: today(),
-    days: [
-      day(1, "strength", "Workout A", "Squat & Row", ["goblet-squats", "bent-over-rows", "banded-clamshells", "bicep-curls", "wrist-curls"]),
-      day(2, "recovery", "Recovery A", "Cardio Flush", ["high-knees", "wall-press-ups", "glute-squeezes", "calf-raises", "chest-opener-stretch"]),
-      day(3, "strength", "Workout B", "Hinge & Press", ["dumbbell-rdls", "floor-chest-presses", "glute-bridges", "overhead-shoulder-presses", "crunches"]),
-      day(4, "recovery", "Recovery B", "Glute & Core Activation", ["banded-hip-abductions", "hollow-body-holds", "glute-squeezes", "calf-raises", "seated-forward-fold-stretch"]),
-      day(5, "strength", "Workout C", "Sumo & Accessory", ["sumo-squats", "dumbbell-lateral-raises", "donkey-kicks", "dumbbell-tricep-extensions", "wrist-extensions"]),
-      day(6, "recovery", "Recovery C", "Mobility & Length", ["high-knees", "wall-press-ups", "banded-hip-abductions", "quad-stretch", "childs-pose-or-seated-torso-twist"]),
-      day(7, "rest", "Rest Day", "Complete Decompression", []),
+    routines: [
+      routine(1, "strength", "Workout A", "Squat & Row", ["goblet-squats", "bent-over-rows", "banded-clamshells", "bicep-curls", "wrist-curls"]),
+      routine(2, "recovery", "Recovery A", "Cardio Flush", ["high-knees", "wall-press-ups", "glute-squeezes", "calf-raises", "chest-opener-stretch"]),
+      routine(3, "strength", "Workout B", "Hinge & Press", ["dumbbell-rdls", "floor-chest-presses", "glute-bridges", "overhead-shoulder-presses", "crunches"]),
+      routine(4, "recovery", "Recovery B", "Glute & Core Activation", ["banded-hip-abductions", "hollow-body-holds", "glute-squeezes", "calf-raises", "seated-forward-fold-stretch"]),
+      routine(5, "strength", "Workout C", "Sumo & Accessory", ["sumo-squats", "dumbbell-lateral-raises", "donkey-kicks", "dumbbell-tricep-extensions", "wrist-extensions"]),
+      routine(6, "recovery", "Recovery C", "Mobility & Length", ["high-knees", "wall-press-ups", "banded-hip-abductions", "quad-stretch", "childs-pose-or-seated-torso-twist"]),
+      routine(7, "rest", "Rest Day", "Complete Decompression", []),
     ],
   };
 }
@@ -166,9 +166,9 @@ export function defaultState() {
     // Body stats: the measurement catalogue, the user's tracked subset, and a
     // one-time profile (height → BMI). Weekly values live in `log` (measureKey).
     measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
-    // Editable list of class types ({ name, rate }) for the per-day class logger.
+    // Editable list of class types ({ name, rate }) for the per-routine class logger.
     classTypes: DEFAULT_CLASS_TYPES.map((c) => ({ ...c })),
-    // The shared band-only day any day can swap in via its 🏝 toggle.
+    // The shared band-only routine any routine can swap in via its 🏝 toggle.
     holiday: seedHoliday(),
     // The Pantry: { barcode → Food } catalogue of foods looked up from Open Food
     // Facts — the offline cache and quick-pick in one, append-only. Empty until a
@@ -197,6 +197,7 @@ function normalise(s) {
   // The Pantry is additive (older v2 saves predate it) — backfill the empty
   // catalogue rather than bumping the schema version, so old backups stay importable.
   if (!s.pantry || typeof s.pantry !== "object") s.pantry = {};
+  migrateRoutines(s);
   normaliseClassTypes(s);
   migrateSets(s);
   migrateCircuit(s);
@@ -220,11 +221,28 @@ function normalise(s) {
 }
 export { normalise };
 
-// Sets moved off the library record (defaultSets) onto each day's placement:
+// The catalogue entry was renamed day → routine: `block.days` → `block.routines`, and
+// each entry's `.day` number → `.routine`. Older v2 saves still carry the old field
+// names, so rename them in place before the other migrations (which now iterate
+// `b.routines` / read `.routine`). Idempotent — a no-op once renamed — and additive, so
+// old backups import unchanged. Only the in-memory template fields move; the persisted
+// log key segment stays `.d` (cellKey), so logged data isn't orphaned (ADR-0005).
+function migrateRoutines(s) {
+  s.blocks.forEach((b) => {
+    if (!Array.isArray(b.routines)) b.routines = Array.isArray(b.days) ? b.days : [];
+    delete b.days;
+    b.routines.forEach((r) => {
+      if (r.routine == null && r.day != null) r.routine = r.day;
+      delete r.day;
+    });
+  });
+}
+
+// Sets moved off the library record (defaultSets) onto each routine's placement:
 // exerciseIds[] → exercises[{ id, sets }]. Idempotent — a no-op once migrated.
 function migrateSets(s) {
   s.blocks.forEach((b) => {
-    (b.days || []).forEach((d) => {
+    (b.routines || []).forEach((d) => {
       if (!Array.isArray(d.exercises)) {
         const ids = Array.isArray(d.exerciseIds) ? d.exerciseIds : [];
         d.exercises = ids.map((id) => {
@@ -238,12 +256,12 @@ function migrateSets(s) {
   Object.keys(s.library).forEach((id) => delete s.library[id].defaultSets);
 }
 
-// Circuit timing moved from the per-move library record onto the recovery day.
-// Backfill the day-level fields for older saves; the defaults match the prior
+// Circuit timing moved from the per-move library record onto the recovery routine.
+// Backfill the routine-level fields for older saves; the defaults match the prior
 // hardcoded behaviour. Additive + idempotent (a no-op once present).
 function migrateCircuit(s) {
   s.blocks.forEach((b) => {
-    (b.days || []).forEach((d) => {
+    (b.routines || []).forEach((d) => {
       if (d.kind !== "recovery") return;
       if (typeof d.rounds !== "number") d.rounds = CIRCUIT_DEFAULTS.rounds;
       if (typeof d.workSec !== "number") d.workSec = CIRCUIT_DEFAULTS.workSec;
@@ -251,7 +269,7 @@ function migrateCircuit(s) {
       if (typeof d.roundRestSec !== "number") d.roundRestSec = CIRCUIT_DEFAULTS.roundRestSec;
     });
   });
-  // Strip the retired per-move circuit fields (timing now lives on the day),
+  // Strip the retired per-move circuit fields (timing now lives on the routine),
   // mirroring how migrateSets cleaned up defaultSets.
   Object.keys(s.library).forEach((id) => {
     const ex = s.library[id];
@@ -259,16 +277,16 @@ function migrateCircuit(s) {
   });
 }
 
-// Fold the legacy manual nutrition grid into the food-entry model. Any day that
+// Fold the legacy manual nutrition grid into the food-entry model. Any routine that
 // carried .nut.* scalars (kcal + the three macros) becomes a single quick entry
 // holding those totals; the scalars are then deleted (which also clears lingering
-// zeros). Idempotent — once a day's scalars are gone it's a no-op — and additive,
+// zeros). Idempotent — once a routine's scalars are gone it's a no-op — and additive,
 // so old backups migrate on import. Scans every cell, like nutritionTotals.
 function migrateNutrition(s) {
   s.blocks.forEach((b) => {
     ALL_WEEKS.forEach((wk) => {
-      (b.days || []).forEach((d) => {
-        const cell = cellKey(b.id, wk, d.day);
+      (b.routines || []).forEach((d) => {
+        const cell = cellKey(b.id, wk, d.routine);
         const vals = {};
         let any = false;
         NUTRIENTS.forEach((n) => {
@@ -276,8 +294,8 @@ function migrateNutrition(s) {
           if (v > 0) { vals[n.id] = v; any = true; }
           delete s.log[nutKey(cell, n.id)];
         });
-        // Seed the quick entry only when there was real data and the day has no food
-        // list yet — never double-migrate a day already on the new model.
+        // Seed the quick entry only when there was real data and the routine has no food
+        // list yet — never double-migrate a routine already on the new model.
         if (any && !Array.isArray(s.log[foodKey(cell)])) {
           s.log[foodKey(cell)] = [{
             name: "Logged total",
@@ -348,12 +366,12 @@ export function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)
  * ---------------------------------------------------------------------- */
 export function currentBlock() { return state.blocks.find((b) => b.id === state.ui.block) || state.blocks[0]; }
 export function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
-// A day by its number within the current block, or the shared Holiday Workout for
+// A routine by its number within the current block, or the shared Holiday Workout for
 // the "holiday" sentinel — so the structural edit handlers (sets / add / remove /
-// the picker) operate on state.holiday through the same path as a real day.
-export function dayDef(day) {
-  if (day === "holiday") return state.holiday;
-  return currentBlock().days.find((d) => d.day === day);
+// the picker) operate on state.holiday through the same path as a real routine.
+export function routineDef(routine) {
+  if (routine === "holiday") return state.holiday;
+  return currentBlock().routines.find((d) => d.routine === routine);
 }
 
 export function setLog(k, v) {
@@ -377,7 +395,7 @@ export function logRemoveAt(k, i) { const l = logList(k).slice(); l.splice(i, 1)
 export function logReplaceAt(k, i, item) { const l = logList(k).slice(); if (i >= 0 && i < l.length) l[i] = item; setLog(k, l); }
 
 // Purge every log key belonging to a block. The cell-key grammar guarantees every
-// day / measure / food / class / band key is hung off a `block.id`-prefixed
+// routine / measure / food / class / band key is hung off a `block.id`-prefixed
 // cell, so one prefix sweep collects them all — the invariant the key-grammar
 // comments promise, made executable in one named place. No save(): unlike setLog
 // (a per-field edit), this is a sub-step of deleteBlock, which saves once at the end.
@@ -391,8 +409,8 @@ export function nextBlockNumber() {
   return max + 1;
 }
 
-export function readSets(blockId, wk, day, exId, sets) {
-  const cell = cellKey(blockId, wk, day);
+export function readSets(blockId, wk, routine, exId, sets) {
+  const cell = cellKey(blockId, wk, routine);
   return Array.from({ length: sets }, (_, i) => ({
     w: state.log[setKey(cell, exId, i, "w")] || "",
     r: state.log[setKey(cell, exId, i, "r")] || "",
@@ -401,21 +419,21 @@ export function readSets(blockId, wk, day, exId, sets) {
 
 // The most recent earlier logged instance of an exercise — last week within a
 // block, or the previous block's last occurrence at a block boundary.
-export function previousSets(exId, curBlockIdx, curWeek, curDay) {
+export function previousSets(exId, curBlockIdx, curWeek, curRoutine) {
   if (!state.library[exId]) return null;
-  // A single monotonic rank over (block, week, day) — day ≤ 7 so *8 never
+  // A single monotonic rank over (block, week, routine) — routine ≤ 7 so *8 never
   // collides. Used both to filter "earlier than the cursor" and to pick the latest.
-  const rank = (bi, wk, day) => (bi * (WEEKS + 1) + wk) * 8 + day;
-  const cutoff = rank(curBlockIdx, curWeek, curDay);
+  const rank = (bi, wk, routine) => (bi * (WEEKS + 1) + wk) * 8 + routine;
+  const cutoff = rank(curBlockIdx, curWeek, curRoutine);
   let best = null;
   state.blocks.forEach((block, bi) => {
-    block.days.forEach((d) => {
+    block.routines.forEach((d) => {
       const p = d.exercises.find((x) => x.id === exId);
       if (!p) return;
       for (let wk = 1; wk <= WEEKS; wk++) {
-        const order = rank(bi, wk, d.day);
+        const order = rank(bi, wk, d.routine);
         if (order >= cutoff) continue;
-        const s = readSets(block.id, wk, d.day, exId, p.sets || DEFAULT_SETS);
+        const s = readSets(block.id, wk, d.routine, exId, p.sets || DEFAULT_SETS);
         if (s.some((x) => x.w || x.r) && (!best || order > best.order)) best = { order, sets: s };
       }
     });
@@ -438,27 +456,27 @@ function bandedReps(cell, d, p) {
   return total;
 }
 
-// Training load for one day: the tonnage `total` plus `loadBearing` — whether the
-// day carries load at all. These are two facts the number alone can't express: a
-// recovery day becomes load-bearing the moment it holds a banded move, before any
-// reps are logged (so `total` is still 0 but the day-volume line should already
-// show). Strength days are always load-bearing; a recovery day becomes so once a
-// banded move is placed; rest days never are. Free-weight sets contribute
+// Training load for one routine: the tonnage `total` plus `loadBearing` — whether the
+// routine carries load at all. These are two facts the number alone can't express: a
+// recovery routine becomes load-bearing the moment it holds a banded move, before any
+// reps are logged (so `total` is still 0 but the routine-volume line should already
+// show). Strength routines are always load-bearing; a recovery routine becomes so once a
+// banded move is placed; rest routines never are. Free-weight sets contribute
 // weight × reps scaled by the loading mode (per-side doubles reps, two-dumbbell
 // doubles weight); banded moves contribute band kg × summed reps × the per-side
 // factor. Render reads both facts here instead of re-deriving the banded predicate.
-// Whether a cell is flagged as a holiday day — the one place the `.holiday` flag
-// string is read, so every caller (the swap below, previousDayTotal's skip) shares it.
+// Whether a cell is flagged as a holiday routine — the one place the `.holiday` flag
+// string is read, so every caller (the swap below, previousRoutineTotal's skip) shares it.
 export function isHoliday(cell) { return !!state.log[cell + ".holiday"]; }
-// A holiday-flagged cell swaps in the shared Holiday Workout; otherwise the day
-// itself. The cell's coordinates stay the real day's — only the kind + exercise list
+// A holiday-flagged cell swaps in the shared Holiday Workout; otherwise the routine
+// itself. The cell's coordinates stay the real routine's — only the kind + exercise list
 // come from the swap (the band moves log against this same cell, which is what lets
 // previousSets skip the holiday week — ADR-0002). One name for the swap, read by both
-// dayLoad and the renderer rather than re-expressed at each.
+// routineLoad and the renderer rather than re-expressed at each.
 export function holidaySwap(cell, d) { return isHoliday(cell) ? state.holiday : d; }
 
-export function dayLoad(block, wk, d) {
-  const cell = cellKey(block.id, wk, d.day);
+export function routineLoad(block, wk, d) {
+  const cell = cellKey(block.id, wk, d.routine);
   const eff = holidaySwap(cell, d);
   if (eff.kind === "rest") return { total: 0, loadBearing: false };
   let total = 0, loadBearing = eff.kind === "strength";
@@ -466,14 +484,14 @@ export function dayLoad(block, wk, d) {
     const ex = state.library[p.id];
     if (!ex) return;
     if (ex.banded) {
-      loadBearing = true; // a placed banded move makes the day count, reps or not
+      loadBearing = true; // a placed banded move makes the routine count, reps or not
       // Band kg × reps; per-side still doubles the reps (the only loading-mode axis
       // that applies to a band — there's no second band for two-dumbbell's weight).
       const kg = bandKg(bandFor(ex, state.log[bandKey(cell, p.id)]));
       if (kg > 0) total += kg * loadMode(ex).rMult * bandedReps(cell, eff, p);
     } else if (eff.kind === "strength") {
       const m = loadMode(ex);
-      readSets(block.id, wk, d.day, p.id, p.sets || DEFAULT_SETS).forEach((s) => {
+      readSets(block.id, wk, d.routine, p.id, p.sets || DEFAULT_SETS).forEach((s) => {
         const w = parseFloat(s.w), r = parseFloat(s.r);
         if (w > 0 && r > 0) total += w * m.wMult * r * m.rMult;
       });
@@ -484,10 +502,10 @@ export function dayLoad(block, wk, d) {
 
 // The spine of the weekly "most-recent-earlier" scans: walk (block, week) backwards
 // from a cursor and return the latest cell's value for which `valueAt` is non-null.
-// previousMeasure and previousDayTotal share this *exact* 2-D enumerator + reduction,
+// previousMeasure and previousRoutineTotal share this *exact* 2-D enumerator + reduction,
 // differing only in the reader — so the walker takes just a reader (null = empty), not
 // the enumerator+predicate that ADR-0001 once rejected. previousSets stays separate:
-// it's the lone 3-D scan (block × placement-bearing-day × week). See ADR-0001's amendment.
+// it's the lone 3-D scan (block × placement-bearing-routine × week). See ADR-0001's amendment.
 function latestByWeek(curBi, curWk, valueAt) {
   const rank = (bi, wk) => bi * (WEEKS + 1) + wk;
   const cutoff = rank(curBi, curWk);
@@ -503,25 +521,25 @@ function latestByWeek(curBi, curWk, valueAt) {
   return best ? best.v : null;
 }
 
-// The load of the most recent *normal* (non-holiday) session of this day number,
-// earlier than the cursor — for the progressive-overload delta on the day's volume
-// line. Skips holiday weeks and any week the day carried no load, so the delta always
+// The load of the most recent *normal* (non-holiday) session of this routine number,
+// earlier than the cursor — for the progressive-overload delta on the routine's volume
+// line. Skips holiday weeks and any week the routine carried no load, so the delta always
 // compares against the last time the real workout was done: week-1-normal ·
-// week-2-holiday · week-3-normal → week 3 vs week 1. Null on a holiday day itself
+// week-2-holiday · week-3-normal → week 3 vs week 1. Null on a holiday routine itself
 // (holiday weeks aren't a tracking surface) or when there's no earlier normal session.
-export function previousDayTotal(block, wk, d) {
-  if (isHoliday(cellKey(block.id, wk, d.day))) return null;
+export function previousRoutineTotal(block, wk, d) {
+  if (isHoliday(cellKey(block.id, wk, d.routine))) return null;
   const curBi = Math.max(0, state.blocks.findIndex((b) => b.id === block.id));
   return latestByWeek(curBi, wk, (b, w) => {
-    const pd = b.days.find((x) => x.day === d.day);
-    if (!pd || isHoliday(cellKey(b.id, w, pd.day))) return null; // skip holiday weeks
-    const total = dayLoad(b, w, pd).total;
+    const pd = b.routines.find((x) => x.routine === d.routine);
+    if (!pd || isHoliday(cellKey(b.id, w, pd.routine))) return null; // skip holiday weeks
+    const total = routineLoad(b, w, pd).total;
     return total > 0 ? total : null;
   });
 }
 
 // Most recent earlier value of a measurement, scanning (block, week) — measurements
-// are weekly, not per-day. Shares the latestByWeek 2-D spine with previousDayTotal;
+// are weekly, not per-routine. Shares the latestByWeek 2-D spine with previousRoutineTotal;
 // its reader is the measure log value, with "" treated as empty (ADR-0001 amendment).
 export function previousMeasure(mId, curBlockIdx, curWeek) {
   return latestByWeek(curBlockIdx, curWeek, (block, wk) => {
@@ -543,7 +561,7 @@ export function bmiFor(block, wk) {
 // The kcal + macros a single food entry contributes. A quick entry carries its own
 // numbers; a pantry entry scales its Food's per-100g values by grams (per100g × g/100),
 // reading the Food *live* from the Pantry — so an Open Food Facts correction reaches
-// the days that logged it (ADR-0004), and an unknown barcode (e.g. a half-restored
+// the routines that logged it (ADR-0004), and an unknown barcode (e.g. a half-restored
 // backup) contributes zero rather than throwing. Keyed off NUTRIENTS so the nutrient
 // set stays single-sourced.
 export function entryNutrition(entry) {
@@ -560,10 +578,10 @@ export function entryNutrition(entry) {
   return out;
 }
 
-// A day's nutrition: the *derived* sum of its food entries, as { kcal, carb, fat,
-// protein }. The single place a day total is computed — render and nutritionTotals
+// A routine's nutrition: the *derived* sum of its food entries, as { kcal, carb, fat,
+// protein }. The single place a routine total is computed — render and nutritionTotals
 // both read through here, so the four nutrients can never drift apart.
-export function dayNutrition(cell) {
+export function routineNutrition(cell) {
   const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
   logList(foodKey(cell)).forEach((e) => {
     const n = entryNutrition(e);
@@ -583,19 +601,19 @@ export function pantryList(query) {
 }
 
 // Summed nutrition over a set of weeks (one week for the week total, all of them
-// for the block total) — every day's derived total, accumulated. `kcalDays` counts
-// days that logged calories, so the headline avg kcal/day divides by days the user
-// actually recorded rather than the full 7×N (parallels dayLoad's scan).
+// for the block total) — every routine's derived total, accumulated. `kcalDays` counts
+// routines that logged calories, so the headline avg kcal/routine divides by routines the user
+// actually recorded rather than the full 7×N (parallels routineLoad's scan).
 export function nutritionTotals(block, weeks) {
   // Derive the accumulator from NUTRIENTS so the nutrient set has one source of
   // truth — adding a field there can't silently skip it here.
   const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
   let kcalDays = 0;
   weeks.forEach((wk) => {
-    block.days.forEach((d) => {
-      const day = dayNutrition(cellKey(block.id, wk, d.day));
-      NUTRIENTS.forEach((n) => { sum[n.id] += day[n.id]; });
-      if (day.kcal > 0) kcalDays++;
+    block.routines.forEach((d) => {
+      const routine = routineNutrition(cellKey(block.id, wk, d.routine));
+      NUTRIENTS.forEach((n) => { sum[n.id] += routine[n.id]; });
+      if (routine.kcal > 0) kcalDays++;
     });
   });
   return { ...sum, kcalDays };
@@ -633,8 +651,8 @@ export function classTotals(block, weeks) {
   let mins = 0, kcal = 0;
   weeks.forEach((wk) => {
     const kg = weekBodyweight(block, wk);
-    block.days.forEach((d) => {
-      logList(classesKey(cellKey(block.id, wk, d.day))).forEach((c) => {
+    block.routines.forEach((d) => {
+      logList(classesKey(cellKey(block.id, wk, d.routine))).forEach((c) => {
         const m = parseFloat(c.mins);
         if (m > 0) { mins += m; kcal += kcalBurn(classRate(c.type), m, kg); }
       });
