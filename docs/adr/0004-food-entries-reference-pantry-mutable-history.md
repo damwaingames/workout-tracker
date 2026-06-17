@@ -64,3 +64,40 @@ into the days that logged it.
 - **Reopenable toward snapshots if frozen history is ever wanted** (e.g. to audit what a
   day *said* at the time): snapshot `per100g` into the entry (shape 2). Note that re-
   introduces data duplication and lets the Pantry drift from recorded history.
+
+## Amendment (2026-06-17): trusted Foods
+
+The decision above makes an **active re-lookup overwrite the Pantry record with OFF
+data** — the mechanism that carries a correction down into logged days. But the user is
+an OFF *contributor* who has had her own entries wrongly changed by other contributors,
+and trusts the label in her hand over the crowd record. Under the original rule, a
+manual correction would be silently clobbered by the next scan of that product.
+
+**Amended decision.** A Food carries a `trusted` boolean, set when it is **authored
+locally** (a scanned/typed barcode OFF has no record of) or **hand-corrected** by the
+user. A re-lookup must not overwrite a trusted Food:
+
+- A *trusted* barcode resolves from the Pantry — OFF is **not** consulted (so the
+  locally-authored case, where OFF returns nothing anyway, falls out for free, and the
+  numbers shown are exactly what gets logged).
+- `foodPick` refuses to overwrite a trusted record even when it is reached via a *name*
+  search hit (the protection lives at the write, not only in the barcode path).
+- An *untrusted* (plain OFF-sourced) Food is still refreshed by a re-lookup, exactly as
+  decided above.
+
+The reference / propagation model is **unchanged**: a trusted Food's numbers are still
+read live from the Pantry, so a correction still flows into every day that logged it —
+it is now the *user's* correction propagating rather than OFF's.
+
+**Consequences of the amendment.**
+
+- The "single source" of a Food's nutrition flips, per record, from OFF to the **user**
+  for trusted Foods. OFF remains the source for untrusted ones.
+- The Pantry is **no longer exclusively OFF-sourced**: a locally-authored Food has a
+  barcode but no OFF origin. The no-barcode **quick entry** remains the only entry that
+  references nothing.
+- **No "refresh from OFF" escape hatch** (deliberately): once trusted, a Food is
+  re-edited by hand. Re-openable if a "pull OFF's version again" affordance is ever wanted.
+- **Append-only still holds for Pantry *membership*** (no deletes — a removed Food
+  orphans its entries). Records were already mutable (the OFF refresh); they are now also
+  user-mutable, with trusted records protected from the OFF path.

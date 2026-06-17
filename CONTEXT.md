@@ -40,16 +40,26 @@ separate and deliberately not redefined here.
   kind / title / focus / exercises, and the band moves log against that same cell.
   `dayDef("holiday")` resolves the sentinel to `state.holiday` so the structural
   edit handlers reach it through the normal placement path.
-- **Food** — a product from Open Food Facts, identified by its **barcode** (OFF's
-  primary key, so two look-ups of the same product resolve to one Food). Carries a
-  name, optional brand, and per-100g nutrition — the same `kcal`/`carb`/`fat`/
-  `protein` the manual nutrition grid used.
+- **Food** — a barcoded product record in the **Pantry**: a name, optional brand, and
+  per-100g nutrition (`kcal`/`carb`/`fat`/`protein` — the same fields the manual
+  nutrition grid used). Identified by its **barcode** (the primary key, so two
+  references to the same product resolve to one Food). Its usual origin is **Open Food
+  Facts**, but a Food can also be **authored locally** when OFF has no record of a
+  scanned/typed barcode.
+- **Trusted Food** — a Food whose numbers a human vouched for from the label, by
+  authoring it locally or hand-correcting it. The single source of authority flips from
+  OFF to the user: an OFF re-lookup must **not** overwrite a trusted Food (ADR-0004),
+  whereas a plain (untrusted) OFF-sourced Food is still refreshed by one. Not a separate
+  noun — a boolean property a Food carries.
 - **Pantry** — the `{ barcode → Food }` catalogue of every food looked up
   (`state.pantry`). One structure doing two jobs: the **offline cache** (read when a
   lookup can't reach the network) and the **quick-pick** list (the foods you eat
-  again and again). Populated from Open Food Facts when online. Append-only from the
-  UI, like the exercise **Library** and for the same reason: a logged day references
-  a Food by barcode, so removing one would orphan history. Deliberately *not* the
+  again and again). Populated from Open Food Facts when online, or **authored locally** when OFF has no
+  record of a barcode. **Append-only in membership** — never removed from the UI, like
+  the exercise **Library** and for the same reason: a logged day references a Food by
+  barcode, so removing one would orphan history. Its *records*, though, are mutable: an
+  untrusted Food is refreshed by an OFF re-lookup, a **trusted** one only by your
+  hand-correction (ADR-0004). Deliberately *not* the
   service-worker HTTP cache, which is versioned and wiped on every release.
 - **Food entry** — a food eaten on a day; the nutrition analogue of a **Placement**.
   Two kinds share one per-day list: a *pantry entry* `{ barcode, grams }` that
@@ -72,8 +82,8 @@ separate and deliberately not redefined here.
 - **Cell** — a `block/week/day` coordinate (`cellKey`); the prefix every day-scoped log
   key is hung off. The `block.id` prefix is load-bearing: `purgeBlockLog(blockId)` deletes
   a block's whole log in one prefix sweep (the rule, made executable). `logList(k)` owns
-  the one structured shape a key can hold (a list under a cell) and `logPush`/`logRemoveAt`
-  are its only mutators (append / remove-at, deleting the key once its last item goes), so
+  the one structured shape a key can hold (a list under a cell) and `logPush`/`logRemoveAt`/`logReplaceAt`
+  are its only mutators (append / remove-at / replace-at, deleting the key once its last item goes), so
   that empty-delete invariant lives in one place rather than at each call site. Scalar reads stay
   at the call site — they hide no invariant, so wrapping them would only add shallow seams.
 

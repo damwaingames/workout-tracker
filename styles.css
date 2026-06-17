@@ -480,7 +480,7 @@ textarea { width: 100%; resize: vertical; }
  * in each day card's Nutrition tab (.day-panel-nutrition); the .food-* styling is shared
  * with the Nutrition card's Week / Block roll-ups below. */
 .food-list { list-style: none; margin: .35rem 0 .3rem; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
-.food-item { display: flex; align-items: center; gap: .5rem; font-size: .82rem; }
+.food-item { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-size: .82rem; }
 .food-text { flex: 1; min-width: 0; }
 .food-name { font-weight: 600; color: var(--text); }
 .food-detail { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -523,6 +523,30 @@ textarea { width: 100%; resize: vertical; }
 .food-quick-form input[type="number"]::-webkit-outer-spin-button,
 .food-quick-form input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .food-quick-form .form-actions { flex-basis: 100%; }
+/* In-place row editors (grams / quick) + the Food details author-or-correct form. The row
+ * editors sit inside the flex-wrap .food-item, so flex-basis:100% drops them onto their own
+ * line; like the other finder forms, make [hidden] win over their display:flex. */
+.food-macros { color: var(--muted); font-variant-numeric: tabular-nums; }
+.food-edit-btn { font-size: .72rem; white-space: nowrap; }
+.food-grams-edit-form { display: flex; align-items: center; gap: .35rem; flex-basis: 100%; margin-top: .25rem; }
+.food-grams-edit-form input[name="grams"] { width: 4.5rem; text-align: center; }
+.food-quick-edit-form,
+.food-detail-form { display: flex; flex-wrap: wrap; gap: .4rem; flex-basis: 100%; margin-top: .3rem; }
+.food-grams-edit-form[hidden],
+.food-quick-edit-form[hidden],
+.food-detail-form[hidden] { display: none; }
+.food-detail-head { flex-basis: 100%; margin: 0; }
+.food-detail-form input[name="name"] { flex: 1 1 8rem; }
+.food-detail-form input[name="brand"] { flex: 1 1 6rem; }
+.food-quick-edit-form input[name="name"] { flex: 1 1 8rem; }
+.food-quick-edit-form input[type="number"],
+.food-detail-form input[type="number"] { flex: 1 1 4rem; min-width: 0; text-align: center; -moz-appearance: textfield; }
+.food-quick-edit-form input[type="number"]::-webkit-outer-spin-button,
+.food-quick-edit-form input[type="number"]::-webkit-inner-spin-button,
+.food-detail-form input[type="number"]::-webkit-outer-spin-button,
+.food-detail-form input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.food-quick-edit-form .form-actions,
+.food-detail-form .form-actions { flex-basis: 100%; }
 .nut-totals { margin-top: 1rem; padding-top: .6rem; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: .2rem; }
 .nut-total-line { font-size: .82rem; font-variant-numeric: tabular-nums; }
 .nut-total-label { font-weight: 600; display: inline-block; min-width: 3rem; color: var(--text); }

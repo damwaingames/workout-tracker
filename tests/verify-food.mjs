@@ -112,10 +112,11 @@ verify(async ({ page, ck, ls, reset, ignoreError }) => {
     ([s, src]) => new RegExp(src).test(document.querySelector(s + " .food-results").textContent),
     [sel, re.source]);
 
-  // ---- unknown barcode → no-match message ----
+  // ---- unknown barcode → offer a local add (ADR-0004: a barcode can be authored locally) ----
   const d5 = await find("b1.w1.d5", "9999999999999");
-  await settled(d5, /No Open Food Facts match/);
-  ck("unknown barcode shows no-match message", /No Open Food Facts match/.test(await page.textContent(`${d5} .food-results`)));
+  await settled(d5, /add it to your foods/);
+  ck("unknown barcode offers a local add (with the barcode)",
+    await page.isVisible(`${d5} [data-action="food-add-local"][data-barcode="9999999999999"]`));
   await page.click(`${d5} [data-action="food-close"]`);
 
   // ---- offline: Find fails gracefully; pantry pick still works ----

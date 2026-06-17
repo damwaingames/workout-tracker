@@ -600,9 +600,37 @@ function renderDayFood(cell) {
     const food = e.barcode ? state.pantry[e.barcode] : null;
     const name = e.barcode ? ((food && food.name) || e.barcode) : (e.name || "Quick entry");
     const detail = e.barcode ? ' <span class="food-detail">' + fmt(parseFloat(e.grams) || 0) + " g</span>" : "";
+    // A pantry row's grams are editable in place (logReplaceAt) — its ✎ reveals a small
+    // grams form; the barcode is preserved from the stored entry on save.
+    const gramsEdit = e.barcode
+      ? '<button class="link food-edit-btn" type="button" data-action="food-grams-edit" aria-label="Edit grams" title="Edit grams">✎ g</button>' +
+        // Correct the *food's* nutrition (→ trusted) — propagates to every day (ADR-0004).
+        '<button class="link food-edit-btn" type="button" data-action="food-edit" data-barcode="' + esc(e.barcode) + '" aria-label="Correct nutrition" title="Correct nutrition">✎ kcal</button>' +
+        '<form class="food-grams-edit-form" hidden data-cell="' + cell + '" data-i="' + i + '">' +
+          '<input type="number" inputmode="decimal" min="0" name="grams" value="' + (parseFloat(e.grams) || 0) + '" aria-label="Grams">' +
+          '<span class="food-grams-unit">g</span><button type="submit">Save</button>' +
+          '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button>' +
+        "</form>"
+      : "";
+    // A quick row carries its own numbers (the snapshot exception), so its ✎ edits those
+    // in place (name + per-portion nutrients) — distinct from a pantry row's grams edit.
+    const quickEdit = !e.barcode
+      ? '<button class="link food-edit-btn" type="button" data-action="food-quick-edit" aria-label="Edit entry">✎</button>' +
+        '<form class="food-quick-edit-form" hidden data-cell="' + cell + '" data-i="' + i + '">' +
+          '<input name="name" placeholder="Food (optional)" autocomplete="off" value="' + esc(e.name || "") + '">' +
+          NUTRIENTS.map((nt) => '<input type="number" inputmode="decimal" min="0" name="' + nt.id +
+            '" placeholder="' + esc(nt.head) + '" aria-label="' + esc(nt.label) + " (" + esc(nt.unit) +
+            ')" value="' + (parseFloat(e[nt.id]) || 0) + '">').join("") +
+          '<div class="form-actions"><button type="submit">Save</button>' +
+          '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button></div>' +
+        "</form>"
+      : "";
+    const macros = macroLine(n);
     return '<li class="food-item"><span class="food-text">' +
       '<span class="food-name">' + esc(name) + "</span>" + detail +
-      ' <span class="food-kcal">' + fmt(n.kcal) + " kcal</span></span>" +
+      ' <span class="food-kcal">' + fmt(n.kcal) + " kcal</span>" +
+      (macros ? ' <span class="food-macros">' + macros + "</span>" : "") + "</span>" +
+      gramsEdit + quickEdit +
       '<button class="remove" type="button" data-action="food-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove food">×</button></li>';
   }).join("");
   const fields = NUTRIENTS.map((n) =>
@@ -640,7 +668,19 @@ function renderDayFood(cell) {
         "</div>" +
         '<button type="button" class="link food-close" data-action="food-close">Close</button>' +
       "</div>" +
-    "</div></div>";
+    "</div>" +
+    // The Food details form (author / correct) — one per food block, revealed and prefilled
+    // by openFoodDetail; Save writes a trusted Food to the Pantry (ADR-0004 amendment).
+    '<form class="food-detail-form" hidden data-cell="' + cell + '">' +
+      '<p class="food-detail-head muted small">Nutrition per 100 g — straight off the label.</p>' +
+      '<input name="name" placeholder="Name" autocomplete="off">' +
+      '<input name="brand" placeholder="Brand (optional)" autocomplete="off">' +
+      NUTRIENTS.map((nt) => '<input type="number" inputmode="decimal" min="0" name="' + nt.id +
+        '" placeholder="' + esc(nt.head) + ' /100g" aria-label="' + esc(nt.label) + ' per 100 g">').join("") +
+      '<div class="form-actions"><button type="submit">Save</button>' +
+      '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button></div>' +
+    "</form>" +
+    "</div>";
 }
 
 // The finder's result rows — a Pantry quick-pick list or Open Food Facts hits — each a
@@ -653,8 +693,11 @@ export function foodResultsHTML(foods) {
     '<li class="food-result" data-barcode="' + esc(f.barcode) + '">' +
       '<button type="button" class="food-result-pick" data-action="food-pick" data-barcode="' + esc(f.barcode) + '">' +
         '<span class="food-result-name">' + esc(f.name || f.barcode) + "</span>" +
-        '<span class="food-result-meta">' + (f.brand ? esc(f.brand) + " · " : "") + fmt(f.per100g.kcal) + " kcal/100g</span>" +
+        '<span class="food-result-meta">' + (f.brand ? esc(f.brand) + " · " : "") + fmt(f.per100g.kcal) + " kcal" +
+          (macroLine(f.per100g) ? " · " + macroLine(f.per100g) : "") + " /100g</span>" +
       "</button>" +
+      // ✎ corrects this food's numbers (→ trusted) before logging — ADR-0004 amendment.
+      '<button type="button" class="link food-edit-btn" data-action="food-edit" data-barcode="' + esc(f.barcode) + '" aria-label="Edit nutrition">✎</button>' +
       '<form class="food-grams-form" hidden data-barcode="' + esc(f.barcode) + '">' +
         '<input type="number" inputmode="decimal" min="0" name="grams" value="100" aria-label="Grams">' +
         '<span class="food-grams-unit">g</span><button type="submit">Add</button>' +
@@ -667,8 +710,13 @@ export function foodResultsHTML(foods) {
 // "1850 cal · 77c / 45f / 154p". Macros use their id initial (c/f/p); kcal leads. Reads
 // a { kcal, carb, fat, protein } object (dayNutrition / nutritionTotals).
 function nutritionLine(n) {
-  const macros = NUTRIENTS.filter((x) => x.id !== "kcal").map((x) => fmt(n[x.id]) + x.id[0]).join(" / ");
+  const macros = macroLine(n);
   return fmt(n.kcal) + " cal" + (macros ? " · " + macros : "");
+}
+// Just the macros ("65c / 17f / 4p"), kcal omitted — id initials (c/f/p). Shared so the
+// day total, the per-entry rows, and the pick cards format macros identically.
+function macroLine(n) {
+  return NUTRIENTS.filter((x) => x.id !== "kcal").map((x) => fmt(n[x.id]) + x.id[0]).join(" / ");
 }
 
 // Reflect the log onto the existing #week-view DOM without rebuilding it: every
