@@ -615,11 +615,18 @@ function renderNutrition() {
 function nutrientInputs({ value, per100g } = {}) {
   return NUTRIENTS.map((n) => {
     const v = value ? value(n) : "";
-    return '<input type="number" inputmode="decimal" min="0" name="' + n.id +
+    return '<input type="number" inputmode="decimal" step="any" min="0" name="' + n.id +
       '" placeholder="' + esc(n.head) + (per100g ? " /100g" : "") +
       '" aria-label="' + esc(n.label) + (per100g ? " per 100 g" : " (" + esc(n.unit) + ")") + '"' +
       (v === "" ? "" : ' value="' + v + '"') + ">";
   }).join("");
+}
+
+// The grams portion input — one shared validation contract (step="any" so tenths submit,
+// PR #21), used by both the finder pick form and the in-place row edit so the two can't
+// drift apart on it again (this bug was a per-call-site step). Mirrors nutrientInputs.
+function gramsInput(value) {
+  return '<input type="number" inputmode="decimal" step="any" min="0" name="grams" value="' + value + '" aria-label="Grams">';
 }
 
 // One logged food row: name + portion/own numbers + the full macro line, plus its in-place
@@ -629,13 +636,16 @@ function foodItemHTML(e, i, cell) {
   const n = entryNutrition(e);
   const food = e.barcode ? state.pantry[e.barcode] : null;
   const name = e.barcode ? ((food && food.name) || e.barcode) : (e.name || "Quick entry");
-  const detail = e.barcode ? ' <span class="food-detail">' + fmt(parseFloat(e.grams) || 0) + " g</span>" : "";
+  // Grams shown without rounding (a 12.5 g portion must read "12.5 g", not "13 g") —
+  // toLocaleString keeps up to 3 decimals + thousands separators. Macros below stay
+  // rounded via fmt (the precise typed values still drive the maths; only the roll-up rounds).
+  const detail = e.barcode ? ' <span class="food-detail">' + (parseFloat(e.grams) || 0).toLocaleString() + " g</span>" : "";
   const macros = macroLine(n);
   const edit = e.barcode
     ? '<button class="link food-edit-btn" type="button" data-action="food-grams-edit" aria-label="Edit grams" title="Edit grams">✎ g</button>' +
       '<button class="link food-edit-btn" type="button" data-action="food-edit" data-barcode="' + esc(e.barcode) + '" aria-label="Correct nutrition" title="Correct nutrition">✎ kcal</button>' +
       '<form class="food-grams-edit-form" hidden data-cell="' + cell + '" data-i="' + i + '">' +
-        '<input type="number" inputmode="decimal" min="0" name="grams" value="' + (parseFloat(e.grams) || 0) + '" aria-label="Grams">' +
+        gramsInput(parseFloat(e.grams) || 0) +
         '<span class="food-grams-unit">g</span><button type="submit">Save</button>' +
         '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button>' +
       "</form>"
@@ -723,7 +733,7 @@ export function foodResultsHTML(foods) {
       // ✎ corrects this food's numbers (→ trusted) before logging — ADR-0004 amendment.
       '<button type="button" class="link food-edit-btn" data-action="food-edit" data-barcode="' + esc(f.barcode) + '" aria-label="Edit nutrition">✎</button>' +
       '<form class="food-grams-form" hidden data-barcode="' + esc(f.barcode) + '">' +
-        '<input type="number" inputmode="decimal" min="0" name="grams" value="100" aria-label="Grams">' +
+        gramsInput(100) +
         '<span class="food-grams-unit">g</span><button type="submit">Add</button>' +
       "</form>" +
     "</li>"
