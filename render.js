@@ -591,8 +591,9 @@ function renderNutrition() {
 
 // NUTRIENTS as a row of number inputs. `value(n)` prefills the field (edit forms) or is
 // omitted (add forms, blank); `per100g` switches the placeholder suffix + aria-label to
-// per-100-gram wording. One builder for the add / quick-edit / Food-details forms.
-function nutrientInputs(value, per100g) {
+// per-100-gram wording. One builder for the add / quick-edit / Food-details forms — options
+// object so the call sites self-document (no positional `null, true`).
+function nutrientInputs({ value, per100g } = {}) {
   return NUTRIENTS.map((n) => {
     const v = value ? value(n) : "";
     return '<input type="number" inputmode="decimal" min="0" name="' + n.id +
@@ -622,7 +623,7 @@ function foodItemHTML(e, i, cell) {
     : '<button class="link food-edit-btn" type="button" data-action="food-quick-edit" aria-label="Edit entry">✎</button>' +
       '<form class="food-quick-edit-form" hidden data-cell="' + cell + '" data-i="' + i + '">' +
         '<input name="name" placeholder="Food (optional)" autocomplete="off" value="' + esc(e.name || "") + '">' +
-        nutrientInputs((nt) => parseFloat(e[nt.id]) || 0) +
+        nutrientInputs({ value: (nt) => parseFloat(e[nt.id]) || 0 }) +
         '<div class="form-actions"><button type="submit">Save</button>' +
         '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button></div>' +
       "</form>";
@@ -680,7 +681,7 @@ function renderDayFood(cell) {
       '<p class="food-detail-head muted small">Nutrition per 100 g — straight off the label.</p>' +
       '<input name="name" placeholder="Name" autocomplete="off">' +
       '<input name="brand" placeholder="Brand (optional)" autocomplete="off">' +
-      nutrientInputs(null, true) +
+      nutrientInputs({ per100g: true }) +
       '<div class="form-actions"><button type="submit">Save</button>' +
       '<button type="button" class="link" data-action="food-edit-cancel">Cancel</button></div>' +
     "</form>" +
