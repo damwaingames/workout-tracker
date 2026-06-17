@@ -134,15 +134,15 @@ function toggleRoutine(el) {
   el.setAttribute("aria-expanded", String(!collapsed));
 }
 
-// Move a routine onto an adjacent weekday in the viewed week: materialise the week's
-// resolved order (so an inherited / identity week becomes its own explicit schedule),
-// swap with the neighbour, persist, re-render. A no-op at the ends (ADR-0005). The cell
-// key is unchanged, so the routine keeps its logged data and progression — only its
-// weekday slot moves.
+// Move a routine onto an adjacent weekday in the viewed week: take the week's resolved
+// order (weekSchedule returns a fresh array, so we swap in place — an inherited / identity
+// week thus becomes its own explicit schedule once persisted), swap with the neighbour,
+// persist, re-render. A no-op at the ends (ADR-0005). The cell key is unchanged, so the
+// routine keeps its logged data and progression — only its weekday slot moves.
 function reorderRoutine(routineNum, dir) {
   const block = currentBlock();
   const wk = state.ui.week;
-  const order = weekSchedule(block, wk).slice();
+  const order = weekSchedule(block, wk);
   const i = order.indexOf(routineNum);
   const j = i + dir;
   if (i < 0 || j < 0 || j >= order.length) return;

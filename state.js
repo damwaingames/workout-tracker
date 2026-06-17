@@ -383,9 +383,11 @@ export function routineDef(routine) {
 // A week's routine order: the stored schedule (a permutation of the block's routine
 // numbers) reconciled against the catalogue — unknown numbers dropped, any missing ones
 // appended in catalogue order — so the result is always a clean bijection over the
-// routines. Absent → identity (catalogue order). The single driver of render order
-// (never the date); the cell key stays routine-keyed, so temporal scans are unaffected
-// (ADR-0005).
+// routines. (The catalogue is fixed at seven and the only writer, reorderRoutine, derives
+// its array from here, so that reconciliation is insurance against a corrupt / hand-edited
+// log, not support for adding or removing routines — there's no such UI.) Absent → identity
+// (catalogue order). The single driver of render order (never the date); the cell key
+// stays routine-keyed, so temporal scans are unaffected (ADR-0005).
 export function weekSchedule(block, wk) {
   const ids = block.routines.map((r) => r.routine);
   // This week's stored order, else the nearest earlier arranged week in the block (lazy

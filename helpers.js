@@ -21,8 +21,9 @@ function parseYMD(s) { const [y, m, d] = String(s).split("-").map(Number); retur
 // Feature 2 date derivation (ADR-0005). A block's start date anchors a contiguous run
 // of weeks; a routine's weekday is the start plus whole weeks plus its position in that
 // week's schedule. `mondayOf` snaps a date back to its week's Monday (the default block
-// start); `scheduledDate` is the calendar date a routine sits on; `fmtWeekday` is the
-// "Mon 16 Jun" header label. Fixed name arrays (not toLocale*) keep it locale-stable.
+// start); `scheduledDate` is the calendar date (a `Date`, fed straight to fmtWeekday) a
+// routine sits on; `fmtWeekday` is the "Mon 16 Jun" header label. Fixed name arrays (not
+// toLocale*) keep it locale-stable.
 export function mondayOf(dateStr) {
   const d = parseYMD(dateStr);
   d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Sun(0)→−6 … Mon(1)→0 … Sat(6)→−5

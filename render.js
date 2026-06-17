@@ -57,8 +57,9 @@ function renderWeek() {
     (editing ? renderHolidayEdit() : "") +
     (editing ? renderClassTypesEdit() : "") +
     weekSchedule(block, wk).map((n, i) => {
+      // weekSchedule yields a bijection over block.routines, so find always hits.
       const d = block.routines.find((r) => r.routine === n);
-      return d ? renderRoutine(block, d, wk, kg, i) : "";
+      return renderRoutine(block, d, wk, kg, i);
     }).join("");
   hydrate();
 }
