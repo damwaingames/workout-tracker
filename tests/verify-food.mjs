@@ -126,4 +126,30 @@ verify(async ({ page, ck, ls, reset, ignoreError }) => {
   ck("offline Find shows the offline fallback message", /Can.t reach Open Food Facts/.test(await page.textContent(`${d6} .food-results`)));
   await page.fill(`${d6} .food-search`, "greek");
   ck("pantry pick still works offline (local filter)", (await page.$$(`${d6} .food-result[data-barcode="111"]`)).length === 1);
+
+  // ---- decimal grams (step="any"): a tenths portion submits, stores, and shows precisely.
+  //      Without step the number input is :invalid (stepMismatch) and the browser blocks
+  //      the submit; with it, the parseFloat path stores 12.5 and the row shows "12.5 g". ----
+  const d7 = foodSel("b1.w1.d7");
+  await nutTab("b1.w1.d7");
+  await page.click(`${d7} [data-action="food-open"]`);
+  await page.fill(`${d7} .food-search`, "greek"); // local pantry filter, no Find needed
+  await pick(d7, "111", 12.5);
+  const g7 = (await ls()).log["b1.w1.d7.food"];
+  ck("decimal grams entry submits + stores 12.5 (step=any, not blocked)", Array.isArray(g7) && g7[0].grams === 12.5);
+  ck("decimal grams shown without rounding (12.5 g, not 13 g)", /12\.5\s*g/.test(await page.textContent(`${d7} .food-detail`)));
+  ck("derived kcal uses 12.5 (97×12.5/100 → 12)", (await num(d7 + " .food-kcal")) === 12);
+
+  // ---- decimal macros (step="any"): a quick entry with a tenths macro submits + stores ----
+  const d4 = foodSel("b1.w1.d4");
+  await nutTab("b1.w1.d4");
+  await page.click(`${d4} [data-action="food-open"]`);
+  await page.click(`${d4} .food-quick [data-action="form-open"]`);
+  await page.fill(`${d4} .food-quick-form input[name="name"]`, "Olive oil");
+  await page.fill(`${d4} .food-quick-form input[name="kcal"]`, "40");
+  await page.fill(`${d4} .food-quick-form input[name="fat"]`, "4.5");
+  await page.click(`${d4} .food-quick-form button[type="submit"]`);
+  await page.waitForTimeout(50);
+  const q4 = (await ls()).log["b1.w1.d4.food"];
+  ck("quick entry with a decimal macro submits + stores (fat 4.5)", Array.isArray(q4) && q4[0].fat === 4.5);
 });
