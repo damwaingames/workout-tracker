@@ -43,7 +43,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   ck("routine is now is-holiday", await hasClass("b1.w1.d1", "is-holiday"));
   ck("flag persisted true", (await flag("b1.w1.d1")) === true);
   ck("title swaps to Holiday Workout", /Holiday Workout/.test(await titleOf("b1.w1.d1")));
-  ck("routine number preserved (Day 1)", /Day 1:/.test(await titleOf("b1.w1.d1")));
+  ck("routine keeps its weekday slot through the swap (still Mon …)", /Mon \d/.test(await titleOf("b1.w1.d1")));
   ck("holiday badge shown", !!(await page.$(`${D1} .holiday-badge`)));
   ck("a band move is now shown (monster walks)", !!(await page.$(`${D1} .exercise[data-ex="banded-monster-walks"]`)));
   ck("the normal exercise is gone (goblet squats)", !(await page.$(`${D1} .exercise[data-ex="goblet-squats"]`)));

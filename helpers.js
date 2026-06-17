@@ -8,9 +8,35 @@ import {
   MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS, LOAD_MODES, BANDS,
 } from "./constants.js";
 
-export function today() {
-  const d = new Date();
+export function today() { return fmtYMD(new Date()); }
+
+// Local-time YYYY-MM-DD ⇄ Date. Parsing via components (not `new Date(str)`, which
+// reads the string as UTC and can shift the day across a timezone) keeps weekday
+// derivation correct in every locale.
+function fmtYMD(d) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function parseYMD(s) { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1); }
+
+// Feature 2 date derivation (ADR-0005). A block's start date anchors a contiguous run
+// of weeks; a routine's weekday is the start plus whole weeks plus its position in that
+// week's schedule. `mondayOf` snaps a date back to its week's Monday (the default block
+// start); `scheduledDate` is the calendar date a routine sits on; `fmtWeekday` is the
+// "Mon 16 Jun" header label. Fixed name arrays (not toLocale*) keep it locale-stable.
+export function mondayOf(dateStr) {
+  const d = parseYMD(dateStr);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); // Sun(0)→−6 … Mon(1)→0 … Sat(6)→−5
+  return fmtYMD(d);
+}
+export function scheduledDate(startDate, wk, position) {
+  const d = parseYMD(startDate);
+  d.setDate(d.getDate() + (wk - 1) * 7 + position);
+  return d;
+}
+const WEEKDAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function fmtWeekday(date) {
+  return WEEKDAY_NAMES[date.getDay()] + " " + date.getDate() + " " + MONTH_NAMES[date.getMonth()];
 }
 
 // The log-key grammar lives here and nowhere else — renderers (data-k) and
@@ -41,6 +67,10 @@ export const classesKey = (cell) => cell + ".classes";
 // classes, so not the scalar path; the block.id prefix (via cell) means deleteBlock's
 // purge sweeps it up too. The routine's kcal + macros are the derived sum (routineNutrition).
 export const foodKey = (cell) => cell + ".food";
+// A week's routine schedule — the ordered routine numbers for one block/week, stored as
+// a single key (like measureKey, not hung off a cell). Absent → weekSchedule derives the
+// order. The block.id prefix means purgeBlockLog sweeps it on block delete (ADR-0005).
+export const scheduleKey = (blockId, wk) => blockId + ".w" + wk + ".sched";
 
 // Round and clamp an int into [min, max]; non-numeric (missing) → fallback.
 // NB: 0 must clamp to min, so we can't use `|| fallback` (0 is falsy).

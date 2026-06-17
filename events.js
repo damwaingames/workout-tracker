@@ -6,11 +6,11 @@
 import { DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
   placement, clampSets, clampRounds, circuitOf, kindType,
-  nonNegSec, slugify, uniqueId, today, bandKey, classesKey, foodKey, parseRoutine,
+  nonNegSec, slugify, uniqueId, today, mondayOf, bandKey, classesKey, foodKey, scheduleKey, parseRoutine,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
-  currentBlock, routineDef, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
+  currentBlock, routineDef, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
   render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
@@ -33,6 +33,8 @@ export function handleClick(e) {
     case "new-block": newBlock(); break;
     case "delete-block": deleteBlock(); break;
     case "edit-block": setEditing(!editing); render(); break;
+    case "routine-up": reorderRoutine(routine, -1); break;
+    case "routine-down": reorderRoutine(routine, 1); break;
     case "toggle-setup": el.closest(".exercise").classList.toggle("open"); break;
     case "remove-exercise": {
       const d = routineDef(routine);
@@ -130,6 +132,23 @@ function toggleRoutine(el) {
   const collapsed = routineEl.classList.toggle("is-collapsed"); // CSS rotates the caret + slides the body
   setLog(routineEl.dataset.cell + ".collapsed", collapsed);
   el.setAttribute("aria-expanded", String(!collapsed));
+}
+
+// Move a routine onto an adjacent weekday in the viewed week: materialise the week's
+// resolved order (so an inherited / identity week becomes its own explicit schedule),
+// swap with the neighbour, persist, re-render. A no-op at the ends (ADR-0005). The cell
+// key is unchanged, so the routine keeps its logged data and progression — only its
+// weekday slot moves.
+function reorderRoutine(routineNum, dir) {
+  const block = currentBlock();
+  const wk = state.ui.week;
+  const order = weekSchedule(block, wk).slice();
+  const i = order.indexOf(routineNum);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= order.length) return;
+  [order[i], order[j]] = [order[j], order[i]];
+  setLog(scheduleKey(block.id, wk), order);
+  render();
 }
 
 // Switch a routine's Workout / Nutrition tab in place — a CSS class flip plus the persisted
@@ -515,6 +534,11 @@ const fieldById = {
     if (opt) opt.textContent = el.value;
   },
   "block-select"(el) { state.ui.block = el.value; state.ui.week = 1; save(); render(); },
+  "block-start-input"(el) {
+    if (!el.value) return; // a cleared date input keeps the existing start
+    currentBlock().startDate = el.value;
+    save(); render(); // every routine's weekday/date re-derives, so a full render
+  },
   "height-input"(el) {
     const v = parseFloat(el.value);
     state.profile.heightCm = Number.isFinite(v) && v > 0 ? v : null;
@@ -631,12 +655,11 @@ export function handleField(e) {
 function afterDone(el, k) {
   const cell = k.slice(0, -5);
   const done = el.checked;
-  if (done && !state.log[cell + ".date"]) setLog(cell + ".date", today());
   // Completing a routine auto-collapses it (less to scroll past); reopening expands it.
   // setLog deletes on false, so un-completing clears the flag → expanded.
   setLog(cell + ".collapsed", done);
   // Reflect the changed flags through hydrate — the canonical "log → existing DOM"
-  // pass (is-done, is-collapsed + caret, the date stamp). It patches in place rather
+  // pass (is-done, is-collapsed + caret). It patches in place rather
   // than rebuilding, so the collapse still animates; then refresh the one off-routine
   // thing it doesn't own: the header progress count.
   hydrate();
@@ -653,7 +676,9 @@ function newBlock() {
   state.blocks.forEach((b) => (taken[b.id] = true));
   const id = uniqueId("b" + num, (x) => taken[x]);
   const nb = {
-    id, name: "Block " + num, createdAt: today(),
+    // A new block starts this week with a clean identity slate — schedules live in the
+    // log (not copied) and weekdays re-derive from its own start date (ADR-0005).
+    id, name: "Block " + num, createdAt: today(), startDate: mondayOf(today()),
     // Spread the routine so all its fields (incl. recovery circuit timing) carry
     // over; only exercises need a deep copy so placements aren't shared.
     routines: src.routines.map((d) => ({ ...d, exercises: d.exercises.map((p) => ({ ...p })) })),
