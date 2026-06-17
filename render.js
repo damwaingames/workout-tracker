@@ -6,11 +6,11 @@
 import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey,
-  circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, parseRoutine, esc, fmt,
+  circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
-  currentBlock, currentBlockIndex, routineDef,
+  currentBlock, currentBlockIndex, routineDef, weekSchedule,
   previousSets, routineLoad, holidaySwap, previousRoutineTotal, previousMeasure, bmiFor, nutritionTotals, routineNutrition, entryNutrition,
   classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
@@ -48,17 +48,29 @@ function renderWeek() {
   document.getElementById("week-view").innerHTML =
     '<p class="week-heading">' + nameHtml + " · Week " + wk + " of " + WEEKS +
     (editing ? ' <span class="edit-hint">— editing this block’s exercises</span>' : "") + "</p>" +
+    // Block start date (the Monday weekdays derive from) — editable in Edit mode; a free
+    // date (no snap), so a midweek start is representable (ADR-0005).
+    (editing ? '<label class="block-start-l">Block starts <input type="date" id="block-start-input" class="block-start-input" value="' + esc(block.startDate) + '" aria-label="Block start date"></label>' : "") +
     // Shared autocomplete list of known class types — every add-class form's type
     // input references this by id, so adding a type makes it offered everywhere.
     '<datalist id="class-types">' + state.classTypes.map((t) => '<option value="' + esc(t.name) + '">').join("") + "</datalist>" +
     (editing ? renderHolidayEdit() : "") +
     (editing ? renderClassTypesEdit() : "") +
-    block.routines.map((d) => renderRoutine(block, d, wk, kg)).join("");
+    weekSchedule(block, wk).map((n, i) => {
+      // weekSchedule yields a bijection over block.routines, so find always hits.
+      const d = block.routines.find((r) => r.routine === n);
+      return renderRoutine(block, d, wk, kg, i);
+    }).join("");
   hydrate();
 }
 
-function renderRoutine(block, d, wk, kg) {
+function renderRoutine(block, d, wk, kg, position) {
   const cell = cellKey(block.id, wk, d.routine);
+  // The routine's weekday + date, derived from the block start + week offset + its
+  // position in this week's schedule (here the render index) — the header label that
+  // replaces the old "Day N" (ADR-0005).
+  const when = fmtWeekday(scheduledDate(block.startDate, wk, position));
+  const lastPos = block.routines.length - 1; // for disabling the reorder arrows at the ends
   // Collapse is a persisted per-cell flag (absent = expanded), set on completion
   // and toggleable by hand. The collapsed view shows only routine-head + focus + the
   // totals summary; everything else lives in .routine-collapsible, hidden by CSS.
@@ -81,16 +93,23 @@ function renderRoutine(block, d, wk, kg) {
     '<div class="routine-head">' +
       '<div class="routine-head-main">' +
         '<button class="routine-collapse" type="button" data-action="toggle-routine" aria-label="Collapse or expand this day" aria-expanded="' + (!collapsed) + '">▾</button>' +
-        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check" data-after="done"><span class="routine-title">Day ' + d.routine + ": " + esc(ed.title) +
+        '<label class="done-toggle"><input type="checkbox" data-k="' + cell + '.done" data-type="check" data-after="done"><span class="routine-title">' + when + " · " + esc(ed.title) +
           (holiday ? ' <span class="holiday-badge">🏝 Holiday</span>' : "") + "</span></label>" +
       "</div>" +
       '<div class="routine-head-side">' +
+        // Reorder this routine onto an earlier / later weekday in the week (Edit mode only).
+        // Each click swaps with the neighbour in the week's schedule; disabled at the ends.
+        (editing
+          ? '<span class="routine-move-group">' +
+              '<button class="routine-move" type="button" data-action="routine-up" data-routine="' + d.routine + '" aria-label="Move to an earlier weekday"' + (position === 0 ? " disabled" : "") + ">▲</button>" +
+              '<button class="routine-move" type="button" data-action="routine-down" data-routine="' + d.routine + '" aria-label="Move to a later weekday"' + (position === lastPos ? " disabled" : "") + ">▼</button>" +
+            "</span>"
+          : "") +
         // The 🏝 toggle is a logged per-cell flag (like .done), shown on every routine so
         // any routine can be swapped to the band workout while you're away from your kit.
         '<label class="holiday-toggle" title="Swap in your Holiday Workout (bands only) for this day">' +
           '<input type="checkbox" data-k="' + cell + '.holiday" data-type="check" data-after="holiday" aria-label="Use the Holiday Workout for this day">' +
           '<span aria-hidden="true">🏝</span></label>' +
-        '<input type="date" class="routine-date" data-k="' + cell + '.date" data-type="text" aria-label="Date trained">' +
       "</div>" +
     "</div>" +
     '<div class="routine-focus">' + esc(ed.focus) + "</div>" +

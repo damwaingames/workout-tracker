@@ -12,7 +12,7 @@ import {
   WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
 import {
-  today, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey, foodKey,
+  today, mondayOf, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey, foodKey, scheduleKey,
   placement, loadMode, circuitOf, bandFor, bandKg, kcalBurn,
 } from "./helpers.js";
 
@@ -146,7 +146,9 @@ function seedBlock(id, name) {
     ...(kind === "recovery" ? { ...CIRCUIT_DEFAULTS } : {}),
   });
   return {
-    id, name, createdAt: today(),
+    // startDate (a Monday) is the anchor every routine's weekday derives from (ADR-0005);
+    // a fresh block starts this week.
+    id, name, createdAt: today(), startDate: mondayOf(today()),
     routines: [
       routine(1, "strength", "Workout A", "Squat & Row", ["goblet-squats", "bent-over-rows", "banded-clamshells", "bicep-curls", "wrist-curls"]),
       routine(2, "recovery", "Recovery A", "Cardio Flush", ["high-knees", "wall-press-ups", "glute-squeezes", "calf-raises", "chest-opener-stretch"]),
@@ -198,6 +200,10 @@ function normalise(s) {
   // catalogue rather than bumping the schema version, so old backups stay importable.
   if (!s.pantry || typeof s.pantry !== "object") s.pantry = {};
   migrateRoutines(s);
+  // Per-block start date (the Monday weekdays derive from) is additive — older saves
+  // predate it. Backfill to the Monday of createdAt's week (ADR-0005), today's week if
+  // createdAt is missing too. Runs after migrateRoutines so every block is well-formed.
+  s.blocks.forEach((b) => { if (!b.startDate) b.startDate = mondayOf(b.createdAt || today()); });
   normaliseClassTypes(s);
   migrateSets(s);
   migrateCircuit(s);
@@ -372,6 +378,29 @@ export function currentBlockIndex() { return Math.max(0, state.blocks.findIndex(
 export function routineDef(routine) {
   if (routine === "holiday") return state.holiday;
   return currentBlock().routines.find((d) => d.routine === routine);
+}
+
+// A week's routine order: the stored schedule (a permutation of the block's routine
+// numbers) reconciled against the catalogue — unknown numbers dropped, any missing ones
+// appended in catalogue order — so the result is always a clean bijection over the
+// routines. (The catalogue is fixed at seven and the only writer, reorderRoutine, derives
+// its array from here, so that reconciliation is insurance against a corrupt / hand-edited
+// log, not support for adding or removing routines — there's no such UI.) Absent → identity
+// (catalogue order). The single driver of render order (never the date); the cell key
+// stays routine-keyed, so temporal scans are unaffected (ADR-0005).
+export function weekSchedule(block, wk) {
+  const ids = block.routines.map((r) => r.routine);
+  // This week's stored order, else the nearest earlier arranged week in the block (lazy
+  // lookback — reordering one week carries forward until the next explicitly-arranged
+  // one), else identity. Stays within the block: a new block is a clean identity slate.
+  let stored = null;
+  for (let w = wk; w >= 1 && !stored; w--) {
+    const s = state.log[scheduleKey(block.id, w)];
+    if (Array.isArray(s)) stored = s;
+  }
+  const order = (stored || []).filter((n) => ids.includes(n));
+  ids.forEach((n) => { if (!order.includes(n)) order.push(n); });
+  return order;
 }
 
 export function setLog(k, v) {

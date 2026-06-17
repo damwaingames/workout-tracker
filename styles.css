@@ -122,6 +122,26 @@ nav.weeks {
   width: 11rem;
   max-width: 60%;
 }
+/* Block start date (Edit mode) — the Monday weekdays derive from. */
+.block-start-l {
+  display: block;
+  margin: -.25rem 0 .75rem;
+  font-size: .8rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+}
+.block-start-input {
+  font: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text);
+  padding: .15rem .4rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  margin-left: .4rem;
+}
 
 .routine {
   background: var(--card);
@@ -169,15 +189,23 @@ nav.weeks {
 .done-toggle { display: flex; align-items: center; gap: .55rem; cursor: pointer; user-select: none; }
 .done-toggle input { width: 1.15rem; height: 1.15rem; cursor: pointer; flex: 0 0 auto; }
 .routine-title { font-weight: 700; font-size: 1rem; }
-.routine-date {
+/* Reorder arrows (Edit mode): a compact stacked ▲/▼ pair moving a routine onto an
+   earlier / later weekday in the week. Disabled at the ends of the week. */
+.routine-move-group { display: inline-flex; flex-direction: column; line-height: 0; }
+.routine-move {
   font: inherit;
-  font-size: .78rem;
+  font-size: .6rem;
+  line-height: 1;
+  padding: .12rem .32rem;
   color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: .2rem .35rem;
   background: #fff;
+  border: 1px solid var(--border);
+  cursor: pointer;
 }
+.routine-move:first-child { border-radius: 5px 5px 0 0; border-bottom: none; }
+.routine-move:last-child { border-radius: 0 0 5px 5px; }
+.routine-move:hover:not(:disabled) { background: var(--done-bg); color: var(--text); }
+.routine-move:disabled { opacity: .3; cursor: default; }
 .routine-focus { font-size: .8rem; color: var(--muted); margin: .15rem 0 0 1.9rem; }
 
 /* Collapsed routine: show the totals summary, hide everything below the header. */
