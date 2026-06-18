@@ -76,7 +76,7 @@ export const DEFAULT_CLASS_TYPES = [
 // reads false), so the app ships dormant until you've done the one-time console setup
 // documented in the README. The scope is drive.appdata (the hidden folder, not your
 // visible Drive); DRIVE_FILENAME names the single blob inside it.
-export const GOOGLE_CLIENT_ID = "";
+export const GOOGLE_CLIENT_ID = "519272429593-7qm9mnii4abr059d55t494r83vt8an8g.apps.googleusercontent.com";
 export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
 export const DRIVE_FILENAME = "workout-tracker-state.json";
 

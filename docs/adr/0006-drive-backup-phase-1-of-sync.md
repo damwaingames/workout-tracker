@@ -56,8 +56,8 @@ secret store, and a hard "keep features simple, consolidate" preference.
   "unverified app" warning, and the backup would be a file the user could see and
   download. Rejected for the tidier hidden folder: a visible `workout-tracker.json`
   sitting in Drive root invites manual fiddling, and the app never needs the user to
-  touch it. The cost is the sensitive-scope warning (below), judged acceptable for
-  personal use.
+  touch it. The nominal cost — the sensitive-scope "unverified app" warning — is removed
+  entirely by deploying with an Internal Workspace consent screen (see Consequences).
 - **Automatic sync now** (pull-on-open / push-on-save). Rejected: it implies conflict
   handling the whole-blob model can't honestly provide, and contradicts the simple,
   manual mental model of the existing Export/Import.
@@ -84,9 +84,11 @@ secret store, and a hard "keep features simple, consolidate" preference.
 - **The known footgun.** Backing up from a device whose Store is older than the Drive copy
   silently overwrites newer cloud data. Mitigated, not prevented, by the timestamp in the
   dialog; the automatic guard is a Phase-2 deliverable.
-- **Drive is online-only**, and the consent flow shows an "unverified app" warning
-  (sensitive scope) that a test user clicks through once per device. Personal use stays in
-  Google's "Testing" publishing mode, so no app verification is ever required.
+- **Drive is online-only.** The deployment uses an **Internal** Workspace consent screen,
+  so any account in the org can authorise with **no verification and no "unverified app"
+  warning** — the data lives in the org's Drive, and only org accounts can sign in. (A
+  non-org deployment would instead use External + "Testing" mode: a one-time unverified
+  warning per device, capped at 100 test users, still no verification for personal use.)
 - When real sync lands, the user-facing language graduates from **backup/restore** to
   **sync**; until then the buttons say what they do (CONTEXT.md flags "sync" as a term to
   avoid for the current behaviour).

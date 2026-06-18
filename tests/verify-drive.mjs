@@ -1,4 +1,5 @@
 import { verify } from "./harness.mjs";
+import { GOOGLE_CLIENT_ID } from "../constants.js";
 
 /* Drive backup (ADR-0006): Phase-1 manual, whole-blob, last-write-wins to the hidden
  * appDataFolder. Headless has no Google session, so the GIS token client is stubbed via
@@ -61,16 +62,24 @@ verify(async ({ page, ck, reset, ls }) => {
   const dialogs = [];
   page.on("dialog", (d) => { dialogs.push(d.message()); d.accept(); });
 
-  // ---- 1) Dormant by default: no Client ID configured → buttons hidden ----
+  // ---- 1) Visibility tracks driveEnabled(): buttons show iff a Client ID is configured ----
+  // Read from source (like verify-version reads APP_VERSION), so this holds whether or not
+  // GOOGLE_CLIENT_ID is set — main.js reveals the buttons only when it is.
+  const configured = !!GOOGLE_CLIENT_ID;
   await reset();
-  ck("Back up button hidden with no Client ID", !(await page.isVisible("#drive-backup")));
-  ck("Restore button hidden with no Client ID", !(await page.isVisible("#drive-restore")));
+  ck("Back up button visibility matches configured state",
+    (await page.isVisible("#drive-backup")) === configured);
+  ck("Restore button visibility matches configured state",
+    (await page.isVisible("#drive-restore")) === configured);
 
-  // Reveal them (the only thing GOOGLE_CLIENT_ID gates; the handlers don't re-check it).
-  await page.evaluate(() => {
-    document.getElementById("drive-backup").hidden = false;
-    document.getElementById("drive-restore").hidden = false;
-  });
+  // The handlers don't re-check the gate, so for the round-trip just ensure the buttons are
+  // present to click — reveal them only when they'd otherwise be hidden (no Client ID).
+  if (!configured) {
+    await page.evaluate(() => {
+      document.getElementById("drive-backup").hidden = false;
+      document.getElementById("drive-restore").hidden = false;
+    });
+  }
 
   // ---- 2) Back up: a logged value pushes the whole Store to the Drive blob ----
   await page.fill('[data-cell="b1.w1.d1"] .w', "42");

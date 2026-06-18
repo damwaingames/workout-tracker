@@ -43,12 +43,12 @@ All data lives in `localStorage` on whichever device you use — there is no ser
 The buttons stay hidden until you wire up a Google OAuth Client ID (one-time, ~15 min, free, no backend):
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/), **create a project**.
-2. **Enable the Google Drive API** for it.
-3. Configure the **OAuth consent screen**: User type *External*; add the `…/auth/drive.appdata` scope; add your own Google account(s) as **test users**; leave publishing status on **Testing** (this keeps you out of Google's app-verification process entirely — personal use never needs it).
-4. Create an **OAuth 2.0 Client ID**, type *Web application*. Under **Authorized JavaScript origins** add your deployed origin (scheme + host only, no path — e.g. `https://damwaingames.github.io`) and `http://localhost:8765` for local testing.
-5. Copy the Client ID into `GOOGLE_CLIENT_ID` in `constants.js`. It's public — safe to commit; the browser token flow has no secret.
+2. **Enable the Google Drive API** for it (APIs & Services → Library → *Google Drive API* → Enable).
+3. Configure the **OAuth consent screen**. If the project is in a Google **Workspace organisation** (as this one is), choose User type **Internal** — the app is then usable by any account in your org with **no verification and no "unverified app" warning**. Add the single scope `…/auth/drive.appdata`. *(No org? Choose **External**, add yourself as a **test user**, and leave publishing status on **Testing** — same result for personal use, but you'll click through a one-time "this app isn't verified" screen per device.)*
+4. Create an **OAuth 2.0 Client ID**, type *Web application*. Under **Authorized JavaScript origins** add your deployed origin (scheme + host only, no path — e.g. `https://damwaingames.github.io`) and `http://localhost:8765` if you want to test locally. Leave **Authorized redirect URIs** empty — the browser token flow doesn't use them.
+5. Copy the **Client ID** into `GOOGLE_CLIENT_ID` in `constants.js`. It's public — safe to commit. **Ignore the client *secret*** — the browser token flow doesn't use it; never commit it.
 
-Because `drive.appdata` is a *sensitive* scope, the first authorisation on each device shows Google's "this app isn't verified" screen — click **Advanced → continue**. Harmless for your own app, and only the once. Drive backup needs a connection; everything else still works offline.
+Sign in on each device with an account in your organisation. Drive backup needs a connection; everything else still works offline.
 
 ## Updating
 
