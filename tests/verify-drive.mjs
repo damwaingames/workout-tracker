@@ -108,4 +108,15 @@ verify(async ({ page, ck, reset, ls }) => {
   ck("empty restore shows the no-backup message",
     dialogs.some((m) => m.includes("No Drive backup found yet")));
   ck("empty restore left local data untouched", (await ls()).log[wKey] === "77");
+
+  // ---- 5) Incompatible blob: the shared version gate rejects it via the Drive path, ----
+  //         and the local Store survives — restore's all-or-nothing safety claim.
+  file = { id: "fX", content: JSON.stringify({ version: 1, blocks: [{ id: "bX" }] }), modifiedTime: stamp() };
+  await page.fill('[data-cell="b1.w1.d1"] .w', "55");
+  await page.waitForTimeout(40);
+  await page.click('[data-action="drive-pull"]');
+  await page.waitForTimeout(80);
+  ck("incompatible Drive blob is rejected by the version gate",
+    dialogs.some((m) => m.includes("incompatible version")));
+  ck("rejected restore left local data untouched", (await ls()).log[wKey] === "55");
 });

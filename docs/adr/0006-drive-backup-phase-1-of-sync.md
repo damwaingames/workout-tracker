@@ -21,7 +21,8 @@ secret store, and a hard "keep features simple, consolidate" preference.
    serialises the whole Store exactly as `exportBackup` does; pull runs the bytes back
    through the **shared `applyBackup` gate** (structural check → `version === 2` →
    `normalise` → `setState`) that file Import already uses. The Drive blob and an export
-   file are byte-identical and interchangeable. No new data shape, no schema change.
+   file are interchangeable — the same data either way (the export file is pretty-printed,
+   the Drive blob compact). No new data shape, no schema change.
 
 2. **The blob lives in the hidden `appDataFolder`** (scope `drive.appdata`), not the
    user's visible Drive. One file, invisible, app-managed.

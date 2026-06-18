@@ -783,6 +783,7 @@ async function driveConnect() {
 }
 
 async function drivePush() {
+  driveStatus(""); // clear any prior result so the line never contradicts this op's outcome
   let t, existing;
   try { ({ t, existing } = await driveConnect()); }
   catch (e) { return driveError(e); }
@@ -798,6 +799,7 @@ async function drivePush() {
 }
 
 async function drivePull() {
+  driveStatus(""); // clear any prior result so the line never contradicts this op's outcome
   let t, existing;
   try { ({ t, existing } = await driveConnect()); }
   catch (e) { return driveError(e); }

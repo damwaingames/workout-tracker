@@ -59,8 +59,13 @@ function requestToken() {
       if (resp && resp.access_token) resolve(resp);
       else reject(Object.assign(new Error("drive-auth-failed"), { cancelled: true }));
     };
-    tokenClient.error_callback = () =>
-      reject(Object.assign(new Error("drive-auth-cancelled"), { cancelled: true }));
+    // GIS reports popup problems here. Only a user-closed popup is a silent cancel; a
+    // browser-blocked popup ("popup_failed_to_open") or anything else falls through to the
+    // visible "couldn't reach Drive / sign-in was blocked" path — so that message can't
+    // advertise a branch it never reaches.
+    tokenClient.error_callback = (err) =>
+      reject(Object.assign(new Error("drive-auth: " + ((err && err.type) || "error")),
+        { cancelled: !!(err && err.type === "popup_closed") }));
     // prompt:"" attempts a silent grant when there's an active Google session, falling
     // back to the consent popup; either way the callback above resolves the token.
     tokenClient.requestAccessToken({ prompt: "" });
