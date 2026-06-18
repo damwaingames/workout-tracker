@@ -34,7 +34,21 @@ Open the live URL on your phone → **Share → Add to Home Screen**.
 
 ## Data & backups
 
-All data lives in `localStorage` on whichever device you use — there is no server and no sync between devices. Use **Export backup** / **Import backup** (JSON) to move or safeguard your history.
+All data lives in `localStorage` on whichever device you use — there is no server. Use **Export backup** / **Import backup** (JSON) to move or safeguard your history as a file.
+
+### Google Drive backup (carry history between devices)
+
+**Back up to Drive** / **Restore from Drive** store the same backup as a single blob in a *hidden*, app-only folder in your Google Drive, so you can move your history between devices. It's a manual, whole-snapshot backup/restore — **last-write-wins**, no per-item merge (see [ADR-0006](docs/adr/0006-drive-backup-phase-1-of-sync.md); true device sync is the planned next step). Both buttons show the Drive copy's last-updated time before they overwrite anything, so you can tell which side is newer.
+
+The buttons stay hidden until you wire up a Google OAuth Client ID (one-time, ~15 min, free, no backend):
+
+1. In the [Google Cloud Console](https://console.cloud.google.com/), **create a project**.
+2. **Enable the Google Drive API** for it.
+3. Configure the **OAuth consent screen**: User type *External*; add the `…/auth/drive.appdata` scope; add your own Google account(s) as **test users**; leave publishing status on **Testing** (this keeps you out of Google's app-verification process entirely — personal use never needs it).
+4. Create an **OAuth 2.0 Client ID**, type *Web application*. Under **Authorized JavaScript origins** add your deployed origin (scheme + host only, no path — e.g. `https://damwaingames.github.io`) and `http://localhost:8765` for local testing.
+5. Copy the Client ID into `GOOGLE_CLIENT_ID` in `constants.js`. It's public — safe to commit; the browser token flow has no secret.
+
+Because `drive.appdata` is a *sensitive* scope, the first authorisation on each device shows Google's "this app isn't verified" screen — click **Advanced → continue**. Harmless for your own app, and only the once. Drive backup needs a connection; everything else still works offline.
 
 ## Updating
 
@@ -48,10 +62,11 @@ The app is plain ES modules (no build step), loaded from `index.html` via `<scri
 - `helpers.js` — pure helpers: log-key grammar, clamps, formatting, circuit maths.
 - `state.js` — seed data, the mutable store (`state`/`editing` + setters), schema migrations, persistence, and the queries that read over the store.
 - `render.js` — turns the store into DOM (plus the focus-preserving live patchers).
-- `events.js` — click / submit / field handlers and the block & backup operations.
+- `events.js` — click / submit / field handlers and the block, backup & Drive operations.
+- `off.js` / `scan.js` / `drive.js` — the network/device leaves: Open Food Facts lookups, the camera barcode scanner, and the Google Drive backup transport. Each imports only constants and is imported by `events.js`.
 - `main.js` — entry point: load, wire listeners, first render, register the service worker.
 
-Imports flow one way (`constants ← helpers ← state ← render ← events ← main`), so there are no circular dependencies.
+Imports flow one way (`constants ← helpers ← state ← render ← events ← main`, with `off`/`scan`/`drive` as leaves into `events`), so there are no circular dependencies.
 
 ## Tests
 

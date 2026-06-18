@@ -47,9 +47,12 @@
     <div class="utils">
       <button data-action="export" class="ghost">Export backup</button>
       <label class="import-label ghost">Import backup<input type="file" id="import-input" accept="application/json" hidden></label>
+      <button data-action="drive-push" id="drive-backup" class="ghost" hidden>Back up to Drive</button>
+      <button data-action="drive-pull" id="drive-restore" class="ghost" hidden>Restore from Drive</button>
       <button data-action="reset" class="ghost danger">Reset all</button>
     </div>
-    <p class="muted small">Saves automatically to this device. Hit <strong>Edit</strong> to add, create, remove, or adjust the sets of exercises and start new blocks. Export a backup now and then so a browser-data wipe can't lose your history.</p>
+    <p class="muted small" id="drive-status" aria-live="polite"></p>
+    <p class="muted small">Saves automatically to this device. Hit <strong>Edit</strong> to add, create, remove, or adjust the sets of exercises and start new blocks. Export a backup now and then so a browser-data wipe can't lose your history — or, once Drive is set up, back up to your hidden Google&nbsp;Drive folder to carry your history between devices.</p>
     <p class="muted small version-tag" id="version-tag"></p>
   </footer>
 </div>
