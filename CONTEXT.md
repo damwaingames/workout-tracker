@@ -93,6 +93,13 @@ separate and deliberately not redefined here.
 
 - **Store** — the single mutable `state` object (blocks, library, log, ui, …),
   persisted whole to localStorage. Reassigned only through `setState`.
+- **Drive backup** — the whole **Store** as a single blob in the app's *hidden*
+  Google Drive folder, in the same form a file **export** produces (so the two are
+  interchangeable). The cloud twin of the Store, moved by hand: *Back up to Drive*
+  overwrites the blob with this device's Store; *Restore from Drive* overwrites this
+  device's Store with the blob. Whole-blob **last-write-wins**, no per-item merge —
+  deliberately Phase 1 of device sync (ADR-0006). _Avoid_: sync (the destination, not
+  today's behaviour), cloud save.
 - **Log** — the flat `state.log` map. Keys are built through the key-grammar helpers
   (`cellKey`, `setKey`, `bandKey`, `classesKey`, …) and nowhere else.
 - **Cell** — a `block/week/routine` coordinate (`cellKey`); the prefix every routine-scoped

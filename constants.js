@@ -68,6 +68,18 @@ export const DEFAULT_CLASS_TYPES = [
   { name: "Box-Fit", rate: 0.08 },
 ];
 
+// Google Drive backup (Phase 1 of device sync — ADR-0006). A Drive backup is the
+// whole Store as one blob in the app's hidden per-app Drive folder, moved by hand.
+// GOOGLE_CLIENT_ID is the OAuth 2.0 Web-application client ID from your Google Cloud
+// project (public, safe to commit — there's no secret in the browser token flow). Set
+// it to switch the feature on; left empty, the Drive buttons stay hidden (driveEnabled
+// reads false), so the app ships dormant until you've done the one-time console setup
+// documented in the README. The scope is drive.appdata (the hidden folder, not your
+// visible Drive); DRIVE_FILENAME names the single blob inside it.
+export const GOOGLE_CLIENT_ID = "519272429593-7qm9mnii4abr059d55t494r83vt8an8g.apps.googleusercontent.com";
+export const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.appdata";
+export const DRIVE_FILENAME = "workout-tracker-state.json";
+
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "1.13.1";
+export const APP_VERSION = "1.14.0";

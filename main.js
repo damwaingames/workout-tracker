@@ -6,6 +6,7 @@ import { APP_VERSION } from "./constants.js";
 import { load } from "./state.js";
 import { render, hydrateNotes } from "./render.js";
 import { handleClick, handleSubmit, handleField } from "./events.js";
+import { driveEnabled } from "./drive.js";
 
 load();
 document.addEventListener("click", handleClick);
@@ -14,6 +15,12 @@ document.addEventListener("input", handleField);
 // File inputs don't fire "input" — bind the importer's change directly so every
 // other field is handled once (via "input") rather than twice (input + change).
 document.getElementById("import-input").addEventListener("change", handleField);
+// The Drive backup buttons ship hidden — reveal them only once a Client ID is
+// configured (constants.js), so the app stays dormant until the console setup is done.
+if (driveEnabled()) {
+  document.getElementById("drive-backup").hidden = false;
+  document.getElementById("drive-restore").hidden = false;
+}
 render();
 hydrateNotes();
 const versionTag = document.getElementById("version-tag");
