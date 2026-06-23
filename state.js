@@ -106,6 +106,10 @@ function seedLibrary() {
   band("banded-glute-bridges", "heavy");
   band("banded-push-ups", "light");
   band("banded-plank-leg-abductions", "medium");
+  // hollow-body-holds doubles as a strength core accessory (logged as bodyweight reps) and a
+  // recovery circuit station, so it's valid in both kinds (ADR-0007). The seed-union in
+  // migrateContexts carries this widening to existing saves, not just fresh installs.
+  lib["hollow-body-holds"].contexts = ["recovery", "strength"];
   return lib;
 }
 
@@ -354,9 +358,14 @@ export const contextsOf = (ex) => (Array.isArray(ex.contexts) ? ex.contexts : [e
 // driven by the routine, not the exercise (ADR-0007). Apply the legacy mapping (a no-op once a
 // record has contexts) and drop the dead field. Idempotent + additive, so old backups migrate.
 function migrateContexts(s) {
+  const seed = seedLibrary();
   Object.keys(s.library).forEach((id) => {
     const ex = s.library[id];
     ex.contexts = contextsOf(ex);
+    // Widen from the seed (additive union) so broadening a seed move's contexts in a release
+    // reaches existing saves too — the contexts analogue of migrateLibrary's loadMode backfill.
+    const sd = seed[id];
+    if (sd && Array.isArray(sd.contexts)) ex.contexts = [...new Set([...ex.contexts, ...sd.contexts])];
     delete ex.type;
   });
 }

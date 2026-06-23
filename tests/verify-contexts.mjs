@@ -13,6 +13,7 @@ verify(async ({ page, ck, ls, reset }) => {
       "goblet-squats": { id: "goblet-squats", name: "Goblet Squats", contexts: ["strength"], targetReps: "8–12" },
       "wall-plank": { id: "wall-plank", name: "Wall Plank", contexts: ["strength", "recovery"], targetReps: "hold" },
       "legacy-stretch": { id: "legacy-stretch", name: "Legacy Stretch", type: "circuit" }, // pre-contexts shape
+      "hollow-body-holds": { id: "hollow-body-holds", name: "Hollow Body Holds", contexts: ["recovery"] }, // recovery-only here; the seed widens it
     },
     blocks: [{ id: "b1", name: "Block 1", createdAt: "2026-06-01", startDate: "2026-06-01", routines: [
       { routine: 1, kind: "strength", title: "Strength A", focus: "x", exercises: [{ id: "goblet-squats", sets: 3 }] },
@@ -31,6 +32,8 @@ verify(async ({ page, ck, ls, reset }) => {
   ck("legacy type:circuit migrated to contexts [recovery]", Array.isArray(lib["legacy-stretch"].contexts) && lib["legacy-stretch"].contexts.join() === "recovery");
   ck("legacy record dropped its .type", !("type" in lib["legacy-stretch"]));
   ck("cross-context record kept both contexts", lib["wall-plank"].contexts.join() === "strength,recovery");
+  ck("seed-union widens an existing recovery-only record (hollow-body-holds gains strength)",
+    lib["hollow-body-holds"] && lib["hollow-body-holds"].contexts.includes("strength") && lib["hollow-body-holds"].contexts.includes("recovery"));
 
   await page.click("#edit-toggle");
   const D1 = '[data-cell="b1.w1.d1"]'; // strength
