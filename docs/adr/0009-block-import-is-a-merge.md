@@ -12,7 +12,9 @@ an exercise not in the (merged) library, a placement whose exercise **contexts**
 the routine's kind, an unknown routine kind, a broken 1–7 routine set — reject the whole block
 with an error list (you regenerate and retry). Cosmetic faults — a non-Monday `startDate`, an
 unknown `loadMode` — are coerced (`mondayOf`, drop) and reported. A half-imported block is
-worse than a clear "fix this".
+worse than a clear "fix this". As built the import is atomic as a whole — any block's fault
+rejects every block and changes nothing — since an import is typically a single block and a
+clean retry beats a confusing partial apply.
 
 ## Why not reuse applyBackup
 Its contract is "local data is only ever replaced wholesale" — routing a partial subset through

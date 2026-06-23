@@ -3,7 +3,7 @@
  * The store reassignments (setState/setEditing) all funnel through state.js —
  * an importer can read `state`/`editing` but can't reassign the binding here. */
 
-import { ALL_WEEKS, DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
+import { ALL_WEEKS, DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS, ROUTINE_KINDS, LOAD_MODES } from "./constants.js";
 import {
   placement, clampSets, clampRounds, clampDuration, circuitOf,
   nonNegSec, slugify, uniqueId, today, mondayOf, cellKey, setsKey, roundsKey, bandKey, classesKey, foodKey, scheduleKey, parseRoutine,
@@ -561,6 +561,10 @@ const fieldById = {
     if (el.files && el.files[0]) importBackup(el.files[0]);
     el.value = "";
   },
+  "import-block-input"(el) {
+    if (el.files && el.files[0]) importBlockFile(el.files[0]);
+    el.value = "";
+  },
   "notes-field"(el) { state.notes = el.value; save(); },
   "block-name-input"(el) {
     const block = currentBlock();
@@ -786,6 +790,95 @@ function importBackup(file) {
     try { data = JSON.parse(r.result); }
     catch (err) { window.alert("Could not read that backup file."); return; }
     applyBackup(data);
+  };
+  r.readAsText(file);
+}
+
+// The contexts an exercise is valid in, deriving from a legacy `type` for records authored
+// before ADR-0007 (so an import may use either spelling). Mirrors migrateContexts.
+const importContexts = (ex) => (Array.isArray(ex.contexts) ? ex.contexts : [ex.type === "strength" ? "strength" : "recovery"]);
+
+// Import a block design by MERGING — never the wholesale replace applyBackup does (ADR-0009):
+// add new library exercises, append the block(s), and leave the log / pantry / profile alone.
+// All-or-nothing: a structural/semantic fault rejects the whole import with an error list and
+// changes nothing; cosmetic faults (a non-Monday start, an unknown loadMode) are coerced and
+// reported. The validator's teeth are what PRs 1–3 sharpened: contexts, kinds, the 1–7 set.
+function applyBlockImport(data) {
+  if (!data || typeof data !== "object" || (data.version !== 2 && data.version !== 3)) {
+    window.alert("That file isn't an importable block — it needs to be a workout-tracker export (version 2 or 3). Nothing changed.");
+    return false;
+  }
+  const importLib = (data.library && typeof data.library === "object") ? data.library : {};
+  const blocks = Array.isArray(data.blocks) ? data.blocks : [];
+  if (!blocks.length) { window.alert("That file has no blocks to import. Nothing changed."); return false; }
+
+  // The library a placement resolves against: an existing record wins (never clobbered), the
+  // import fills the gaps. One lookup, shared by validation and the merge.
+  const lib = (id) => state.library[id] || importLib[id];
+  const loadModeIds = LOAD_MODES.map((m) => m.id);
+  const errors = [], coercions = [];
+
+  blocks.forEach((b, bi) => {
+    const label = '"' + ((b && b.name) || ("block " + (bi + 1))) + '"';
+    if (!b || typeof b !== "object" || !Array.isArray(b.routines) || !b.routines.length) {
+      errors.push(label + ": has no routines"); return;
+    }
+    const nums = b.routines.map((r) => r && r.routine);
+    nums.forEach((n) => { if (!Number.isInteger(n) || n < 1 || n > 7) errors.push(label + ": routine number " + JSON.stringify(n) + " is outside 1–7"); });
+    if (new Set(nums).size !== nums.length) errors.push(label + ": has duplicate routine numbers");
+    b.routines.forEach((r) => {
+      if (!r || !ROUTINE_KINDS.includes(r.kind)) { errors.push(label + " routine " + (r && r.routine) + ": unknown kind " + JSON.stringify(r && r.kind)); return; }
+      (Array.isArray(r.exercises) ? r.exercises : []).forEach((p) => {
+        const ex = p && lib(p.id);
+        if (!ex) { errors.push(label + " routine " + r.routine + ": exercise " + JSON.stringify(p && p.id) + " isn't in the library"); return; }
+        if (r.kind !== "rest" && !importContexts(ex).includes(r.kind)) {
+          errors.push(label + " routine " + r.routine + ": " + JSON.stringify(p.id) + " isn't valid in a " + r.kind + " routine");
+        }
+      });
+    });
+    if (b.startDate && b.startDate !== mondayOf(b.startDate)) coercions.push(label + ": start date snapped to its Monday");
+  });
+  Object.keys(importLib).forEach((id) => {
+    const ex = importLib[id];
+    if (ex && ex.loadMode && !loadModeIds.includes(ex.loadMode)) coercions.push(id + ": dropped unrecognised loadMode " + JSON.stringify(ex.loadMode));
+  });
+
+  if (errors.length) {
+    window.alert("Import rejected — fix these and try again:\n\n• " + errors.join("\n• ") + "\n\nYour data is unchanged.");
+    return false;
+  }
+
+  // ---- merge (only reached once every block is valid) ----
+  Object.keys(importLib).forEach((id) => {
+    if (state.library[id]) return; // never clobber an existing record (the append-only rule)
+    const ex = { ...importLib[id], id };
+    if (ex.loadMode && !loadModeIds.includes(ex.loadMode)) delete ex.loadMode;
+    state.library[id] = ex;
+  });
+  const taken = {}; state.blocks.forEach((b) => (taken[b.id] = true));
+  let landed = null;
+  blocks.forEach((b) => {
+    const id = (b.id && !taken[b.id]) ? b.id : uniqueId("b" + nextBlockNumber(), (x) => taken[x]);
+    taken[id] = true;
+    state.blocks.push({ ...b, id, createdAt: b.createdAt || today(), startDate: mondayOf(b.startDate || today()) });
+    landed = id;
+  });
+  state.ui.block = landed; state.ui.week = 1;
+  // normalise migrates the new records (type→contexts) + backfills, then we commit + render.
+  setState(normalise(state));
+  setEditing(false);
+  save(); render(); hydrateNotes();
+  window.alert("Imported " + blocks.length + " block" + (blocks.length === 1 ? "" : "s") + " ✓" +
+    (coercions.length ? "\n\nAdjusted:\n• " + coercions.join("\n• ") : ""));
+  return true;
+}
+
+function importBlockFile(file) {
+  const r = new FileReader();
+  r.onload = function () {
+    let data;
+    try { data = JSON.parse(r.result); } catch (err) { window.alert("Could not read that file."); return; }
+    applyBlockImport(data);
   };
   r.readAsText(file);
 }
