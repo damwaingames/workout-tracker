@@ -12,7 +12,7 @@ verify(async ({ page, ck, ls, reset }) => {
   // ---- STRENGTH routine: picker offers only strength, form has reps+sets, no type select ----
   await page.click(`${D1} [data-action="picker-open"]`);
   const d1tags = await page.$$eval(`${D1} .pick .tag`, (els) => els.map((e) => e.textContent.trim()));
-  ck("strength routine: no circuit chips in picker", d1tags.length > 0 && !d1tags.includes("circuit"));
+  ck("strength routine: no recovery chips in picker", d1tags.length > 0 && !d1tags.includes("recovery"));
   ck("strength routine: a circuit move (high-knees) is NOT offered", !(await page.$(`${D1} .pick[data-ex="high-knees"]`)));
   ck("strength routine: a strength move (dumbbell-rdls) IS offered", !!(await page.$(`${D1} .pick[data-ex="dumbbell-rdls"]`)));
   await page.click(`${D1} [data-action="form-open"]`);
@@ -23,7 +23,7 @@ verify(async ({ page, ck, ls, reset }) => {
   // ---- RECOVERY routine: picker offers only circuits, form has neither reps nor sets ----
   await page.click(`${D2} [data-action="picker-open"]`);
   const d2tags = await page.$$eval(`${D2} .pick .tag`, (els) => els.map((e) => e.textContent.trim()));
-  ck("recovery routine: every chip is a circuit", d2tags.length > 0 && d2tags.every((t) => t === "circuit"));
+  ck("recovery routine: every chip is recovery", d2tags.length > 0 && d2tags.every((t) => t === "recovery"));
   ck("recovery routine: a strength move (dumbbell-rdls) is NOT offered", !(await page.$(`${D2} .pick[data-ex="dumbbell-rdls"]`)));
   ck("recovery routine: a circuit move (hollow-body-holds) IS offered", !!(await page.$(`${D2} .pick[data-ex="hollow-body-holds"]`)));
   await page.click(`${D2} [data-action="form-open"]`);
@@ -36,7 +36,7 @@ verify(async ({ page, ck, ls, reset }) => {
   await page.click(`${D2} .picker-form button[type="submit"]`);
   await page.waitForTimeout(60);
   let s = await ls();
-  ck("recovery create: library type is circuit", s.library["box-jumps"] && s.library["box-jumps"].type === "circuit");
+  ck("recovery create: library contexts is [recovery]", s.library["box-jumps"] && Array.isArray(s.library["box-jumps"].contexts) && s.library["box-jumps"].contexts.join() === "recovery");
   ck("recovery create: circuit carries no per-move rounds (now routine-level)", !("rounds" in s.library["box-jumps"]));
   const d2p = (await exOf(2)).find((p) => p.id === "box-jumps");
   ck("recovery create: placement is bare {id} (no sets)", d2p && !("sets" in d2p));
@@ -48,7 +48,7 @@ verify(async ({ page, ck, ls, reset }) => {
   await page.click(`${D1} .picker-form button[type="submit"]`);
   await page.waitForTimeout(60);
   s = await ls();
-  ck("strength create: library type is strength", s.library["cable-row"] && s.library["cable-row"].type === "strength");
+  ck("strength create: library contexts is [strength]", s.library["cable-row"] && Array.isArray(s.library["cable-row"].contexts) && s.library["cable-row"].contexts.join() === "strength");
   const d1p = (await exOf(1)).find((p) => p.id === "cable-row");
   ck("strength create: placement carries a clamped sets count", d1p && d1p.sets >= 1 && d1p.sets <= 6);
 });

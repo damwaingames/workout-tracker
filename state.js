@@ -20,16 +20,17 @@ import {
  * Seed data — straight from the training design doc.                     *
  * ---------------------------------------------------------------------- */
 function S(id, name, setup, targetReps, loadMode) {
-  const ex = { id, name, type: "strength", setup, targetReps };
+  const ex = { id, name, contexts: ["strength"], setup, targetReps };
   // Loading mode is optional — absent means standard (load as entered). Only the
   // multi-implement / per-side moves carry one, so tonnage is right out of the box.
   if (loadMode) ex.loadMode = loadMode;
   return ex;
 }
-// Circuit moves are just a name + type now — rounds and timing live on the routine
-// (the circuit), not the individual move.
+// A recovery-circuit move is just a name + its contexts — rounds and timing live on the
+// routine (the circuit), not the individual move. Seeded valid in `recovery` only; widen a
+// record's contexts by hand to share one move with another kind (ADR-0007).
 function C(id, name) {
-  return { id, name, type: "circuit" };
+  return { id, name, contexts: ["recovery"] };
 }
 // A catalogue is an {id → record} map; both the exercise library and the
 // measurement catalogue are built this way.
@@ -163,7 +164,7 @@ function seedBlock(id, name) {
 
 export function defaultState() {
   return {
-    version: 2, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")],
+    version: 3, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")],
     log: {}, ui: { block: "b1", week: 1 }, notes: "",
     // Body stats: the measurement catalogue, the user's tracked subset, and a
     // one-time profile (height → BMI). Weekly values live in `log` (measureKey).
@@ -188,7 +189,7 @@ export function setState(s) { state = s; }
 export function setEditing(v) { editing = v; }
 
 function normalise(s) {
-  if (!s || s.version !== 2 || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
+  if (!s || (s.version !== 2 && s.version !== 3) || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
   if (!s.log) s.log = {};
   if (!s.library) s.library = seedLibrary();
   // Body stats are additive — older v2 saves predate them, so backfill the
@@ -208,6 +209,7 @@ function normalise(s) {
   migrateSets(s);
   migrateCircuit(s);
   migrateLibrary(s);
+  migrateContexts(s);
   migrateNutrition(s);
   // The Holiday Workout is additive (older v2 saves predate it) — backfill it, or
   // any missing field on a partial one, from the seed. Runs after migrateLibrary so
@@ -223,6 +225,10 @@ function normalise(s) {
   }
   if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (typeof s.notes !== "string") s.notes = "";
+  // Schema is now v3 (exercise contexts — ADR-0007). A migrated v2 save is well-formed by
+  // here; stamp it so the next save persists the bump. STORAGE_KEY stays "…-v2" (a storage
+  // slot name, not the schema number) so existing data is never orphaned on upgrade.
+  s.version = 3;
   return s;
 }
 export { normalise };
@@ -253,7 +259,7 @@ function migrateSets(s) {
         const ids = Array.isArray(d.exerciseIds) ? d.exerciseIds : [];
         d.exercises = ids.map((id) => {
           const ex = s.library[id];
-          return placement(ex && ex.type, id, ex && ex.defaultSets);
+          return placement(d.kind, id, ex && ex.defaultSets);
         });
       }
       delete d.exerciseIds;
@@ -330,6 +336,19 @@ function migrateLibrary(s) {
     if (!ex) { s.library[id] = sd; return; }
     if (ex.loadMode == null && sd.loadMode) ex.loadMode = sd.loadMode;
     if (ex.banded == null && sd.banded) { ex.banded = true; ex.defaultBand = sd.defaultBand; }
+  });
+}
+
+// Exercises carried a scalar `type` (strength | circuit) that hard-gated the picker; it's
+// replaced by a `contexts` set — the routine kinds a move is valid in — with behaviour now
+// driven by the routine, not the exercise (ADR-0007). Derive contexts from the old type for
+// any record that predates the change, then drop the dead field. Idempotent (a no-op once a
+// record has contexts) and additive, so old backups migrate cleanly on import.
+function migrateContexts(s) {
+  Object.keys(s.library).forEach((id) => {
+    const ex = s.library[id];
+    if (!Array.isArray(ex.contexts)) ex.contexts = [ex.type === "strength" ? "strength" : "recovery"];
+    delete ex.type;
   });
 }
 
