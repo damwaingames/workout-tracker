@@ -76,4 +76,14 @@ verify(async ({ page, ck, ls, reset }) => {
   ck("coercion: block still imported", !!mon);
   ck("coercion: start snapped to its Monday (2026-06-01)", mon && mon.startDate === "2026-06-01");
   ck("coercion: snap reported in the success dialog", dialogs.some((m) => m.includes("snapped")));
+
+  // ---- 6) reject: an unparseable start date (caught, not a false "snap") ----
+  const countNow = (await ls()).blocks.length;
+  await importFile({
+    version: 3, blocks: [{ id: "bBad", name: "Garbage Date", createdAt: "2026-06-01", startDate: "not-a-date",
+      routines: [{ routine: 1, kind: "rest", title: "R", focus: "x", exercises: [] }] }],
+  });
+  s = await ls();
+  ck("malformed start date rejected — nothing added", s.blocks.length === countNow);
+  ck("malformed date reported as invalid, not snapped", dialogs.some((m) => m.includes("isn't a valid") && !m.includes("snapped")));
 });

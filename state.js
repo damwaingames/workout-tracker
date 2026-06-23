@@ -9,11 +9,11 @@
  * for the importer). Property mutation (state.log[k] = …) works from anywhere. */
 
 import {
-  WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES,
+  WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
 } from "./constants.js";
 import {
   today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, classesKey, foodKey, steadyKey, scheduleKey,
-  placement, loadMode, circuitOf, clampSets, clampRounds, bandFor, bandKg, kcalBurn,
+  placement, loadMode, circuitOf, clampSets, clampRounds, uniqueId, validYMD, bandFor, bandKg, kcalBurn,
 } from "./helpers.js";
 
 /* ---------------------------------------------------------------------- *
@@ -344,15 +344,19 @@ function migrateLibrary(s) {
   });
 }
 
+// The contexts an exercise is valid in — its `contexts` set, or, for a record authored before
+// ADR-0007, derived from the legacy scalar `type`. The single home for that legacy mapping,
+// shared by migrateContexts and the block-import validator so the rule can't drift.
+export const contextsOf = (ex) => (Array.isArray(ex.contexts) ? ex.contexts : [ex.type === "strength" ? "strength" : "recovery"]);
+
 // Exercises carried a scalar `type` (strength | circuit) that hard-gated the picker; it's
 // replaced by a `contexts` set — the routine kinds a move is valid in — with behaviour now
-// driven by the routine, not the exercise (ADR-0007). Derive contexts from the old type for
-// any record that predates the change, then drop the dead field. Idempotent (a no-op once a
-// record has contexts) and additive, so old backups migrate cleanly on import.
+// driven by the routine, not the exercise (ADR-0007). Apply the legacy mapping (a no-op once a
+// record has contexts) and drop the dead field. Idempotent + additive, so old backups migrate.
 function migrateContexts(s) {
   Object.keys(s.library).forEach((id) => {
     const ex = s.library[id];
-    if (!Array.isArray(ex.contexts)) ex.contexts = [ex.type === "strength" ? "strength" : "recovery"];
+    ex.contexts = contextsOf(ex);
     delete ex.type;
   });
 }
@@ -473,6 +477,74 @@ export function nextBlockNumber() {
   let max = 0;
   state.blocks.forEach((b) => { const m = /(\d+)/.exec(b.name || ""); if (m) max = Math.max(max, +m[1]); });
   return max + 1;
+}
+
+/* ---------------------------------------------------------------------- *
+ * Block import (ADR-0009): validate (pure) then merge (mutate).          *
+ * ---------------------------------------------------------------------- */
+const importLoadModeIds = LOAD_MODES.map((m) => m.id);
+const badLoadMode = (ex) => !!ex.loadMode && !importLoadModeIds.includes(ex.loadMode);
+
+// Validate a block-import payload (a subset export — ADR-0009) against the current library plus
+// the import's own. Pure read — returns { errors, coercions } and mutates nothing, so the merge
+// runs only once errors is empty. Errors are structural/semantic and reject the whole import;
+// coercions are cosmetic fixes the merge applies + reports.
+export function validateBlockImport(data) {
+  if (!data || typeof data !== "object" || (data.version !== 2 && data.version !== 3)) {
+    return { errors: ["This isn't a workout-tracker export at version 2 or 3."], coercions: [] };
+  }
+  const importLib = (data.library && typeof data.library === "object") ? data.library : {};
+  const blocks = Array.isArray(data.blocks) ? data.blocks : [];
+  if (!blocks.length) return { errors: ["The file has no blocks to import."], coercions: [] };
+  const lib = (id) => state.library[id] || importLib[id]; // existing wins; import fills gaps
+  const errors = [], coercions = [];
+  blocks.forEach((b, bi) => {
+    const label = '"' + ((b && b.name) || ("block " + (bi + 1))) + '"';
+    if (!b || typeof b !== "object" || !Array.isArray(b.routines) || !b.routines.length) { errors.push(label + ": has no routines"); return; }
+    const nums = b.routines.map((r) => r && r.routine);
+    nums.forEach((n) => { if (!Number.isInteger(n) || n < 1 || n > 7) errors.push(label + ": routine number " + JSON.stringify(n) + " is outside 1–7"); });
+    if (new Set(nums).size !== nums.length) errors.push(label + ": has duplicate routine numbers");
+    b.routines.forEach((r) => {
+      if (!r || !ROUTINE_KINDS.includes(r.kind)) { errors.push(label + " routine " + (r && r.routine) + ": unknown kind " + JSON.stringify(r && r.kind)); return; }
+      (Array.isArray(r.exercises) ? r.exercises : []).forEach((p) => {
+        const ex = p && lib(p.id);
+        if (!ex) { errors.push(label + " routine " + r.routine + ": exercise " + JSON.stringify(p && p.id) + " isn't in the library"); return; }
+        if (r.kind !== "rest" && !contextsOf(ex).includes(r.kind)) errors.push(label + " routine " + r.routine + ": " + JSON.stringify(p.id) + " isn't valid in a " + r.kind + " routine");
+      });
+    });
+    if (b.startDate != null && b.startDate !== "" && !validYMD(b.startDate)) errors.push(label + ": start date " + JSON.stringify(b.startDate) + " isn't a valid YYYY-MM-DD date");
+    else if (b.startDate && b.startDate !== mondayOf(b.startDate)) coercions.push(label + ": start date snapped to its Monday");
+  });
+  Object.keys(importLib).forEach((id) => { if (importLib[id] && badLoadMode(importLib[id])) coercions.push(id + ": dropped unrecognised loadMode " + JSON.stringify(importLib[id].loadMode)); });
+  return { errors, coercions };
+}
+
+// Apply a VALIDATED block import by merging into the Store: add new library exercises (existing
+// records never clobbered — the append-only rule), append each block (re-id on collision via the
+// same uniqueId machinery newBlock uses), point ui at it, then normalise + persist. Mutates the
+// Store; the caller renders + reports. Call validateBlockImport first — this assumes validity.
+export function mergeBlockImport(data) {
+  const importLib = (data.library && typeof data.library === "object") ? data.library : {};
+  const blocks = Array.isArray(data.blocks) ? data.blocks : [];
+  Object.keys(importLib).forEach((id) => {
+    if (state.library[id]) return;
+    const ex = { ...importLib[id], id };
+    if (badLoadMode(ex)) delete ex.loadMode;
+    state.library[id] = ex;
+  });
+  const taken = {}; state.blocks.forEach((b) => (taken[b.id] = true));
+  let landed = null;
+  blocks.forEach((b) => {
+    const id = (b.id && !taken[b.id]) ? b.id : uniqueId("b" + nextBlockNumber(), (x) => taken[x]);
+    taken[id] = true;
+    state.blocks.push({ ...b, id, createdAt: b.createdAt || today(), startDate: mondayOf(b.startDate || today()) });
+    landed = id;
+  });
+  if (landed) { state.ui.block = landed; state.ui.week = 1; }
+  setState(normalise(state));
+  setEditing(false);
+  save();
+  return landed;
 }
 
 export function readSets(blockId, wk, routine, exId, sets) {
