@@ -6,7 +6,7 @@
 import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey,
-  circuitOf, circuitSummary, circuitTimeLabel, kindType, loadMode, repsLabel, bandFor, kcalBurn, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
+  circuitOf, circuitSummary, circuitTimeLabel, loadMode, repsLabel, bandFor, kcalBurn, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
@@ -803,16 +803,17 @@ function renderPickList(picker, catalogue, chosenIds, query, rowHtml, keep) {
 }
 
 function populatePicker(picker, routine, query) {
-  // Only offer exercises whose type matches the routine's kind, so a circuit can't
-  // be added to a strength routine (or vice versa). The Holiday Workout is band-only
-  // (its skip relies on banded moves carrying no cross-routine history — ADR-0002), so
-  // its picker is further narrowed to banded moves. (Create-new isn't constrained;
-  // see the ADR caveat — adding a non-banded move there is the user's own choice.)
-  const type = kindType(routineDef(routine).kind);
+  // Only offer exercises whose contexts include the routine's kind, so a recovery-only move
+  // can't be added to a strength routine (or vice versa) — validity follows the exercise,
+  // behaviour the routine (ADR-0007). The Holiday Workout is band-only (its skip relies on
+  // banded moves carrying no cross-routine history — ADR-0002), so its picker is further
+  // narrowed to banded moves. (Create-new isn't constrained; see the ADR caveat — adding a
+  // non-banded move there is the user's own choice.)
+  const kind = routineDef(routine).kind;
   renderPickList(picker, state.library, routineDef(routine).exercises.map((p) => p.id), query, (ex) =>
     '<button class="pick" type="button" data-action="add-ex" data-routine="' + routine + '" data-ex="' + ex.id + '">' +
-    esc(ex.name) + ' <span class="tag">' + (ex.type === "circuit" ? "circuit" : esc(ex.targetReps || "")) + "</span></button>",
-    (ex) => ex.type === type && (routine !== "holiday" || ex.banded));
+    esc(ex.name) + ' <span class="tag">' + esc(ex.targetReps || ex.contexts.join(" · ")) + "</span></button>",
+    (ex) => ex.contexts.includes(kind) && (routine !== "holiday" || ex.banded));
 }
 
 function populateMeasurePicker(picker, query) {

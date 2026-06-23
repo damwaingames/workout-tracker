@@ -83,16 +83,13 @@ export const clampSets = (n) => clampInt(n, MIN_SETS, MAX_SETS, DEFAULT_SETS);
 export const clampRounds = (n) => clampInt(n, MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS.rounds);
 export const nonNegSec = (n) => { n = Math.round(+n); return Number.isFinite(n) && n > 0 ? n : 0; };
 
-// The single place that knows a placement's shape: strength placements own a
-// (clamped) set count; circuit placements carry none (the routine owns the timing).
-export function placement(type, id, sets) {
-  return type === "strength" ? { id, sets: clampSets(sets) } : { id };
+// The single place that knows a placement's shape, keyed by the *routine's kind* (not the
+// exercise): a strength routine's placement owns a (clamped) set count; every other kind
+// carries none (timing/duration live on the routine). Behaviour follows the routine — an
+// exercise's own contexts only gate which routines will accept it (ADR-0007).
+export function placement(kind, id, sets) {
+  return kind === "strength" ? { id, sets: clampSets(sets) } : { id };
 }
-// The exercise type a routine accepts: strength routines take strength exercises,
-// every other non-rest routine (recovery) takes circuits. The single source of the
-// routine-kind ↔ exercise-type rule, so the picker and the create form agree and a
-// mismatched placement can't be built.
-export function kindType(kind) { return kind === "strength" ? "strength" : "circuit"; }
 // A routine reference from a data-routine attribute: a number for a real routine, or the
 // "holiday" sentinel for the shared Holiday Workout (which routineDef resolves to
 // state.holiday). Kept here so every parse site (clicks, submit, the picker)

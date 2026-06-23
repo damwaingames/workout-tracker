@@ -5,7 +5,7 @@
 
 import { DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
-  placement, clampSets, clampRounds, circuitOf, kindType,
+  placement, clampSets, clampRounds, circuitOf,
   nonNegSec, slugify, uniqueId, today, mondayOf, bandKey, classesKey, foodKey, scheduleKey, parseRoutine,
 } from "./helpers.js";
 import {
@@ -92,8 +92,11 @@ export function handleClick(e) {
       break;
     }
     case "add-ex": {
-      const ex = state.library[el.dataset.ex];
-      routineDef(routine).exercises.push(placement(ex && ex.type, el.dataset.ex, DEFAULT_SETS));
+      // Placement shape follows the routine's kind, not the exercise (a cross-context move
+      // gets a strength placement in a strength routine, a bare one elsewhere — ADR-0007).
+      // routineDef re-parses the sentinel / scans the block, so resolve it once.
+      const def = routineDef(routine);
+      def.exercises.push(placement(def.kind, el.dataset.ex, DEFAULT_SETS));
       save(); render(); break;
     }
     case "m-add": {
@@ -492,19 +495,19 @@ function addNewExercise(form, routine) {
   const fd = new FormData(form);
   const name = String(fd.get("name") || "").trim();
   if (!name) return;
-  // Type follows the routine's kind, not a form field — so a created exercise is
-  // always valid for the routine it's added to.
-  const type = kindType(routineDef(routine).kind);
+  // Contexts follow the routine's kind, not a form field — so a created exercise is seeded
+  // valid for exactly the routine it's added to (widen it later to share with another kind).
+  const kind = routineDef(routine).kind;
   const id = uniqueId(slugify(name), (x) => state.library[x]);
-  const ex = { id, name, type };
+  const ex = { id, name, contexts: [kind] };
   const setup = String(fd.get("setup") || "").trim();
   if (setup) ex.setup = setup;
   // Strength moves carry a rep target; circuit moves carry nothing extra
   // (rounds/timing live on the recovery routine).
-  if (type === "strength") ex.targetReps = String(fd.get("targetReps") || "").trim() || "8–12";
+  if (kind === "strength") ex.targetReps = String(fd.get("targetReps") || "").trim() || "8–12";
   state.library[id] = ex;
   // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0).
-  routineDef(routine).exercises.push(placement(type, id, parseFloat(fd.get("sets"))));
+  routineDef(routine).exercises.push(placement(kind, id, parseFloat(fd.get("sets"))));
   save(); render();
 }
 
@@ -727,7 +730,7 @@ function applyBackup(data) {
   }
   // Gate on version explicitly: normalise() resets unknown input to defaults,
   // so without this an incompatible backup would silently wipe current data.
-  if (data.version !== 2) {
+  if (data.version !== 2 && data.version !== 3) {
     window.alert("That backup is from an incompatible version — not importing. Your current data is unchanged.");
     return false;
   }

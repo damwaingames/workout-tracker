@@ -9,11 +9,13 @@ separate and deliberately not redefined here.
 - **Block** — a 4-week training cycle. Has an id, a name, seven **routines**, a **start
   date** (the Monday everything's **weekday**s derive from), and a per-week **schedule**.
   The unit `Reset`/`New block`/`Delete block` operate on.
-- **Routine** — the recurring training unit (the catalogue entry), one of three **kinds**:
-  `strength` (logged sets), `recovery` (a **circuit**), or `rest`. Identified by a number
+- **Routine** — the recurring training unit (the catalogue entry), one of four **kinds**:
+  `strength` (logged sets), `recovery` (a **circuit**), `steady` (one unbroken **duration**
+  of steady-state cardio), or `rest`. Identified by a number
   (1–7) that is the **progression key** — the last segment of every cell key (`.d{n}` on
-  the wire, frozen — ADR-0005), what every temporal scan ranks by. Its kind fixes which
-  exercise **type** it accepts. Placed onto a **weekday** each week by the **schedule**.
+  the wire, frozen — ADR-0005), what every temporal scan ranks by. Its kind drives how a
+  placed exercise is logged and counted; *which* exercises it accepts is the inverse — an
+  exercise declares the **contexts** it's valid in (ADR-0007). Placed onto a **weekday** each week by the **schedule**.
   _Avoid_: Day (the historical term; the persisted key segment still reads `.d`).
 - **Schedule** — a week's ordered arrangement of the block's seven routines across that
   week's weekdays: a permutation, one per `(block, week)`. The single driver of render
@@ -36,14 +38,43 @@ separate and deliberately not redefined here.
   rebuilt element can't animate).
 - **Placement** — an exercise as it sits on a routine: `{ id, sets }` for strength, bare
   `{ id }` for a circuit move (timing lives on the routine, not the move).
+- **Count override** — a single week's **set** count (strength) or **round** count (recovery)
+  when it differs from the block-wide **template** the other weeks inherit. Where week-to-week
+  *volume* progression lives: 2 sets in week 1 then 3 from week 2, or rounds climbing across a
+  cardio block. Lowering a week's count *hides* the surplus rows/rounds without deleting what
+  was logged in them. (Template-or-override, not the **schedule**'s lazy-lookback — ADR-0008.)
 - **Library** — the `{id → record}` catalogue of exercises. Append-only from the UI
   (no delete), which is what lets `migrateLibrary` reconcile it against the seed safely.
+- **Context** — the set of routine **kinds** an exercise is valid to be placed in
+  (`strength`, `recovery`, `steady`), carried on the exercise record. Replaces the old single
+  exercise **type**: a move can belong to several (bodyweight core sits in both `strength`
+  and `recovery`), and the rule is *behaviour follows the routine, validity follows the
+  exercise* — the same move logs as weight×reps in a strength routine and as a per-round
+  station in a recovery **circuit**. **Banded** is the precedent: a cross-context property
+  read per routine, not per exercise type. _Avoid_: type (the retired scalar gate).
+- **Setup, cue, focus** — three guidance fields, split by *who owns them* so a movement
+  isn't duplicated per context. **setup** (exercise): how to perform it, context-free.
+  **cue** (exercise): the movement's *intrinsic* quality target ("move with the breath"),
+  unchanged across routines. **focus** (routine): the *session's* intent, including its
+  **effort target** — so interval-vs-steady RPEs live here, never duplicated onto the
+  exercise. That ownership split is what lets one `seated-elliptical` serve both `recovery`
+  and `steady` instead of being two near-identical records. An effort target is an
+  *instruction*, not a metric: RPE is feel-based and self-normalising — constant perceived
+  effort even as absolute intensity climbs with fitness — so RPE itself is never the logged
+  metric. What climbs at constant RPE is the **absolute output**: a `steady` routine
+  progresses by its logged **resistance/level** (the ordinal setting on the machine), not by
+  the kg **tonnage** that strength's overload delta reads — a steady routine carries no tonnage.
 - **Loading mode** — how a strength exercise's logged set maps to tonnage
   (`standard` / `per-side` / `two-dumbbell`); a per-exercise multiplier pair (`wMult`,
   `rMult`). Distinct from **banded**.
 - **Banded move** — an exercise whose load comes from a resistance **band**, not free
   weight: it logs a band tier + reps, and its tonnage is `band kg × reps × rMult`.
 - **Circuit** — a recovery routine's structure: rounds + work/rest/round-rest seconds.
+- **Steady** — a `steady` routine's structure: one planned **duration** (`durationMin`) of one
+  cardio activity, held at the RPE its **focus** sets. The cell logs `done`, **actual minutes**,
+  and the machine's **resistance/level** (bounded by the activity's `levels` — the elliptical's
+  10). Progression is the resistance **ghost** (last session's level + minutes), not tonnage.
+  _Avoid_: cardio (that's the activity), interval (that's a `recovery` circuit).
 - **Class** — an extra logged session (`{ type, desc, mins }`) on top of the planned
   workout, on any routine kind. Each **class type** carries a `rate` (kcal/min/kg). Type
   names are matched case-insensitively (logging "box-fit" reuses "Box-Fit"), so a
@@ -100,6 +131,13 @@ separate and deliberately not redefined here.
   device's Store with the blob. Whole-blob **last-write-wins**, no per-item merge —
   deliberately Phase 1 of device sync (ADR-0006). _Avoid_: sync (the destination, not
   today's behaviour), cloud save.
+- **Import** — bringing an external block design and new exercises into the **Store** by
+  *merging*: a strict subset of an **export** (`library?` / `blocks?`) added additively — new
+  library entries appended (never clobbering your edits), a block appended under a fresh id if
+  its id collides, the **log** / **pantry** / profile left untouched. Distinct from **Restore**
+  (file or Drive), which overwrites the whole Store wholesale (ADR-0006). A flawed block is
+  rejected whole with an error list rather than half-applied (ADR-0009). _Avoid_: restore (the
+  wholesale replace), upload, sync.
 - **Log** — the flat `state.log` map. Keys are built through the key-grammar helpers
   (`cellKey`, `setKey`, `bandKey`, `classesKey`, …) and nowhere else.
 - **Cell** — a `block/week/routine` coordinate (`cellKey`); the prefix every routine-scoped
