@@ -484,6 +484,11 @@ export function nextBlockNumber() {
  * ---------------------------------------------------------------------- */
 const importLoadModeIds = LOAD_MODES.map((m) => m.id);
 const badLoadMode = (ex) => !!ex.loadMode && !importLoadModeIds.includes(ex.loadMode);
+// The two payload parts both phases read — interpreted one way so validate + merge can't disagree.
+const importParts = (data) => ({
+  importLib: (data && data.library && typeof data.library === "object") ? data.library : {},
+  blocks: Array.isArray(data && data.blocks) ? data.blocks : [],
+});
 
 // Validate a block-import payload (a subset export — ADR-0009) against the current library plus
 // the import's own. Pure read — returns { errors, coercions } and mutates nothing, so the merge
@@ -493,8 +498,7 @@ export function validateBlockImport(data) {
   if (!data || typeof data !== "object" || (data.version !== 2 && data.version !== 3)) {
     return { errors: ["This isn't a workout-tracker export at version 2 or 3."], coercions: [] };
   }
-  const importLib = (data.library && typeof data.library === "object") ? data.library : {};
-  const blocks = Array.isArray(data.blocks) ? data.blocks : [];
+  const { importLib, blocks } = importParts(data);
   if (!blocks.length) return { errors: ["The file has no blocks to import."], coercions: [] };
   const lib = (id) => state.library[id] || importLib[id]; // existing wins; import fills gaps
   const errors = [], coercions = [];
@@ -524,8 +528,7 @@ export function validateBlockImport(data) {
 // same uniqueId machinery newBlock uses), point ui at it, then normalise + persist. Mutates the
 // Store; the caller renders + reports. Call validateBlockImport first — this assumes validity.
 export function mergeBlockImport(data) {
-  const importLib = (data.library && typeof data.library === "object") ? data.library : {};
-  const blocks = Array.isArray(data.blocks) ? data.blocks : [];
+  const { importLib, blocks } = importParts(data);
   Object.keys(importLib).forEach((id) => {
     if (state.library[id]) return;
     const ex = { ...importLib[id], id };
