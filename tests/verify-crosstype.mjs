@@ -23,7 +23,7 @@ verify(async ({ page, ck, ls, reset }) => {
   // ---- RECOVERY routine: picker offers only circuits, form has neither reps nor sets ----
   await page.click(`${D2} [data-action="picker-open"]`);
   const d2tags = await page.$$eval(`${D2} .pick .tag`, (els) => els.map((e) => e.textContent.trim()));
-  ck("recovery routine: every chip is recovery", d2tags.length > 0 && d2tags.every((t) => t === "recovery"));
+  ck("recovery routine: every offered move is recovery-valid", d2tags.length > 0 && d2tags.every((t) => t.includes("recovery")));
   ck("recovery routine: a strength move (dumbbell-rdls) is NOT offered", !(await page.$(`${D2} .pick[data-ex="dumbbell-rdls"]`)));
   ck("recovery routine: a circuit move (hollow-body-holds) IS offered", !!(await page.$(`${D2} .pick[data-ex="hollow-body-holds"]`)));
   await page.click(`${D2} [data-action="form-open"]`);

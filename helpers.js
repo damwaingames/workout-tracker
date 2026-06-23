@@ -5,7 +5,7 @@
 
 import {
   MIN_SETS, MAX_SETS, DEFAULT_SETS,
-  MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS, LOAD_MODES, BANDS,
+  MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS, STEADY_DEFAULTS, LOAD_MODES, BANDS,
 } from "./constants.js";
 
 export function today() { return fmtYMD(new Date()); }
@@ -160,6 +160,16 @@ export function circuitSummary(d) {
   ];
   if (c.roundRestSec > 0) parts.push(fmtSecs(c.roundRestSec) + " between rounds");
   return parts.join(" · ") + " · " + circuitTimeLabel(d);
+}
+// A steady routine's duration, defaulted like circuitOf — one planned figure (minutes). The
+// resistance/level and actual minutes are logged per cell (the session), not on the template.
+export function steadyOf(d) {
+  return { durationMin: typeof d.durationMin === "number" ? d.durationMin : STEADY_DEFAULTS.durationMin };
+}
+// The one-line steady summary: the planned duration. The effort target lives in the routine's
+// focus and the resistance is logged per session, so neither belongs in this headline.
+export function steadySummary(d) {
+  return steadyOf(d).durationMin + " min steady";
 }
 
 export function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }

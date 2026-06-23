@@ -41,6 +41,8 @@ verify(async ({ page, ck, ls, reset }) => {
   await page.click(`${D1} [data-action="picker-open"]`);
   ck("strength picker offers cross-context move (wall-plank)", await offered(D1, "wall-plank"));
   ck("strength picker hides recovery-only move (legacy-stretch)", !(await offered(D1, "legacy-stretch")));
+  // PR #23 note 2: a multi-context move shows its validity-set, not its rep target ("hold").
+  ck("multi-context chip shows the contexts, not the rep target", (await page.textContent(`${D1} .pick[data-ex="wall-plank"] .tag`)).trim() === "strength · recovery");
   await page.click(`${D1} .pick[data-ex="wall-plank"]`); // place it (re-renders)
   await page.waitForTimeout(60);
 

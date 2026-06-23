@@ -13,7 +13,7 @@ import {
   currentBlock, routineDef, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
-  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
+  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
 } from "./render.js";
 import { lookupBarcode, searchFoods } from "./off.js";
 import { scanBarcode } from "./scan.js";
@@ -564,6 +564,12 @@ function circuitField(el) {
   const d = routineDef(Number(el.dataset.routine));
   if (d) { d[el.dataset.field] = nonNegSec(el.value); save(); patchCircuitTime(d); }
 }
+// A steady routine's planned duration (minutes). Like circuitField, it lives on the routine
+// template and live-patches the target line so the input keeps focus mid-type.
+function steadyField(el) {
+  const d = routineDef(Number(el.dataset.routine));
+  if (d) { d.durationMin = Math.max(1, Math.round(+el.value) || 1); save(); patchSteadyTime(d); }
+}
 // Loading mode lives on the library record (not the placement), so changing it
 // here updates the exercise everywhere it appears; a full render relabels its
 // inputs and recomputes every affected routine/week/block volume.
@@ -609,6 +615,7 @@ const fieldByName = {
   "picker-search": pickerSearch,
   "food-search": foodSearch,
   "circuit-field": circuitField,
+  "steady-field": steadyField,
   "load-mode": loadModeField,
   // Band selects/toggles carry no data-k (logged out-of-band so hydrate can't
   // blank an unlogged default), so they're dispatched here, ahead of data-k.

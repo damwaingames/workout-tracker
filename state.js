@@ -83,6 +83,11 @@ function seedLibrary() {
     C("seated-forward-fold-stretch", "Seated Forward Fold Stretch"),
     C("quad-stretch", "Quad Stretch"),
     C("childs-pose-or-seated-torso-twist", "Child's Pose or Seated Torso Twist"),
+    // A steady-state cardio activity — valid in a recovery circuit (driven as intervals) or a
+    // `steady` routine (one duration). `levels` is the machine's resistance scale, the ordinal
+    // a steady session logs as its progression signal (CONTEXT "Steady").
+    { id: "seated-elliptical", name: "Seated Elliptical", contexts: ["recovery", "steady"], levels: 10,
+      setup: "Seated elliptical. Warm up easy for 2–3 min, settle into a steady rhythm, ease off the last 2. Set the resistance to hold the effort your routine's focus calls for." },
   ];
   const lib = keyById(list);
   // Banded moves take their load from a resistance band, not free weight (across
@@ -526,7 +531,7 @@ export function holidaySwap(cell, d) { return isHoliday(cell) ? state.holiday : 
 export function routineLoad(block, wk, d) {
   const cell = cellKey(block.id, wk, d.routine);
   const eff = holidaySwap(cell, d);
-  if (eff.kind === "rest") return { total: 0, loadBearing: false };
+  if (eff.kind === "rest" || eff.kind === "steady") return { total: 0, loadBearing: false };
   let total = 0, loadBearing = eff.kind === "strength";
   eff.exercises.forEach((p) => {
     const ex = state.library[p.id];
@@ -583,6 +588,22 @@ export function previousRoutineTotal(block, wk, d) {
     if (!pd || isHoliday(cellKey(b.id, w, pd.routine))) return null; // skip holiday weeks
     const total = routineLoad(b, w, pd).total;
     return total > 0 ? total : null;
+  });
+}
+
+// The most recent earlier *steady* session of this routine — its logged resistance/level and
+// actual minutes — for the "Last:" ghost on a steady routine (its progression prompt, since
+// steady carries no tonnage delta). Shares the latestByWeek 2-D spine, so it adds no new scan
+// kind (ADR-0001). A holiday-flagged week logs band moves, not steady fields, so it reads
+// empty there and resumes against the last real steady session for free (ADR-0002).
+export function previousSteady(block, wk, d) {
+  const curBi = Math.max(0, state.blocks.findIndex((b) => b.id === block.id));
+  return latestByWeek(curBi, wk, (b, w) => {
+    const pd = b.routines.find((x) => x.routine === d.routine);
+    if (!pd) return null;
+    const cell = cellKey(b.id, w, pd.routine);
+    const mins = state.log[cell + ".mins"], resist = state.log[cell + ".resist"];
+    return (mins || resist) ? { mins: mins || "", resist: resist || "" } : null;
   });
 }
 

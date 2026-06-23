@@ -6,12 +6,12 @@
 import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey,
-  circuitOf, circuitSummary, circuitTimeLabel, loadMode, repsLabel, bandFor, kcalBurn, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
+  circuitOf, circuitSummary, circuitTimeLabel, steadyOf, steadySummary, loadMode, repsLabel, bandFor, kcalBurn, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, routineDef, weekSchedule,
-  previousSets, routineLoad, holidaySwap, previousRoutineTotal, previousMeasure, bmiFor, nutritionTotals, routineNutrition, entryNutrition,
+  previousSets, routineLoad, holidaySwap, previousRoutineTotal, previousSteady, previousMeasure, bmiFor, nutritionTotals, routineNutrition, entryNutrition,
   classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
 import { scanSupported } from "./scan.js";
@@ -87,6 +87,7 @@ function renderRoutine(block, d, wk, kg, position) {
   let body;
   if (ed.kind === "strength") body = renderStrength(ed, wk, cell, editing && !holiday);
   else if (ed.kind === "recovery") body = renderRecovery(ed, wk, cell);
+  else if (ed.kind === "steady") body = renderSteady(ed, wk, cell);
   else body = renderRest(cell);
 
   return '<div class="routine ' + ed.kind + (collapsed ? " is-collapsed" : "") + (holiday ? " is-holiday" : "") + '" data-cell="' + cell + '">' +
@@ -150,6 +151,11 @@ function routineSummary(block, d, wk, cell) {
     bits.push(circuitTimeLabel(d));
     const { total, loadBearing } = routineLoad(block, wk, d);
     if (loadBearing) bits.push(volBit(total));
+  } else if (d.kind === "steady") {
+    // Steady carries no tonnage; its line is the duration done (actual, else planned) + the
+    // logged resistance/level — the two facts a collapsed steady day is worth showing.
+    const mins = state.log[cell + ".mins"], resist = state.log[cell + ".resist"];
+    bits.push((mins || steadyOf(d).durationMin) + " min" + (resist ? " · L" + esc(resist) : ""));
   } else if (d.kind === "strength") {
     bits.push(volBit(routineLoad(block, wk, d).total));
   }
@@ -392,12 +398,7 @@ function renderRecovery(d, wk, cell) {
       }
       inner = '<div class="rounds">' + checks + "</div>";
     }
-    return '<div class="exercise circuit" data-ex="' + exId + '">' +
-      '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
-      (editing ? '<button class="remove" type="button" data-action="remove-exercise" data-routine="' + d.routine + '" data-ex="' + exId + '" aria-label="Remove">×</button>' : "") +
-      "</div>" +
-      (editing ? '<div class="sets-edit">' + loadingEdit(d, ex) + "</div>" : "") +
-      inner + "</div>";
+    return activityCard(d, ex, (editing ? '<div class="sets-edit">' + loadingEdit(d, ex) + "</div>" : "") + inner);
   }).join("");
   // Recovery routines are usually load-free; the routine-volume line shows only once a
   // banded move makes the routine load-bearing (so pure-cardio routines stay uncluttered).
@@ -442,6 +443,60 @@ function renderRest(cell) {
     '<label class="inline block">How your joints / knees feel<input type="text" data-k="' + cell + '.joints" data-type="text" placeholder="e.g. knees happy, left wrist a little tight"></label>';
 }
 
+// A steady routine: cardio activity card(s) with their how-to, then a single per-session log
+// — actual minutes + the machine's resistance/level — against the planned duration. Not
+// load-bearing (the effort target is the routine's focus); the "Last:" ghost (resistance ·
+// minutes) is its progression prompt, since a steady routine carries no tonnage (CONTEXT "Steady").
+function renderSteady(d, wk, cell) {
+  const dur = steadyOf(d).durationMin;
+  const moves = d.exercises.map((p) => { const ex = state.library[p.id]; return ex ? activityCard(d, ex, "") : ""; }).join("");
+  const first = d.exercises[0] && state.library[d.exercises[0].id];
+  const levels = first && first.levels;
+  const prev = previousSteady(currentBlock(), wk, d);
+  const ghost = prev
+    ? '<div class="last">Last: ' + (prev.resist ? "L" + esc(prev.resist) + " · " : "") + esc(prev.mins || "—") + " min</div>"
+    : "";
+  return moves +
+    '<div class="steady-log">' +
+      '<span class="steady-target" data-steady-cell="' + cell + '">Target ' + dur + " min</span>" +
+      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + cell + '.mins" data-type="text" placeholder="' + dur + '"></label>' +
+      '<label class="inline">Resistance' + (levels ? " /" + levels : "") + '<input type="number" inputmode="numeric" min="0"' + (levels ? ' max="' + levels + '"' : "") + ' data-k="' + cell + '.resist" data-type="text"></label>' +
+    "</div>" + ghost +
+    (editing ? renderSteadyEdit(d) : "");
+}
+
+// A non-strength move's display card — name + how-to (setup behind ⓘ) + any intrinsic cue —
+// shared by steady activities and recovery circuit moves so both surface the coaching the old
+// circuit renderer dropped. `inner` is the kind-specific body (rounds/band for recovery; empty
+// for steady, whose logging is cell-level).
+function activityCard(d, ex, inner) {
+  return '<div class="exercise ' + (d.kind === "steady" ? "steady-move" : "circuit") + '" data-ex="' + ex.id + '">' +
+    '<div class="ex-head"><span class="ex-name">' + esc(ex.name) + "</span>" +
+      (ex.setup ? ' <button class="info" type="button" data-action="toggle-setup" aria-label="How to do this">ⓘ</button>' : "") +
+      (editing ? '<button class="remove" type="button" data-action="remove-exercise" data-routine="' + d.routine + '" data-ex="' + ex.id + '" aria-label="Remove">×</button>' : "") +
+    "</div>" +
+    (ex.setup ? '<div class="setup">' + esc(ex.setup) + "</div>" : "") +
+    (ex.cue ? '<div class="cue">' + esc(ex.cue) + "</div>" : "") +
+    (inner || "") +
+    "</div>";
+}
+
+// Edit-mode steady control: the planned duration (minutes). Live-patches the target text so
+// the input keeps focus while typing (mirrors the circuit work/rest fields).
+function renderSteadyEdit(d) {
+  return '<div class="circuit-edit">' +
+    '<label class="circuit-field-l">Duration ' +
+    '<input type="number" inputmode="numeric" min="1" class="circuit-field" data-fh="steady-field" data-routine="' + d.routine + '" value="' + steadyOf(d).durationMin + '">min</label>' +
+    "</div>";
+}
+
+// Live-patch a steady routine's target line when its duration changes, keeping the input
+// focused mid-type (mirrors patchCircuitTime).
+export function patchSteadyTime(d) {
+  const el = document.querySelector('[data-steady-cell="' + cellKey(currentBlock().id, state.ui.week, d.routine) + '"]');
+  if (el) el.textContent = "Target " + steadyOf(d).durationMin + " min";
+}
+
 // Shared picker chrome — an add button, search box, result list, a create-new
 // link, and a create form whose fields differ per kind. data-picker (+ optional
 // data-routine) drives the generic open/search/create handlers; only the catalogue,
@@ -465,13 +520,13 @@ function renderAddZone(d) {
   // The routine's kind fixes the exercise type, so there's no type picker: a
   // strength routine's form collects reps + sets, a recovery routine's collects neither
   // (circuits use fixed rounds). This is what stops a mismatched placement.
-  const strength = d.kind === "strength";
+  const strength = d.kind === "strength", steady = d.kind === "steady";
   return pickerZone({
     kind: "exercise",
     routine: d.routine,
-    addLabel: strength ? "＋ Add exercise" : "＋ Add move",
-    searchPlaceholder: strength ? "Search strength exercises…" : "Search circuit moves…",
-    createLabel: strength ? "＋ Create a new exercise" : "＋ Create a new move",
+    addLabel: strength ? "＋ Add exercise" : steady ? "＋ Add activity" : "＋ Add move",
+    searchPlaceholder: strength ? "Search strength exercises…" : steady ? "Search cardio…" : "Search circuit moves…",
+    createLabel: strength ? "＋ Create a new exercise" : steady ? "＋ Create a new activity" : "＋ Create a new move",
     submitLabel: "Add to day",
     formFields:
       '<input name="name" placeholder="' + (strength ? "Exercise" : "Move") + ' name" required>' +
@@ -812,7 +867,9 @@ function populatePicker(picker, routine, query) {
   const kind = routineDef(routine).kind;
   renderPickList(picker, state.library, routineDef(routine).exercises.map((p) => p.id), query, (ex) =>
     '<button class="pick" type="button" data-action="add-ex" data-routine="' + routine + '" data-ex="' + ex.id + '">' +
-    esc(ex.name) + ' <span class="tag">' + esc(ex.targetReps || ex.contexts.join(" · ")) + "</span></button>",
+    // Chip: a multi-context move shows its validity-set (the cross-kind capability is the
+    // point), a single-context one its rep target (else its lone context) — PR #23 note 2.
+    esc(ex.name) + ' <span class="tag">' + esc(ex.contexts.length > 1 ? ex.contexts.join(" · ") : (ex.targetReps || ex.contexts[0])) + "</span></button>",
     (ex) => ex.contexts.includes(kind) && (routine !== "holiday" || ex.banded));
 }
 
