@@ -17,6 +17,11 @@ function fmtYMD(d) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 function parseYMD(s) { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1); }
+// True when `s` is a real YYYY-MM-DD date — used to reject a garbage import startDate, which
+// would otherwise sail through as a "snap" and leave mondayOf producing "NaN-NaN-NaN".
+export function validYMD(s) {
+  return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(parseYMD(s).getTime());
+}
 
 // Feature 2 date derivation (ADR-0005). A block's start date anchors a contiguous run
 // of weeks; a routine's weekday is the start plus whole weeks plus its position in that

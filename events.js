@@ -10,7 +10,7 @@ import {
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
-  currentBlock, routineDef, placeMove, currentCell, effectiveSets, effectiveRounds, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
+  currentBlock, routineDef, placeMove, currentCell, effectiveSets, effectiveRounds, validateBlockImport, mergeBlockImport, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
   render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
@@ -561,6 +561,10 @@ const fieldById = {
     if (el.files && el.files[0]) importBackup(el.files[0]);
     el.value = "";
   },
+  "import-block-input"(el) {
+    if (el.files && el.files[0]) importBlockFile(el.files[0]);
+    el.value = "";
+  },
   "notes-field"(el) { state.notes = el.value; save(); },
   "block-name-input"(el) {
     const block = currentBlock();
@@ -786,6 +790,34 @@ function importBackup(file) {
     try { data = JSON.parse(r.result); }
     catch (err) { window.alert("Could not read that backup file."); return; }
     applyBackup(data);
+  };
+  r.readAsText(file);
+}
+
+// Import a block design by MERGING (never the wholesale replace applyBackup does — ADR-0009):
+// validate against the live library, reject the whole import on any structural/semantic fault
+// (state untouched), else merge the new exercises + block(s) and report any cosmetic coercions.
+// The validate + merge domain logic lives in state.js; this just wires file → reject-or-merge.
+function applyBlockImport(data) {
+  const { errors, coercions } = validateBlockImport(data);
+  if (errors.length) {
+    window.alert("Import rejected — fix these and try again:\n\n• " + errors.join("\n• ") + "\n\nYour data is unchanged.");
+    return false;
+  }
+  const n = data.blocks.length;
+  mergeBlockImport(data);
+  render(); hydrateNotes();
+  window.alert("Imported " + n + " block" + (n === 1 ? "" : "s") + " ✓" +
+    (coercions.length ? "\n\nAdjusted:\n• " + coercions.join("\n• ") : ""));
+  return true;
+}
+
+function importBlockFile(file) {
+  const r = new FileReader();
+  r.onload = function () {
+    let data;
+    try { data = JSON.parse(r.result); } catch (err) { window.alert("Could not read that file."); return; }
+    applyBlockImport(data);
   };
   r.readAsText(file);
 }

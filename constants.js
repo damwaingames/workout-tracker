@@ -16,6 +16,9 @@ export const CIRCUIT_DEFAULTS = { rounds: 2, workSec: 60, restSec: 15, roundRest
 // effort target (RPE) lives in the routine's focus, not here; the resistance/level logged
 // per session is the progression signal (see CONTEXT "Steady").
 export const STEADY_DEFAULTS = { durationMin: 30 };
+// The four routine kinds (ADR-0007). The block-import validator reads from here so "what
+// kinds exist" has one home; `rest` holds no exercises, the other three do.
+export const ROUTINE_KINDS = ["strength", "recovery", "steady", "rest"];
 // The four nutrition fields, in display order. A routine's totals are the derived sum of
 // its food entries (see routineNutrition); a quick entry stores these `id`s directly, a
 // pantry entry derives them from its Food's per-100g values. `id` is the field key
@@ -86,4 +89,4 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "2.2.0";
+export const APP_VERSION = "2.3.0";
