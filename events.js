@@ -94,7 +94,9 @@ export function handleClick(e) {
     case "add-ex": {
       // Placement shape follows the routine's kind, not the exercise (a cross-context move
       // gets a strength placement in a strength routine, a bare one elsewhere — ADR-0007).
-      routineDef(routine).exercises.push(placement(routineDef(routine).kind, el.dataset.ex, DEFAULT_SETS));
+      // routineDef re-parses the sentinel / scans the block, so resolve it once.
+      const def = routineDef(routine);
+      def.exercises.push(placement(def.kind, el.dataset.ex, DEFAULT_SETS));
       save(); render(); break;
     }
     case "m-add": {
