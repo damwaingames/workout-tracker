@@ -5,7 +5,7 @@
 
 import { DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
-  placement, clampSets, clampRounds, circuitOf,
+  placement, clampSets, clampRounds, clampDuration, circuitOf,
   nonNegSec, slugify, uniqueId, today, mondayOf, bandKey, classesKey, foodKey, scheduleKey, parseRoutine,
 } from "./helpers.js";
 import {
@@ -96,7 +96,9 @@ export function handleClick(e) {
       // gets a strength placement in a strength routine, a bare one elsewhere — ADR-0007).
       // routineDef re-parses the sentinel / scans the block, so resolve it once.
       const def = routineDef(routine);
-      def.exercises.push(placement(def.kind, el.dataset.ex, DEFAULT_SETS));
+      const p = placement(def.kind, el.dataset.ex, DEFAULT_SETS);
+      // A steady routine holds exactly one activity (CONTEXT "Steady"), so adding replaces it.
+      if (def.kind === "steady") def.exercises = [p]; else def.exercises.push(p);
       save(); render(); break;
     }
     case "m-add": {
@@ -497,17 +499,20 @@ function addNewExercise(form, routine) {
   if (!name) return;
   // Contexts follow the routine's kind, not a form field — so a created exercise is seeded
   // valid for exactly the routine it's added to (widen it later to share with another kind).
-  const kind = routineDef(routine).kind;
+  const def = routineDef(routine);
+  const kind = def.kind;
   const id = uniqueId(slugify(name), (x) => state.library[x]);
   const ex = { id, name, contexts: [kind] };
   const setup = String(fd.get("setup") || "").trim();
   if (setup) ex.setup = setup;
-  // Strength moves carry a rep target; circuit moves carry nothing extra
-  // (rounds/timing live on the recovery routine).
+  // Strength moves carry a rep target; circuit / steady moves carry nothing extra
+  // (rounds / duration live on the routine).
   if (kind === "strength") ex.targetReps = String(fd.get("targetReps") || "").trim() || "8–12";
   state.library[id] = ex;
-  // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0).
-  routineDef(routine).exercises.push(placement(kind, id, parseFloat(fd.get("sets"))));
+  // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0). A steady routine holds
+  // one activity, so a created one replaces (mirrors add-ex).
+  const p = placement(kind, id, parseFloat(fd.get("sets")));
+  if (kind === "steady") def.exercises = [p]; else def.exercises.push(p);
   save(); render();
 }
 
@@ -568,7 +573,7 @@ function circuitField(el) {
 // template and live-patches the target line so the input keeps focus mid-type.
 function steadyField(el) {
   const d = routineDef(Number(el.dataset.routine));
-  if (d) { d.durationMin = Math.max(1, Math.round(+el.value) || 1); save(); patchSteadyTime(d); }
+  if (d) { d.durationMin = clampDuration(el.value); save(); patchSteadyTime(d); }
 }
 // Loading mode lives on the library record (not the placement), so changing it
 // here updates the exercise everywhere it appears; a full render relabels its

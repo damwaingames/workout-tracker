@@ -12,7 +12,7 @@ import {
   WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey, foodKey, scheduleKey,
+  today, mondayOf, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey, foodKey, steadyKey, scheduleKey,
   placement, loadMode, circuitOf, bandFor, bandKg, kcalBurn,
 } from "./helpers.js";
 
@@ -602,7 +602,7 @@ export function previousSteady(block, wk, d) {
     const pd = b.routines.find((x) => x.routine === d.routine);
     if (!pd) return null;
     const cell = cellKey(b.id, w, pd.routine);
-    const mins = state.log[cell + ".mins"], resist = state.log[cell + ".resist"];
+    const mins = state.log[steadyKey(cell, "mins")], resist = state.log[steadyKey(cell, "resist")];
     return (mins || resist) ? { mins: mins || "", resist: resist || "" } : null;
   });
 }

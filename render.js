@@ -5,7 +5,7 @@
 
 import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
-  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey,
+  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey, steadyKey,
   circuitOf, circuitSummary, circuitTimeLabel, steadyOf, steadySummary, loadMode, repsLabel, bandFor, kcalBurn, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
 } from "./helpers.js";
 import {
@@ -154,7 +154,7 @@ function routineSummary(block, d, wk, cell) {
   } else if (d.kind === "steady") {
     // Steady carries no tonnage; its line is the duration done (actual, else planned) + the
     // logged resistance/level — the two facts a collapsed steady day is worth showing.
-    const mins = state.log[cell + ".mins"], resist = state.log[cell + ".resist"];
+    const mins = state.log[steadyKey(cell, "mins")], resist = state.log[steadyKey(cell, "resist")];
     bits.push((mins || steadyOf(d).durationMin) + " min" + (resist ? " · L" + esc(resist) : ""));
   } else if (d.kind === "strength") {
     bits.push(volBit(routineLoad(block, wk, d).total));
@@ -449,18 +449,17 @@ function renderRest(cell) {
 // minutes) is its progression prompt, since a steady routine carries no tonnage (CONTEXT "Steady").
 function renderSteady(d, wk, cell) {
   const dur = steadyOf(d).durationMin;
-  const moves = d.exercises.map((p) => { const ex = state.library[p.id]; return ex ? activityCard(d, ex, "") : ""; }).join("");
-  const first = d.exercises[0] && state.library[d.exercises[0].id];
-  const levels = first && first.levels;
+  const ex = d.exercises[0] && state.library[d.exercises[0].id]; // a steady routine holds one activity
+  const levels = ex && ex.levels;
   const prev = previousSteady(currentBlock(), wk, d);
   const ghost = prev
     ? '<div class="last">Last: ' + (prev.resist ? "L" + esc(prev.resist) + " · " : "") + esc(prev.mins || "—") + " min</div>"
     : "";
-  return moves +
+  return (ex ? activityCard(d, ex, "") : '<p class="muted small">No activity set — add one in Edit mode.</p>') +
     '<div class="steady-log">' +
       '<span class="steady-target" data-steady-cell="' + cell + '">Target ' + dur + " min</span>" +
-      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + cell + '.mins" data-type="text" placeholder="' + dur + '"></label>' +
-      '<label class="inline">Resistance' + (levels ? " /" + levels : "") + '<input type="number" inputmode="numeric" min="0"' + (levels ? ' max="' + levels + '"' : "") + ' data-k="' + cell + '.resist" data-type="text"></label>' +
+      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + steadyKey(cell, "mins") + '" data-type="text" placeholder="' + dur + '"></label>' +
+      '<label class="inline">Resistance' + (levels ? " /" + levels : "") + '<input type="number" inputmode="numeric" min="0"' + (levels ? ' max="' + levels + '"' : "") + ' data-k="' + steadyKey(cell, "resist") + '" data-type="text"></label>' +
     "</div>" + ghost +
     (editing ? renderSteadyEdit(d) : "");
 }
@@ -517,9 +516,10 @@ function pickerZone(o) {
 }
 
 function renderAddZone(d) {
-  // The routine's kind fixes the exercise type, so there's no type picker: a
-  // strength routine's form collects reps + sets, a recovery routine's collects neither
-  // (circuits use fixed rounds). This is what stops a mismatched placement.
+  // The routine's kind fixes how a placed move is logged, so there's no type picker and the
+  // form fields differ by kind: a strength routine collects reps + sets; a recovery or steady
+  // routine collects neither (timing/duration live on the routine). A move's contexts gate
+  // which routines will accept it (ADR-0007).
   const strength = d.kind === "strength", steady = d.kind === "steady";
   return pickerZone({
     kind: "exercise",
@@ -529,7 +529,7 @@ function renderAddZone(d) {
     createLabel: strength ? "＋ Create a new exercise" : steady ? "＋ Create a new activity" : "＋ Create a new move",
     submitLabel: "Add to day",
     formFields:
-      '<input name="name" placeholder="' + (strength ? "Exercise" : "Move") + ' name" required>' +
+      '<input name="name" placeholder="' + (strength ? "Exercise" : steady ? "Activity" : "Move") + ' name" required>' +
       '<input name="setup" placeholder="How-to / setup (optional)">' +
       (strength
         ? '<input name="targetReps" placeholder="Target reps" value="8–12">' +

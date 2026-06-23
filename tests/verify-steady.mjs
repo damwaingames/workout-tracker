@@ -62,4 +62,13 @@ verify(async ({ page, ck, ls, reset }) => {
   await page.waitForTimeout(50);
   ck("duration edit live-patches the target", (await tc(`${D1} .steady-target`)) === "Target 35 min");
   ck("duration persisted on the routine template", (await ls()).blocks[0].routines.find((r) => r.routine === 1).durationMin === 35);
+
+  // --- a steady routine holds ONE activity: creating another replaces it (review #1) ---
+  await page.click(`${D1} [data-action="picker-open"]`);
+  await page.click(`${D1} [data-action="form-open"]`);
+  await page.fill(`${D1} .picker-form [name="name"]`, "Treadmill");
+  await page.click(`${D1} .picker-form button[type="submit"]`);
+  await page.waitForTimeout(60);
+  const acts = (await ls()).blocks[0].routines.find((r) => r.routine === 1).exercises;
+  ck("steady holds one activity — a created one replaces the old", acts.length === 1 && acts[0].id === "treadmill" && !("sets" in acts[0]));
 });
