@@ -5,15 +5,15 @@
 
 import { DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
-  placement, clampSets, clampRounds, circuitOf,
+  placement, clampSets, clampRounds, clampDuration, circuitOf,
   nonNegSec, slugify, uniqueId, today, mondayOf, bandKey, classesKey, foodKey, scheduleKey, parseRoutine,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
-  currentBlock, routineDef, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
+  currentBlock, routineDef, placeMove, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
-  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
+  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
 } from "./render.js";
 import { lookupBarcode, searchFoods } from "./off.js";
 import { scanBarcode } from "./scan.js";
@@ -96,7 +96,8 @@ export function handleClick(e) {
       // gets a strength placement in a strength routine, a bare one elsewhere — ADR-0007).
       // routineDef re-parses the sentinel / scans the block, so resolve it once.
       const def = routineDef(routine);
-      def.exercises.push(placement(def.kind, el.dataset.ex, DEFAULT_SETS));
+      // placeMove honours the single-activity rule (steady replaces, others append).
+      placeMove(def, placement(def.kind, el.dataset.ex, DEFAULT_SETS));
       save(); render(); break;
     }
     case "m-add": {
@@ -497,17 +498,19 @@ function addNewExercise(form, routine) {
   if (!name) return;
   // Contexts follow the routine's kind, not a form field — so a created exercise is seeded
   // valid for exactly the routine it's added to (widen it later to share with another kind).
-  const kind = routineDef(routine).kind;
+  const def = routineDef(routine);
+  const kind = def.kind;
   const id = uniqueId(slugify(name), (x) => state.library[x]);
   const ex = { id, name, contexts: [kind] };
   const setup = String(fd.get("setup") || "").trim();
   if (setup) ex.setup = setup;
-  // Strength moves carry a rep target; circuit moves carry nothing extra
-  // (rounds/timing live on the recovery routine).
+  // Strength moves carry a rep target; circuit / steady moves carry nothing extra
+  // (rounds / duration live on the routine).
   if (kind === "strength") ex.targetReps = String(fd.get("targetReps") || "").trim() || "8–12";
   state.library[id] = ex;
-  // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0).
-  routineDef(routine).exercises.push(placement(kind, id, parseFloat(fd.get("sets"))));
+  // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0); placeMove applies the
+  // single-activity rule (steady replaces) so create and add-ex stay in lockstep.
+  placeMove(def, placement(kind, id, parseFloat(fd.get("sets"))));
   save(); render();
 }
 
@@ -564,6 +567,12 @@ function circuitField(el) {
   const d = routineDef(Number(el.dataset.routine));
   if (d) { d[el.dataset.field] = nonNegSec(el.value); save(); patchCircuitTime(d); }
 }
+// A steady routine's planned duration (minutes). Like circuitField, it lives on the routine
+// template and live-patches the target line so the input keeps focus mid-type.
+function steadyField(el) {
+  const d = routineDef(Number(el.dataset.routine));
+  if (d) { d.durationMin = clampDuration(el.value); save(); patchSteadyTime(d); }
+}
 // Loading mode lives on the library record (not the placement), so changing it
 // here updates the exercise everywhere it appears; a full render relabels its
 // inputs and recomputes every affected routine/week/block volume.
@@ -609,6 +618,7 @@ const fieldByName = {
   "picker-search": pickerSearch,
   "food-search": foodSearch,
   "circuit-field": circuitField,
+  "steady-field": steadyField,
   "load-mode": loadModeField,
   // Band selects/toggles carry no data-k (logged out-of-band so hydrate can't
   // blank an unlogged default), so they're dispatched here, ahead of data-k.

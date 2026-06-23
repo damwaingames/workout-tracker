@@ -5,7 +5,7 @@
 
 import {
   MIN_SETS, MAX_SETS, DEFAULT_SETS,
-  MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS, LOAD_MODES, BANDS,
+  MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS, STEADY_DEFAULTS, LOAD_MODES, BANDS,
 } from "./constants.js";
 
 export function today() { return fmtYMD(new Date()); }
@@ -68,6 +68,10 @@ export const classesKey = (cell) => cell + ".classes";
 // classes, so not the scalar path; the block.id prefix (via cell) means deleteBlock's
 // purge sweeps it up too. The routine's kcal + macros are the derived sum (routineNutrition).
 export const foodKey = (cell) => cell + ".food";
+// A steady cell's per-session scalars, the most-coupled flat keys in the app (written by the
+// log inputs, read by routineSummary AND the previousSteady cross-week scan), so the literal
+// lives here once. field: "mins" (actual minutes done) | "resist" (the machine's level).
+export const steadyKey = (cell, field) => cell + "." + field;
 // A week's routine schedule — the ordered routine numbers for one block/week, stored as
 // a single key (like measureKey, not hung off a cell). Absent → weekSchedule derives the
 // order. The block.id prefix means purgeBlockLog sweeps it on block delete (ADR-0005).
@@ -81,6 +85,8 @@ function clampInt(n, min, max, fallback) {
 }
 export const clampSets = (n) => clampInt(n, MIN_SETS, MAX_SETS, DEFAULT_SETS);
 export const clampRounds = (n) => clampInt(n, MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS.rounds);
+// Steady duration has no real upper bound, so the max is a generous sanity cap, not a UI limit.
+export const clampDuration = (n) => clampInt(n, 1, 999, STEADY_DEFAULTS.durationMin);
 export const nonNegSec = (n) => { n = Math.round(+n); return Number.isFinite(n) && n > 0 ? n : 0; };
 
 // The single place that knows a placement's shape, keyed by the *routine's kind* (not the
@@ -160,6 +166,16 @@ export function circuitSummary(d) {
   ];
   if (c.roundRestSec > 0) parts.push(fmtSecs(c.roundRestSec) + " between rounds");
   return parts.join(" · ") + " · " + circuitTimeLabel(d);
+}
+// A steady routine's duration, defaulted like circuitOf — one planned figure (minutes). The
+// resistance/level and actual minutes are logged per cell (the session), not on the template.
+export function steadyOf(d) {
+  return { durationMin: clampDuration(d.durationMin) };
+}
+// The one-line steady summary: the planned duration. The effort target lives in the routine's
+// focus and the resistance is logged per session, so neither belongs in this headline.
+export function steadySummary(d) {
+  return steadyOf(d).durationMin + " min steady";
 }
 
 export function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }

@@ -286,6 +286,11 @@ nav.weeks {
   margin: .45rem 0;
 }
 .exercise.open .setup { display: block; }
+/* A move's intrinsic quality cue (always shown — the at-a-glance effort/form target). */
+.cue { font-size: .8rem; color: var(--muted); font-style: italic; margin: .3rem 0; }
+/* A steady routine's per-session log: planned target + actual minutes + resistance/level. */
+.steady-log { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-top: .5rem; }
+.steady-target { font-size: .8rem; font-weight: 600; color: var(--muted); }
 
 .sets { display: flex; flex-direction: column; gap: .4rem; margin-top: .5rem; }
 .set { display: flex; align-items: center; gap: .4rem; }
