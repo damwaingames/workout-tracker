@@ -10,7 +10,7 @@ import {
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
-  currentBlock, routineDef, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
+  currentBlock, routineDef, placeMove, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
   render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
@@ -96,9 +96,8 @@ export function handleClick(e) {
       // gets a strength placement in a strength routine, a bare one elsewhere — ADR-0007).
       // routineDef re-parses the sentinel / scans the block, so resolve it once.
       const def = routineDef(routine);
-      const p = placement(def.kind, el.dataset.ex, DEFAULT_SETS);
-      // A steady routine holds exactly one activity (CONTEXT "Steady"), so adding replaces it.
-      if (def.kind === "steady") def.exercises = [p]; else def.exercises.push(p);
+      // placeMove honours the single-activity rule (steady replaces, others append).
+      placeMove(def, placement(def.kind, el.dataset.ex, DEFAULT_SETS));
       save(); render(); break;
     }
     case "m-add": {
@@ -509,10 +508,9 @@ function addNewExercise(form, routine) {
   // (rounds / duration live on the routine).
   if (kind === "strength") ex.targetReps = String(fd.get("targetReps") || "").trim() || "8–12";
   state.library[id] = ex;
-  // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0). A steady routine holds
-  // one activity, so a created one replaces (mirrors add-ex).
-  const p = placement(kind, id, parseFloat(fd.get("sets")));
-  if (kind === "steady") def.exercises = [p]; else def.exercises.push(p);
+  // parseFloat so an empty field arrives as NaN → DEFAULT_SETS (not 0); placeMove applies the
+  // single-activity rule (steady replaces) so create and add-ex stay in lockstep.
+  placeMove(def, placement(kind, id, parseFloat(fd.get("sets"))));
   save(); render();
 }
 

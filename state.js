@@ -404,6 +404,15 @@ export function routineDef(routine) {
   return currentBlock().routines.find((d) => d.routine === routine);
 }
 
+// Place a built placement onto a routine, honouring each kind's arity: a steady routine holds
+// exactly one activity (CONTEXT "Steady"), so a new one replaces; every other kind appends.
+// The single home for that invariant — the add + create handlers and the block importer all
+// route through it, so none can forget the rule. Mutates the routine; callers save + render.
+export function placeMove(routine, p) {
+  if (routine.kind === "steady") routine.exercises = [p];
+  else routine.exercises.push(p);
+}
+
 // A week's routine order: the stored schedule (a permutation of the block's routine
 // numbers) reconciled against the catalogue — unknown numbers dropped, any missing ones
 // appended in catalogue order — so the result is always a clean bijection over the
