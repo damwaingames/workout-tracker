@@ -3,14 +3,14 @@
  * The store reassignments (setState/setEditing) all funnel through state.js —
  * an importer can read `state`/`editing` but can't reassign the binding here. */
 
-import { DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
+import { ALL_WEEKS, DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
   placement, clampSets, clampRounds, clampDuration, circuitOf,
-  nonNegSec, slugify, uniqueId, today, mondayOf, bandKey, classesKey, foodKey, scheduleKey, parseRoutine,
+  nonNegSec, slugify, uniqueId, today, mondayOf, cellKey, setsKey, roundsKey, bandKey, classesKey, foodKey, scheduleKey, parseRoutine,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
-  currentBlock, routineDef, placeMove, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
+  currentBlock, routineDef, placeMove, currentCell, effectiveSets, effectiveRounds, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
   render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
@@ -44,10 +44,15 @@ export function handleClick(e) {
     }
     case "sets-inc":
     case "sets-dec": {
-      const p = routineDef(routine).exercises.find((x) => x.id === el.dataset.ex);
+      const exId = el.dataset.ex;
+      const p = routineDef(routine).exercises.find((x) => x.id === exId);
       if (p) {
-        p.sets = clampSets((p.sets || DEFAULT_SETS) + (el.dataset.action === "sets-inc" ? 1 : -1));
-        save(); render();
+        // Per-week: write THIS cell's set-count override, not the template. Stepping back to the
+        // template count clears the override (setLog("") deletes), so the week tracks it again.
+        const cell = currentCell(routine);
+        const next = clampSets(effectiveSets(cell, p) + (el.dataset.action === "sets-inc" ? 1 : -1));
+        setLog(setsKey(cell, exId), next === (p.sets || DEFAULT_SETS) ? "" : next);
+        render();
       }
       break;
     }
@@ -55,8 +60,32 @@ export function handleClick(e) {
     case "rounds-dec": {
       const d = routineDef(routine);
       if (d) {
-        // Rounds change the R-checkbox count per station, so re-render fully.
-        d.rounds = clampRounds(circuitOf(d).rounds + (el.dataset.action === "rounds-inc" ? 1 : -1));
+        // Per-week round override for this cell (work/rest secs stay block-wide). Rounds change
+        // the R-checkbox count, so re-render. Stepping back to the template clears the override.
+        const cell = currentCell(routine);
+        const next = clampRounds(effectiveRounds(cell, d) + (el.dataset.action === "rounds-inc" ? 1 : -1));
+        setLog(roundsKey(cell), next === circuitOf(d).rounds ? "" : next);
+        render();
+      }
+      break;
+    }
+    // Apply this week's per-week count to the whole block: write the template, then clear every
+    // week's override → uniform again (ADR-0008 "apply to all weeks").
+    case "sets-all": {
+      const def = routineDef(routine), exId = el.dataset.ex;
+      const p = def.exercises.find((x) => x.id === exId);
+      if (p) {
+        p.sets = effectiveSets(currentCell(routine), p);
+        ALL_WEEKS.forEach((w) => delete state.log[setsKey(cellKey(currentBlock().id, w, routine), exId)]);
+        save(); render();
+      }
+      break;
+    }
+    case "rounds-all": {
+      const d = routineDef(routine);
+      if (d) {
+        d.rounds = effectiveRounds(currentCell(routine), d);
+        ALL_WEEKS.forEach((w) => delete state.log[roundsKey(cellKey(currentBlock().id, w, routine))]);
         save(); render();
       }
       break;

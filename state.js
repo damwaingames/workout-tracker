@@ -12,8 +12,8 @@ import {
   WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, setKey, roundRepKey, bandKey, measureKey, nutKey, classesKey, foodKey, steadyKey, scheduleKey,
-  placement, loadMode, circuitOf, bandFor, bandKg, kcalBurn,
+  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, classesKey, foodKey, steadyKey, scheduleKey,
+  placement, loadMode, circuitOf, clampSets, clampRounds, bandFor, bandKg, kcalBurn,
 } from "./helpers.js";
 
 /* ---------------------------------------------------------------------- *
@@ -413,6 +413,10 @@ export function placeMove(routine, p) {
   else routine.exercises.push(p);
 }
 
+// This week's cell for a routine in the current block — the coordinate the in-app edit
+// handlers (the count steppers and apply-all) operate on.
+export function currentCell(routine) { return cellKey(currentBlock().id, state.ui.week, routine); }
+
 // A week's routine order: the stored schedule (a permutation of the block's routine
 // numbers) reconciled against the catalogue — unknown numbers dropped, any missing ones
 // appended in catalogue order — so the result is always a clean bijection over the
@@ -479,6 +483,21 @@ export function readSets(blockId, wk, routine, exId, sets) {
   }));
 }
 
+// The effective count for a cell: the per-week override if one's logged, else the block-wide
+// template (ADR-0008). One pair of resolvers every count-bearing site routes through — the
+// row/round loops in render, and the temporal scans (previousSets, routineLoad, bandedReps) —
+// so a per-week count is a flat lookup, never a lazy-lookback inside a scan (ADR-0001).
+// Lowering a count only shrinks the loop; the logged data under the dropped rows/rounds stays.
+// One home for "per-week override, else block-wide template": parse the override key, clamp it
+// if a value's present, else fall back to the template (ADR-0008). effectiveSets / effectiveRounds
+// are its only two shapes — both read by the render loops and the temporal scans.
+const resolveOverride = (key, clamp, fallback) => {
+  const o = parseInt(state.log[key], 10);
+  return Number.isFinite(o) ? clamp(o) : fallback;
+};
+export const effectiveSets = (cell, place) => resolveOverride(setsKey(cell, place.id), clampSets, place.sets || DEFAULT_SETS);
+export const effectiveRounds = (cell, d) => resolveOverride(roundsKey(cell), clampRounds, circuitOf(d).rounds);
+
 // The most recent earlier logged instance of an exercise — last week within a
 // block, or the previous block's last occurrence at a block boundary.
 export function previousSets(exId, curBlockIdx, curWeek, curRoutine) {
@@ -495,7 +514,9 @@ export function previousSets(exId, curBlockIdx, curWeek, curRoutine) {
       for (let wk = 1; wk <= WEEKS; wk++) {
         const order = rank(bi, wk, d.routine);
         if (order >= cutoff) continue;
-        const s = readSets(block.id, wk, d.routine, exId, p.sets || DEFAULT_SETS);
+        // Each cell reads its OWN effective count — a prior week may have a different override.
+        const cell = cellKey(block.id, wk, d.routine);
+        const s = readSets(block.id, wk, d.routine, exId, effectiveSets(cell, p));
         if (s.some((x) => x.w || x.r) && (!best || order > best.order)) best = { order, sets: s };
       }
     });
@@ -509,10 +530,10 @@ export function previousSets(exId, curBlockIdx, curWeek, curRoutine) {
 function bandedReps(cell, d, p) {
   let total = 0;
   if (d.kind === "strength") {
-    const sets = p.sets || DEFAULT_SETS;
+    const sets = effectiveSets(cell, p);
     for (let i = 0; i < sets; i++) { const r = parseFloat(state.log[setKey(cell, p.id, i, "r")]); if (r > 0) total += r; }
   } else {
-    const rounds = circuitOf(d).rounds;
+    const rounds = effectiveRounds(cell, d);
     for (let i = 0; i < rounds; i++) { const r = parseFloat(state.log[roundRepKey(cell, p.id, i)]); if (r > 0) total += r; }
   }
   return total;
@@ -553,7 +574,7 @@ export function routineLoad(block, wk, d) {
       if (kg > 0) total += kg * loadMode(ex).rMult * bandedReps(cell, eff, p);
     } else if (eff.kind === "strength") {
       const m = loadMode(ex);
-      readSets(block.id, wk, d.routine, p.id, p.sets || DEFAULT_SETS).forEach((s) => {
+      readSets(block.id, wk, d.routine, p.id, effectiveSets(cell, p)).forEach((s) => {
         const w = parseFloat(s.w), r = parseFloat(s.r);
         if (w > 0 && r > 0) total += w * m.wMult * r * m.rMult;
       });

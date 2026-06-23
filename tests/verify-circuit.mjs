@@ -28,7 +28,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await page.click(`${D2} [data-action="rounds-inc"]`);
   await page.waitForTimeout(60);
   ck("rounds-inc → 3 checkboxes per move", (await roundsOfFirstMove()) === 3);
-  ck("rounds-inc persisted (d.rounds=3)", (await recRoutine()).rounds === 3);
+  ck("rounds-inc stored a per-week override (=3), template untouched", String((await ls()).log["b1.w1.d2.rounds"]) === "3" && (await recRoutine()).rounds === 2);
   ck("summary recomputed to ~18 min (3×5×60 + 3×4×15)",
     (await page.textContent(note)).trim() === "3 rounds · 1 min work · 15 sec rest · ≈ 18 min");
 
@@ -53,14 +53,15 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await page.click('[data-action="new-block"]'); // clones current block, selects new, enters edit
   await page.waitForTimeout(60);
   const cloned = (await ls()).blocks.find((b) => b.id !== "b1").routines.find((d) => d.routine === 2);
-  ck("cloned block's recovery routine keeps rounds/work/round-rest",
-    cloned.rounds === 3 && cloned.workSec === 30 && cloned.roundRestSec === 30);
+  ck("cloned block keeps the circuit TEMPLATE (rounds back to 2, work/round-rest carried)",
+    cloned.rounds === 2 && cloned.workSec === 30 && cloned.roundRestSec === 30);
 
   // ---- Migration: old recovery routine with no circuit fields backfills to defaults ----
   await page.evaluate((k) => {
     const s = JSON.parse(localStorage.getItem(k));
     const d = s.blocks[0].routines.find((x) => x.routine === 2);
     delete d.rounds; delete d.workSec; delete d.restSec; delete d.roundRestSec;
+    delete s.log["b1.w1.d2.rounds"]; // an old save predates per-week round overrides
     // Old-shape library: a circuit move still carrying retired per-move timing.
     s.library["high-knees"].duration = "1 min";
     s.library["high-knees"].rest = "15 sec";

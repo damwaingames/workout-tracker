@@ -377,6 +377,9 @@ nav.weeks {
 }
 .step:hover { border-color: var(--workout); }
 .sets-count { min-width: 1.1rem; text-align: center; font-size: .9rem; color: var(--text); font-variant-numeric: tabular-nums; }
+/* "all weeks" — propagate a per-week count override to the block template (shown only when this week diverges). */
+.apply-all { font-size: .68rem; padding: .2rem .45rem; margin-left: .35rem; border: 1px solid var(--border); background: #fff; color: var(--muted); border-radius: 6px; cursor: pointer; }
+.apply-all:hover { border-color: var(--workout); color: var(--workout); }
 
 input[type="text"], input[type="number"], input[type="date"], textarea, select {
   font: inherit;

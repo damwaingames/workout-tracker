@@ -11,7 +11,7 @@ import {
 import {
   state, editing,
   currentBlock, currentBlockIndex, routineDef, weekSchedule,
-  previousSets, routineLoad, holidaySwap, previousRoutineTotal, previousSteady, previousMeasure, bmiFor, nutritionTotals, routineNutrition, entryNutrition,
+  previousSets, effectiveSets, effectiveRounds, routineLoad, holidaySwap, previousRoutineTotal, previousSteady, previousMeasure, bmiFor, nutritionTotals, routineNutrition, entryNutrition,
   classTotals, weekBodyweight, classRate, logList,
 } from "./state.js";
 import { scanSupported } from "./scan.js";
@@ -148,7 +148,7 @@ function routineSummary(block, d, wk, cell) {
   // — collapse then just reveals an already-fresh number, no work in toggleRoutine/afterDone.
   const volBit = (total) => 'Volume <strong data-vol-cell="' + cell + '">' + fmt(total) + ' kg</strong><span class="vol-delta" data-vol-delta="' + cell + '"></span>';
   if (d.kind === "recovery") {
-    bits.push(circuitTimeLabel(d));
+    bits.push(circuitTimeLabel(d, effectiveRounds(cell, d)));
     const { total, loadBearing } = routineLoad(block, wk, d);
     if (loadBearing) bits.push(volBit(total));
   } else if (d.kind === "steady") {
@@ -319,7 +319,8 @@ function renderStrength(d, wk, cell, editStruct) {
     const exId = place.id;
     const ex = state.library[exId];
     if (!ex) return "";
-    const sets = place.sets || DEFAULT_SETS;
+    const sets = effectiveSets(cell, place); // this week's count (per-week override, else template)
+    const tmpl = place.sets || DEFAULT_SETS; // block-wide template, for the "all weeks" affordance
     const banded = !!ex.banded; // banded moves log a band + reps, not weight × reps
     const m = loadMode(ex); // free-weight tonnage multipliers + per-mode labels
     // Last session's sets (band moves track reps too — they log a reps field, so the
@@ -352,6 +353,8 @@ function renderStrength(d, wk, cell, editStruct) {
       ? '<div class="sets-edit">Sets <button class="step" type="button" data-action="sets-dec" data-routine="' + d.routine + '" data-ex="' + exId + '" aria-label="Fewer sets">−</button>' +
         '<span class="sets-count">' + sets + "</span>" +
         '<button class="step" type="button" data-action="sets-inc" data-routine="' + d.routine + '" data-ex="' + exId + '" aria-label="More sets">＋</button>' +
+        // Per-week override active (differs from the template) → offer to apply it to every week.
+        (sets !== tmpl ? '<button class="apply-all" type="button" data-action="sets-all" data-routine="' + d.routine + '" data-ex="' + exId + '">all weeks</button>' : "") +
         // How this exercise is loaded (band vs free weight, and its tonnage mode) —
         // a property of the exercise, so it persists on the library record.
         loadingEdit(d, ex) + "</div>"
@@ -375,7 +378,7 @@ function renderStrength(d, wk, cell, editStruct) {
 }
 
 function renderRecovery(d, wk, cell) {
-  const rounds = circuitOf(d).rounds; // rounds drive the checkbox / reps count per move
+  const rounds = effectiveRounds(cell, d); // per-week round count drives the checkbox / reps count per move
   const moves = d.exercises.map((place) => {
     const exId = place.id;
     const ex = state.library[exId];
@@ -405,26 +408,30 @@ function renderRecovery(d, wk, cell) {
   const { total, loadBearing } = routineLoad(currentBlock(), wk, d);
   const volLine = loadBearing ? volumeLine(cell, total) : "";
   return moves +
-    (editing ? renderCircuitEdit(d) : "") +
+    (editing ? renderCircuitEdit(d, cell) : "") +
     volLine +
     '<div class="recovery-meta">' +
       '<label class="inline">Energy (1–10)<input type="number" min="1" max="10" data-k="' + cell + '.energy" data-type="text"></label>' +
-      '<span class="circuit-note" data-circuit-cell="' + cell + '">' + esc(circuitSummary(d)) + "</span>" +
+      '<span class="circuit-note" data-circuit-cell="' + cell + '">' + esc(circuitSummary(d, rounds)) + "</span>" +
     "</div>";
 }
 
 // Edit-mode circuit controls: a rounds stepper (re-renders, since it changes
 // the R-checkbox count) plus work / rest / round-rest second inputs (live patch).
-function renderCircuitEdit(d) {
+function renderCircuitEdit(d, cell) {
   const c = circuitOf(d);
+  const rounds = effectiveRounds(cell, d); // per-week override else the template
   const secField = (field, label, val) =>
     '<label class="circuit-field-l">' + label +
     ' <input type="number" inputmode="numeric" min="0" class="circuit-field" data-fh="circuit-field" data-routine="' + d.routine + '" data-field="' + field + '" value="' + val + '">s</label>';
   return '<div class="circuit-edit">' +
     '<div class="rounds-edit">Rounds ' +
       '<button class="step" type="button" data-action="rounds-dec" data-routine="' + d.routine + '" aria-label="Fewer rounds">−</button>' +
-      '<span class="sets-count">' + c.rounds + "</span>" +
-      '<button class="step" type="button" data-action="rounds-inc" data-routine="' + d.routine + '" aria-label="More rounds">＋</button></div>' +
+      '<span class="sets-count">' + rounds + "</span>" +
+      '<button class="step" type="button" data-action="rounds-inc" data-routine="' + d.routine + '" aria-label="More rounds">＋</button>' +
+      // Per-week round override active → offer to apply it to every week (work/rest secs stay block-wide).
+      (rounds !== c.rounds ? '<button class="apply-all" type="button" data-action="rounds-all" data-routine="' + d.routine + '">all weeks</button>' : "") +
+    "</div>" +
     secField("workSec", "Work", c.workSec) +
     secField("restSec", "Rest", c.restSec) +
     secField("roundRestSec", "Round rest", c.roundRestSec) +
@@ -434,8 +441,9 @@ function renderCircuitEdit(d) {
 // Live-patch a recovery routine's summary line when its work/rest seconds change,
 // so the second input keeps focus mid-type (rounds re-render via the stepper).
 export function patchCircuitTime(d) {
-  const el = document.querySelector('[data-circuit-cell="' + cellKey(currentBlock().id, state.ui.week, d.routine) + '"]');
-  if (el) el.textContent = circuitSummary(d);
+  const cell = cellKey(currentBlock().id, state.ui.week, d.routine);
+  const el = document.querySelector('[data-circuit-cell="' + cell + '"]');
+  if (el) el.textContent = circuitSummary(d, effectiveRounds(cell, d));
 }
 
 function renderRest(cell) {

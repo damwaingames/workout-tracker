@@ -50,6 +50,12 @@ export const roundKey = (cell, exId, r) => cell + ".ex." + exId + ".r" + r;
 // (".rr" + r — separate from the ".r" + r round checkbox of a normal circuit).
 export const bandKey = (cell, exId) => cell + ".ex." + exId + ".band";
 export const roundRepKey = (cell, exId, r) => cell + ".ex." + exId + ".rr" + r;
+// Per-week count overrides (ADR-0008): a single week's set count for one strength exercise,
+// or one recovery routine's round count, when it differs from the block-wide template. Absent
+// → the template. `.sets` can't collide with setKey's `.s{i}.{w|r}`, nor `.rounds` with
+// roundKey's `.r{n}`. Both hang off the block-prefixed cell, so purgeBlockLog still sweeps them.
+export const setsKey = (cell, exId) => cell + ".ex." + exId + ".sets";
+export const roundsKey = (cell) => cell + ".rounds";
 // Weekly body measurement (one value per block/week/measurement). Shares
 // state.log — the ".m." segment can't collide with a routine's ".dN" cells, and
 // the block.id prefix means deleteBlock's purge sweeps these up for free.
@@ -137,11 +143,11 @@ export function circuitOf(d) {
 // Estimated total seconds for a circuit. Rest sits strictly between stations
 // within a round ((stations − 1) gaps) and between rounds ((rounds − 1) gaps),
 // so the workout ends on a work interval — nothing trailing.
-function circuitTime(stations, c) {
+function circuitTime(stations, rounds, c) {
   if (stations <= 0) return 0;
-  return c.rounds * stations * c.workSec +
-    c.rounds * (stations - 1) * c.restSec +
-    (c.rounds - 1) * c.roundRestSec;
+  return rounds * stations * c.workSec +
+    rounds * (stations - 1) * c.restSec +
+    (rounds - 1) * c.roundRestSec;
 }
 // "90 sec" / "1 min" / "12 min 30 sec".
 function fmtSecs(sec) {
@@ -153,19 +159,24 @@ function fmtSecs(sec) {
 // The circuit's estimated total time, formatted ("≈ 12 min 30 sec"). The headline
 // figure from circuitSummary, exposed on its own for the collapsed routine summary —
 // where only the total matters, not the round / work / rest breakdown.
-export function circuitTimeLabel(d) {
-  return "≈ " + fmtSecs(circuitTime(d.exercises.length, circuitOf(d)));
-}
-// The one-line circuit summary shown under a recovery routine: structure + estimate.
-export function circuitSummary(d) {
+// `rounds` overrides the template count for the displayed week (per-week rounds — ADR-0008);
+// absent, the routine's own template is used. So the estimate tracks the week's actual rounds.
+export function circuitTimeLabel(d, rounds) {
   const c = circuitOf(d);
+  return "≈ " + fmtSecs(circuitTime(d.exercises.length, rounds != null ? rounds : c.rounds, c));
+}
+// The one-line circuit summary shown under a recovery routine: structure + estimate. Takes the
+// week's effective `rounds` so a per-week override reflects in both the count and the time.
+export function circuitSummary(d, rounds) {
+  const c = circuitOf(d);
+  const r = rounds != null ? rounds : c.rounds;
   const parts = [
-    c.rounds + " round" + (c.rounds === 1 ? "" : "s"),
+    r + " round" + (r === 1 ? "" : "s"),
     fmtSecs(c.workSec) + " work",
     fmtSecs(c.restSec) + " rest",
   ];
   if (c.roundRestSec > 0) parts.push(fmtSecs(c.roundRestSec) + " between rounds");
-  return parts.join(" · ") + " · " + circuitTimeLabel(d);
+  return parts.join(" · ") + " · " + circuitTimeLabel(d, r);
 }
 // A steady routine's duration, defaulted like circuitOf — one planned figure (minutes). The
 // resistance/level and actual minutes are logged per cell (the session), not on the template.
