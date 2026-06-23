@@ -319,7 +319,7 @@ function renderStrength(d, wk, cell, editStruct) {
     const exId = place.id;
     const ex = state.library[exId];
     if (!ex) return "";
-    const sets = effectiveSets(cell, exId, place); // this week's count (per-week override, else template)
+    const sets = effectiveSets(cell, place); // this week's count (per-week override, else template)
     const tmpl = place.sets || DEFAULT_SETS; // block-wide template, for the "all weeks" affordance
     const banded = !!ex.banded; // banded moves log a band + reps, not weight × reps
     const m = loadMode(ex); // free-weight tonnage multipliers + per-mode labels

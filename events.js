@@ -10,7 +10,7 @@ import {
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
-  currentBlock, routineDef, placeMove, effectiveSets, effectiveRounds, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
+  currentBlock, routineDef, placeMove, currentCell, effectiveSets, effectiveRounds, weekSchedule, nextBlockNumber, normalise, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
   render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
@@ -49,8 +49,8 @@ export function handleClick(e) {
       if (p) {
         // Per-week: write THIS cell's set-count override, not the template. Stepping back to the
         // template count clears the override (setLog("") deletes), so the week tracks it again.
-        const cell = cellKey(currentBlock().id, state.ui.week, routine);
-        const next = clampSets(effectiveSets(cell, exId, p) + (el.dataset.action === "sets-inc" ? 1 : -1));
+        const cell = currentCell(routine);
+        const next = clampSets(effectiveSets(cell, p) + (el.dataset.action === "sets-inc" ? 1 : -1));
         setLog(setsKey(cell, exId), next === (p.sets || DEFAULT_SETS) ? "" : next);
         render();
       }
@@ -62,7 +62,7 @@ export function handleClick(e) {
       if (d) {
         // Per-week round override for this cell (work/rest secs stay block-wide). Rounds change
         // the R-checkbox count, so re-render. Stepping back to the template clears the override.
-        const cell = cellKey(currentBlock().id, state.ui.week, routine);
+        const cell = currentCell(routine);
         const next = clampRounds(effectiveRounds(cell, d) + (el.dataset.action === "rounds-inc" ? 1 : -1));
         setLog(roundsKey(cell), next === circuitOf(d).rounds ? "" : next);
         render();
@@ -75,7 +75,7 @@ export function handleClick(e) {
       const def = routineDef(routine), exId = el.dataset.ex;
       const p = def.exercises.find((x) => x.id === exId);
       if (p) {
-        p.sets = effectiveSets(cellKey(currentBlock().id, state.ui.week, routine), exId, p);
+        p.sets = effectiveSets(currentCell(routine), p);
         ALL_WEEKS.forEach((w) => delete state.log[setsKey(cellKey(currentBlock().id, w, routine), exId)]);
         save(); render();
       }
@@ -84,7 +84,7 @@ export function handleClick(e) {
     case "rounds-all": {
       const d = routineDef(routine);
       if (d) {
-        d.rounds = effectiveRounds(cellKey(currentBlock().id, state.ui.week, routine), d);
+        d.rounds = effectiveRounds(currentCell(routine), d);
         ALL_WEEKS.forEach((w) => delete state.log[roundsKey(cellKey(currentBlock().id, w, routine))]);
         save(); render();
       }
