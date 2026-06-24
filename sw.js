@@ -2,7 +2,7 @@
  * CACHE carries the app's semver (see APP_VERSION in constants.js) — keep the two
  * in lockstep. Bumping it on each release busts the old cache on the next activate,
  * so phones pick up the new index.html / styles.css / JS modules on next launch. */
-const CACHE = "workout-tracker-v2.4.0";
+const CACHE = "workout-tracker-v2.4.1";
 const ASSETS = [
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const ASSETS = [
   // or an offline launch serves a stale/incomplete shell (entry first, then deps).
   "./main.js",
   "./events.js",
+  "./io.js",
   "./render.js",
   "./state.js",
   "./helpers.js",
