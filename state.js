@@ -217,8 +217,8 @@ function normalise(s) {
   normaliseClassTypes(s);
   migrateSets(s);
   migrateCircuit(s);
-  migrateLibrary(s);
   migrateContexts(s);
+  migrateLibrary(s);
   migrateNutrition(s);
   // The Holiday Workout is additive (older v2 saves predate it) — backfill it, or
   // any missing field on a partial one, from the seed. Runs after migrateLibrary so
@@ -345,6 +345,10 @@ function migrateLibrary(s) {
     if (!ex) { s.library[id] = sd; return; }
     if (ex.loadMode == null && sd.loadMode) ex.loadMode = sd.loadMode;
     if (ex.banded == null && sd.banded) { ex.banded = true; ex.defaultBand = sd.defaultBand; }
+    // Widen contexts from the seed (additive union) — broadening a seed move's contexts in a
+    // release reaches existing saves, the contexts sibling of the loadMode / banded backfills.
+    // migrateContexts runs first (normalise call order), so ex.contexts is already an array.
+    if (sd.contexts) ex.contexts = [...new Set([...ex.contexts, ...sd.contexts])];
   });
 }
 
@@ -358,14 +362,9 @@ export const contextsOf = (ex) => (Array.isArray(ex.contexts) ? ex.contexts : [e
 // driven by the routine, not the exercise (ADR-0007). Apply the legacy mapping (a no-op once a
 // record has contexts) and drop the dead field. Idempotent + additive, so old backups migrate.
 function migrateContexts(s) {
-  const seed = seedLibrary();
   Object.keys(s.library).forEach((id) => {
     const ex = s.library[id];
     ex.contexts = contextsOf(ex);
-    // Widen from the seed (additive union) so broadening a seed move's contexts in a release
-    // reaches existing saves too — the contexts analogue of migrateLibrary's loadMode backfill.
-    const sd = seed[id];
-    if (sd && Array.isArray(sd.contexts)) ex.contexts = [...new Set([...ex.contexts, ...sd.contexts])];
     delete ex.type;
   });
 }
