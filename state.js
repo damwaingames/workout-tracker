@@ -106,6 +106,10 @@ function seedLibrary() {
   band("banded-glute-bridges", "heavy");
   band("banded-push-ups", "light");
   band("banded-plank-leg-abductions", "medium");
+  // hollow-body-holds doubles as a strength core accessory (logged as bodyweight reps) and a
+  // recovery circuit station, so it's valid in both kinds (ADR-0007). The seed-union in
+  // migrateContexts carries this widening to existing saves, not just fresh installs.
+  lib["hollow-body-holds"].contexts = ["recovery", "strength"];
   return lib;
 }
 
@@ -213,8 +217,8 @@ function normalise(s) {
   normaliseClassTypes(s);
   migrateSets(s);
   migrateCircuit(s);
-  migrateLibrary(s);
   migrateContexts(s);
+  migrateLibrary(s);
   migrateNutrition(s);
   // The Holiday Workout is additive (older v2 saves predate it) — backfill it, or
   // any missing field on a partial one, from the seed. Runs after migrateLibrary so
@@ -341,6 +345,10 @@ function migrateLibrary(s) {
     if (!ex) { s.library[id] = sd; return; }
     if (ex.loadMode == null && sd.loadMode) ex.loadMode = sd.loadMode;
     if (ex.banded == null && sd.banded) { ex.banded = true; ex.defaultBand = sd.defaultBand; }
+    // Widen contexts from the seed (additive union) — broadening a seed move's contexts in a
+    // release reaches existing saves, the contexts sibling of the loadMode / banded backfills.
+    // migrateContexts runs first (normalise call order), so ex.contexts is already an array.
+    if (sd.contexts) ex.contexts = [...new Set([...ex.contexts, ...sd.contexts])];
   });
 }
 
