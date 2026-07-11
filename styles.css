@@ -7,12 +7,12 @@
   --text: #1b2230;
   --muted: #6b7280;
   --border: #e3e6ec;
-  --border-strong: var(--border-strong);  /* hover borders + the dashed add-zone border */
+  --border-strong: #cdd2db;  /* hover borders + the dashed add-zone border (was #cdd2db / #c7ccd6) */
   --workout: #4f46e5;
   --recovery: #0d9488;
   --rest: #b45309;
   --danger: #dc2626;
-  --danger-border: var(--danger-border);
+  --danger-border: #f3c4c4;
   --danger-bg: #fef2f2;      /* danger-button hover fill */
   --on-accent: #ffffff;      /* text on an accent-filled button, both schemes */
   --chip: #eef0f5;
