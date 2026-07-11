@@ -19,6 +19,7 @@ import { foodResultsHTML } from "./render-nutrition.js";
 import { lookupBarcode, searchFoods } from "./off.js";
 import { scanBarcode } from "./scan.js";
 import { exportBackup, importBackup, importBlockFile, drivePush, drivePull } from "./io.js";
+import { shareNutrition } from "./health.js";
 
 /* ---------------------------------------------------------------------- *
  * Events                                                                  *
@@ -156,6 +157,7 @@ export function handleClick(e) {
     case "export": exportBackup(); break;
     case "drive-push": drivePush(); break;
     case "drive-pull": drivePull(); break;
+    case "publish-nutrition": shareNutrition(); break;
     case "reset": resetAll(); break;
   }
 }

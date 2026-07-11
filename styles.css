@@ -618,6 +618,7 @@ textarea { width: 100%; resize: vertical; }
 .nut-total-line { font-size: .82rem; font-variant-numeric: tabular-nums; }
 .nut-total-label { font-weight: 600; display: inline-block; min-width: 3rem; color: var(--text); }
 .nut-avg { margin-top: .55rem; font-variant-numeric: tabular-nums; }
+.nut-publish { margin-top: .8rem; }
 
 footer { margin-top: 2rem; }
 .utils { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
