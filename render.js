@@ -5,14 +5,14 @@
 
 import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
-  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, foodKey, steadyKey, classKey,
+  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, foodKey, cellScalarKey,
   circuitOf, circuitSummary, circuitTimeLabel, steadyOf, steadySummary, classOf, loadMode, repsLabel, bandFor, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, routineDef, weekSchedule,
   previousSets, effectiveSets, effectiveRounds, routineLoad, holidaySwap, previousRoutineTotal, previousSteady, previousMeasure, bmiFor, nutritionTotals, routineNutrition, entryNutrition,
-  classTotals, logList,
+  classTotals, classTypeNames, logList,
 } from "./state.js";
 import { scanSupported } from "./scan.js";
 
@@ -50,10 +50,9 @@ function renderWeek() {
     // Block start date (the Monday weekdays derive from) — editable in Edit mode; a free
     // date (no snap), so a midweek start is representable (ADR-0005).
     (editing ? '<label class="block-start-l">Block starts <input type="date" id="block-start-input" class="block-start-input" value="' + esc(block.startDate) + '" aria-label="Block start date"></label>' : "") +
-    // Shared autocomplete list of known class types — a class routine's Edit-mode type
-    // input references this by id. Union of the seeded/known types and the class routines
-    // in this block, so a type set on a routine is offered even if never in state.classTypes.
-    '<datalist id="class-types">' + classTypeNames(block).map((n) => '<option value="' + esc(n) + '">').join("") + "</datalist>" +
+    // Shared autocomplete list of known class types — a class routine's Edit-mode type input
+    // references this by id. The names are derived (seeds ∪ class routines in use — classTypeNames).
+    '<datalist id="class-types">' + classTypeNames().map((n) => '<option value="' + esc(n) + '">').join("") + "</datalist>" +
     (editing ? renderHolidayEdit() : "") +
     weekSchedule(block, wk).map((n, i) => {
       // weekSchedule yields a bijection over block.routines, so find always hits.
@@ -61,15 +60,6 @@ function renderWeek() {
       return renderRoutine(block, d, wk, i);
     }).join("");
   hydrate();
-}
-
-// The class-type names offered by the Edit-mode class field: the seeded/known types unioned
-// with any class routine's own type in this block, so a routine's type is always offered.
-function classTypeNames(block) {
-  return [...new Set([
-    ...state.classTypes.map((t) => t.name),
-    ...block.routines.filter((r) => r.kind === "class" && r.classType).map((r) => r.classType),
-  ])];
 }
 
 function renderRoutine(block, d, wk, position) {
@@ -163,7 +153,7 @@ function routineSummary(block, d, wk, cell) {
   } else if (d.kind === "steady") {
     // Steady carries no tonnage; its line is the duration done (actual, else planned) + the
     // logged resistance/level — the two facts a collapsed steady day is worth showing.
-    const mins = state.log[steadyKey(cell, "mins")], resist = state.log[steadyKey(cell, "resist")];
+    const mins = state.log[cellScalarKey(cell, "mins")], resist = state.log[cellScalarKey(cell, "resist")];
     bits.push((mins || steadyOf(d).durationMin) + " min" + (resist ? " · L" + esc(resist) : ""));
   } else if (d.kind === "strength") {
     bits.push(volBit(routineLoad(block, wk, d).total));
@@ -171,8 +161,8 @@ function routineSummary(block, d, wk, cell) {
     // A class carries no tonnage; its line is the type, the minutes done (actual, else planned)
     // and the wearable's logged burn if there is one (ADR-0010/0014).
     const c = classOf(d);
-    const cmins = state.log[classKey(cell, "mins")] || c.durationMin;
-    const kcal = parseFloat(state.log[classKey(cell, "kcal")]);
+    const cmins = state.log[cellScalarKey(cell, "mins")] || c.durationMin;
+    const kcal = parseFloat(state.log[cellScalarKey(cell, "kcal")]);
     bits.push((c.classType ? esc(c.classType) + " · " : "") + cmins + " min" + (kcal > 0 ? " · ~" + fmt(kcal) + " kcal" : ""));
   }
   // Nutrition: once any food is logged, the routine's derived kcal + full macro line — so a
@@ -190,13 +180,13 @@ function routineSummary(block, d, wk, cell) {
 function renderClass(d, wk, cell) {
   const c = classOf(d);
   return '<div class="class-session" data-cell="' + cell + '">' +
-      '<div class="ex-head"><span class="ex-name">' + (c.classType ? esc(c.classType) : "No class set") + "</span>" +
-      '<span class="ex-target">Target ' + c.durationMin + " min</span></div>" +
+      '<div class="ex-head"><span class="ex-name" data-class-name="' + cell + '">' + (c.classType ? esc(c.classType) : "No class set") + "</span>" +
+      '<span class="ex-target" data-class-target="' + cell + '">Target ' + c.durationMin + " min</span></div>" +
     "</div>" +
     '<div class="class-log">' +
-      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + classKey(cell, "mins") + '" data-type="text" data-refresh="classes" placeholder="' + c.durationMin + '"></label>' +
-      '<label class="inline">Calories<input type="number" inputmode="numeric" min="0" data-k="' + classKey(cell, "kcal") + '" data-type="text" data-refresh="classes" placeholder="kcal"></label>' +
-      '<label class="inline class-note-l">Notes<input type="text" data-k="' + classKey(cell, "note") + '" data-type="text" placeholder="What you did"></label>' +
+      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + cellScalarKey(cell, "mins") + '" data-type="text" data-refresh="classes" placeholder="' + c.durationMin + '"></label>' +
+      '<label class="inline">Calories<input type="number" inputmode="numeric" min="0" data-k="' + cellScalarKey(cell, "kcal") + '" data-type="text" data-refresh="classes" placeholder="kcal"></label>' +
+      '<label class="inline class-note-l">Notes<input type="text" data-k="' + cellScalarKey(cell, "note") + '" data-type="text" placeholder="What you did"></label>' +
     "</div>" +
     (editing ? renderClassEdit(d) : "");
 }
@@ -215,13 +205,15 @@ function renderClassEdit(d) {
 }
 
 // Live-patch a class routine's session card (name + target) when its type or duration changes in
-// Edit mode, keeping the input focused mid-type (mirrors patchSteadyTime).
+// Edit mode, keeping the input focused mid-type. Patches via dedicated data-class-name /
+// data-class-target hooks (not by position in the borrowed .ex-head), mirroring patchSteadyTime.
 export function patchClass(d) {
-  const el = document.querySelector('.class-session[data-cell="' + cellKey(currentBlock().id, state.ui.week, d.routine) + '"]');
-  if (!el) return;
+  const cell = cellKey(currentBlock().id, state.ui.week, d.routine);
   const c = classOf(d);
-  const name = el.querySelector(".ex-name"); if (name) name.textContent = c.classType || "No class set";
-  const target = el.querySelector(".ex-target"); if (target) target.textContent = "Target " + c.durationMin + " min";
+  const name = document.querySelector('[data-class-name="' + cell + '"]');
+  const target = document.querySelector('[data-class-target="' + cell + '"]');
+  if (name) name.textContent = c.classType || "No class set";
+  if (target) target.textContent = "Target " + c.durationMin + " min";
 }
 
 // Edit-mode editor for the shared Holiday Workout — the band-only routine any routine can
@@ -463,7 +455,7 @@ export function patchCircuitTime(d) {
 
 function renderRest(cell) {
   return '<p class="rest-note">No structured exercise — focus on hydration, nutrition, and muscle repair.</p>' +
-    '<label class="inline block">How your joints / knees feel<input type="text" data-k="' + cell + '.joints" data-type="text" placeholder="e.g. knees happy, left wrist a little tight"></label>';
+    '<label class="inline block">How your joints / knees feel<input type="text" data-k="' + cellScalarKey(cell, "joints") + '" data-type="text" placeholder="e.g. knees happy, left wrist a little tight"></label>';
 }
 
 // A steady routine: cardio activity card(s) with their how-to, then a single per-session log
@@ -481,8 +473,8 @@ function renderSteady(d, wk, cell) {
   return (ex ? activityCard(d, ex, "") : '<p class="muted small">No activity set — add one in Edit mode.</p>') +
     '<div class="steady-log">' +
       '<span class="steady-target" data-steady-cell="' + cell + '">Target ' + dur + " min</span>" +
-      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + steadyKey(cell, "mins") + '" data-type="text" placeholder="' + dur + '"></label>' +
-      '<label class="inline">Resistance' + (levels ? " /" + levels : "") + '<input type="number" inputmode="numeric" min="0"' + (levels ? ' max="' + levels + '"' : "") + ' data-k="' + steadyKey(cell, "resist") + '" data-type="text"></label>' +
+      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + cellScalarKey(cell, "mins") + '" data-type="text" placeholder="' + dur + '"></label>' +
+      '<label class="inline">Resistance' + (levels ? " /" + levels : "") + '<input type="number" inputmode="numeric" min="0"' + (levels ? ' max="' + levels + '"' : "") + ' data-k="' + cellScalarKey(cell, "resist") + '" data-type="text"></label>' +
     "</div>" + ghost +
     (editing ? renderSteadyEdit(d) : "");
 }

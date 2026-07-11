@@ -46,8 +46,15 @@ verify(async ({ page, ck, ls, reset, key }) => {
   ck("header total shows logged minutes", /<strong>50 min<\/strong>/.test(await total()));
   ck("header total shows logged (not modeled) calories", /~480 kcal<\/strong> this week/.test(await total()));
 
-  // ---- Class types are names only (no rate); schema stamped v4 ----
-  ck("class types carry no rate", (await ls()).classTypes.every((c) => !("rate" in c)));
+  // ---- routineLoad is class-safe (review #1): editing a strength weight fires renderVolumes,
+  //      which calls routineLoad over EVERY routine — including the class day — and must not throw.
+  await page.fill('.routine[data-cell="b1.w1.d3"] .w', "20"); // d3 is a seed strength routine
+  await page.waitForTimeout(60);
+  ck("class day still rendered after a volume recompute", !!(await page.$(cs)));
+  ck("strength volume line rendered with a class present", (await page.$('[data-vol-cell="b1.w1.d3"]')) !== null);
+
+  // ---- classTypes is derived, not a persisted field (review #2); schema stamped v4 ----
+  ck("no persisted classTypes field (derived on demand)", (await ls()).classTypes === undefined);
   ck("fresh seed is schema v4", (await ls()).version === 4);
 
   // ---- Pre-v4 `.classes` add-on key left inert (non-destructive migration) ----

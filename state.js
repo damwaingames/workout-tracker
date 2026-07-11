@@ -12,7 +12,7 @@ import {
   WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, foodKey, steadyKey, classKey, scheduleKey,
+  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, foodKey, cellScalarKey, scheduleKey,
   placement, loadMode, circuitOf, clampSets, clampRounds, uniqueId, validYMD, bandFor, bandKg,
 } from "./helpers.js";
 
@@ -178,8 +178,6 @@ export function defaultState() {
     // Body stats: the measurement catalogue, the user's tracked subset, and a
     // one-time profile (height → BMI). Weekly values live in `log` (measureKey).
     measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
-    // Class-type names ({ name }) seeding the class-routine autocomplete (ADR-0010/0014).
-    classTypes: DEFAULT_CLASS_TYPES.map((c) => ({ ...c })),
     // The shared band-only routine any routine can swap in via its 🏝 toggle.
     holiday: seedHoliday(),
     // The Pantry: { barcode → Food } catalogue of foods looked up from Open Food
@@ -214,7 +212,6 @@ function normalise(s) {
   // predate it. Backfill to the Monday of createdAt's week (ADR-0005), today's week if
   // createdAt is missing too. Runs after migrateRoutines so every block is well-formed.
   s.blocks.forEach((b) => { if (!b.startDate) b.startDate = mondayOf(b.createdAt || today()); });
-  normaliseClassTypes(s);
   migrateSets(s);
   migrateCircuit(s);
   migrateContexts(s);
@@ -370,26 +367,6 @@ function migrateContexts(s) {
   });
 }
 
-// Class types are { name, rate (kcal/min/kg) }. Coerce each entry to that shape:
-// a bare string (an earlier shape) becomes { name }, leaving the single rate pass
-// below to supply its rate — the one place rate is normalised. A stored rate of 0
-// is a deliberate "no burn estimate for this type" choice and is kept; only a
-// missing, negative, or non-numeric rate falls back to the seed rate for a known
-// type (else 0). A missing/invalid list → the seed defaults.
-function normaliseClassTypes(s) {
-  if (!Array.isArray(s.classTypes)) { s.classTypes = DEFAULT_CLASS_TYPES.map((c) => ({ ...c })); return; }
-  // A class type is just a name now (ADR-0014 — a class's burn is logged from the wearable,
-  // not modeled, so the old per-type `rate` is dropped). Coerce any legacy string or
-  // { name, rate } to a bare { name }, drop blanks, and collapse case-duplicate names
-  // ("Box-Fit" / "box-fit") to one entry so a typed case variant can't fork a second type.
-  const byLower = new Map();
-  s.classTypes
-    .map((c) => (typeof c === "string" ? { name: c } : c))
-    .filter((c) => c && c.name)
-    .forEach((c) => { const lc = String(c.name).toLowerCase(); if (!byLower.has(lc)) byLower.set(lc, { name: c.name }); });
-  s.classTypes = Array.from(byLower.values());
-}
-
 export function load() {
   let parsed = null;
   try { parsed = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { parsed = null; }
@@ -517,6 +494,8 @@ export function validateBlockImport(data) {
       if (r.kind === "class") {
         if (typeof r.classType !== "string" || !r.classType.trim()) errors.push(label + " routine " + r.routine + ": a class routine needs a classType name");
         if (r.durationMin != null && !(Number(r.durationMin) > 0)) errors.push(label + " routine " + r.routine + ": durationMin must be a positive number");
+        // A class holds no placed exercises; any listed are cosmetic noise, dropped on merge (not a reject).
+        if (Array.isArray(r.exercises) && r.exercises.length) coercions.push(label + " routine " + r.routine + ": dropped exercises listed on a class routine");
         return;
       }
       (Array.isArray(r.exercises) ? r.exercises : []).forEach((p) => {
@@ -549,7 +528,10 @@ export function mergeBlockImport(data) {
   blocks.forEach((b) => {
     const id = (b.id && !taken[b.id]) ? b.id : uniqueId("b" + nextBlockNumber(), (x) => taken[x]);
     taken[id] = true;
-    state.blocks.push({ ...b, id, createdAt: b.createdAt || today(), startDate: mondayOf(b.startDate || today()) });
+    // Drop any exercises the import listed on a class routine (it holds none — the coercion above
+    // reported it), so the stored shape stays clean rather than relying on migrateSets to empty it.
+    const routines = b.routines.map((r) => (r.kind === "class" ? { ...r, exercises: [] } : r));
+    state.blocks.push({ ...b, id, routines, createdAt: b.createdAt || today(), startDate: mondayOf(b.startDate || today()) });
     landed = id;
   });
   if (landed) { state.ui.block = landed; state.ui.week = 1; }
@@ -645,7 +627,10 @@ export function holidaySwap(cell, d) { return isHoliday(cell) ? state.holiday : 
 export function routineLoad(block, wk, d) {
   const cell = cellKey(block.id, wk, d.routine);
   const eff = holidaySwap(cell, d);
-  if (eff.kind === "rest" || eff.kind === "steady") return { total: 0, loadBearing: false };
+  // No tonnage accrues for the kinds that hold no weighted placement: rest, steady, or a class
+  // (ADR-0010). Explicit here rather than relying on migrateSets happening to stamp exercises:[]
+  // — so this never depends on an unrelated migration to avoid `undefined.forEach`.
+  if (eff.kind === "rest" || eff.kind === "steady" || eff.kind === "class") return { total: 0, loadBearing: false };
   let total = 0, loadBearing = eff.kind === "strength";
   eff.exercises.forEach((p) => {
     const ex = state.library[p.id];
@@ -716,7 +701,7 @@ export function previousSteady(block, wk, d) {
     const pd = b.routines.find((x) => x.routine === d.routine);
     if (!pd) return null;
     const cell = cellKey(b.id, w, pd.routine);
-    const mins = state.log[steadyKey(cell, "mins")], resist = state.log[steadyKey(cell, "resist")];
+    const mins = state.log[cellScalarKey(cell, "mins")], resist = state.log[cellScalarKey(cell, "resist")];
     return (mins || resist) ? { mins: mins || "", resist: resist || "" } : null;
   });
 }
@@ -802,13 +787,21 @@ export function nutritionTotals(block, weeks) {
   return { ...sum, kcalDays };
 }
 
-// The class type matching a name, case-insensitively — the one definition of "the
-// same class type" (names are deduped case-insensitively in normaliseClassTypes, so
-// at most one matches). The class-routine edit field reads through this to canonicalise a
-// typed spelling. Returns the stored { name } or undefined.
+// The class-type names in play: the seeds unioned with every class routine's type across all
+// blocks. The single source for BOTH the Edit-mode autocomplete (the datalist) and case
+// canonicalisation, so what's offered and what a typed spelling resolves to can never disagree.
+// A class type is just a name (ADR-0014), never mutated on a stored list — deriving it is why
+// there's no persisted state.classTypes to keep in sync (any legacy one sits inert, unread).
+export function classTypeNames() {
+  const names = new Set(DEFAULT_CLASS_TYPES);
+  state.blocks.forEach((b) => b.routines.forEach((r) => { if (r.kind === "class" && r.classType) names.add(r.classType); }));
+  return [...names];
+}
+// The canonical class-type name matching `name` case-insensitively ("box-fit" → "Box-Fit"), or
+// undefined. Reads the derived set, so canonicalisation and the offered list stay in lockstep.
 export function findClassType(name) {
   const lc = String(name).toLowerCase();
-  return state.classTypes.find((c) => c && c.name.toLowerCase() === lc);
+  return classTypeNames().find((n) => n.toLowerCase() === lc);
 }
 
 // Class minutes + logged calorie burn over a set of weeks (one week / all weeks). Sums the
@@ -821,8 +814,8 @@ export function classTotals(block, weeks) {
     block.routines.forEach((d) => {
       if (d.kind !== "class") return;
       const cell = cellKey(block.id, wk, d.routine);
-      const m = parseFloat(state.log[classKey(cell, "mins")]);
-      const k = parseFloat(state.log[classKey(cell, "kcal")]);
+      const m = parseFloat(state.log[cellScalarKey(cell, "mins")]);
+      const k = parseFloat(state.log[cellScalarKey(cell, "kcal")]);
       if (m > 0) mins += m;
       if (k > 0) kcal += k;
     });

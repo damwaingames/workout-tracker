@@ -75,15 +75,11 @@ export const nutKey = (cell, field) => cell + ".nut." + field;
 // classes, so not the scalar path; the block.id prefix (via cell) means deleteBlock's
 // purge sweeps it up too. The routine's kcal + macros are the derived sum (routineNutrition).
 export const foodKey = (cell) => cell + ".food";
-// A steady cell's per-session scalars, the most-coupled flat keys in the app (written by the
-// log inputs, read by routineSummary AND the previousSteady cross-week scan), so the literal
-// lives here once. field: "mins" (actual minutes done) | "resist" (the machine's level).
-export const steadyKey = (cell, field) => cell + "." + field;
-// A class cell's per-session scalars (flat keys off the cell, like steadyKey): field is
-// "mins" (actual minutes done) | "kcal" (the wearable's logged burn) | "note" (what you did).
-// A cell belongs to one routine of one kind, so the shared ".mins" literal never collides with
-// a steady cell's — they're different cells. block.id prefix (via cell) → swept by purgeBlockLog.
-export const classKey = (cell, field) => cell + "." + field;
+// A cell's per-session flat scalar key — one home for the `cell + "." + field` shape shared by
+// every kind that logs loose values on its cell: steady (`mins`/`resist`), class (`mins`/`kcal`/
+// `note`), and a rest day's `joints`. A cell belongs to one routine of one kind, so these field
+// names never collide across kinds. The block.id prefix (via cell) is swept by purgeBlockLog.
+export const cellScalarKey = (cell, field) => cell + "." + field;
 // A week's routine schedule — the ordered routine numbers for one block/week, stored as
 // a single key (like measureKey, not hung off a cell). Absent → weekSchedule derives the
 // order. The block.id prefix means purgeBlockLog sweeps it on block delete (ADR-0005).
@@ -194,10 +190,10 @@ export function steadyOf(d) {
 export function steadySummary(d) {
   return steadyOf(d).durationMin + " min steady";
 }
-// A class routine's plan: one class type (a bare name, matched to state.classTypes
-// case-insensitively for the autocomplete) + a planned duration, defaulted like steadyOf.
-// Actual minutes, the wearable's calorie burn, and the note are logged per cell (the
-// session), not on the template. A class carries no exercises and no tonnage (ADR-0010).
+// A class routine's plan: one class type (a bare name, canonicalised case-insensitively
+// against classTypeNames) + a planned duration, defaulted like steadyOf. Actual minutes, the
+// wearable's calorie burn, and the note are logged per cell (the session), not on the
+// template. A class carries no exercises and no tonnage (ADR-0010).
 export function classOf(d) {
   return { classType: typeof d.classType === "string" ? d.classType : "", durationMin: clampDuration(d.durationMin) };
 }

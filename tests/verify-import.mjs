@@ -107,4 +107,16 @@ verify(async ({ page, ck, ls, reset }) => {
   s = await ls();
   ck("class routine without a classType rejected — nothing added", s.blocks.length === before8);
   ck("missing classType reported", dialogs.some((m) => m.includes("needs a classType")));
+
+  // ---- 9) coerce: exercises listed on a class routine are dropped (imports, reported) ----
+  const before9 = (await ls()).blocks.length;
+  await importFile({
+    version: 4, blocks: [{ id: "bStray", name: "Stray Ex", createdAt: "2026-06-01", startDate: "2026-06-01",
+      routines: [{ routine: 1, kind: "class", title: "Box-Fit", focus: "x", classType: "Box-Fit", durationMin: 45, exercises: [{ id: "goblet-squats", sets: 3 }] }] }],
+  });
+  s = await ls();
+  const stray = s.blocks.find((b) => b.name === "Stray Ex");
+  ck("class routine with stray exercises still imports", s.blocks.length === before9 + 1 && !!stray);
+  ck("stray exercises dropped from the class routine", stray && Array.isArray(stray.routines[0].exercises) && stray.routines[0].exercises.length === 0);
+  ck("the drop is reported as a coercion", dialogs.some((m) => m.includes("dropped exercises listed on a class routine")));
 });

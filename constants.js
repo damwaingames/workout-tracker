@@ -66,14 +66,11 @@ export const BANDS = [
 export const DEFAULT_BAND = BANDS[Math.floor(BANDS.length / 2)].id;
 
 // Seed names for class routines (ADR-0010) — a class is its own routine kind (Box-Fit,
-// Pilates), holding one class type + a planned duration. A class type is just a name now:
-// its calorie burn is logged from your wearable per session, not modeled (ADR-0014). These
-// seed the class-type autocomplete; any name typed on a class routine is offered too.
-export const DEFAULT_CLASS_TYPES = [
-  { name: "Yoga" },
-  { name: "Pilates" },
-  { name: "Box-Fit" },
-];
+// Pilates), holding one class type + a planned duration. A class type is just a name now
+// (its burn is logged from your wearable per session, not modeled — ADR-0014), so it needs
+// no stored list: classTypeNames derives the autocomplete/canonicalisation set from these
+// seeds unioned with the class routines actually in use, never a persisted, mutated array.
+export const DEFAULT_CLASS_TYPES = ["Yoga", "Pilates", "Box-Fit"];
 
 // Google Drive backup (Phase 1 of device sync — ADR-0006). A Drive backup is the
 // whole Store as one blob in the app's hidden per-app Drive folder, moved by hand.

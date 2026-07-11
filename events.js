@@ -620,8 +620,12 @@ function bandDefaultField(el) {
 function classField(el) {
   const d = routineDef(Number(el.dataset.routine));
   if (!d) return;
-  if (el.dataset.field === "durationMin") d.durationMin = clampDuration(el.value);
-  else { const typed = String(el.value || "").trim(); const known = findClassType(typed); d.classType = known ? known.name : typed; }
+  if (el.dataset.field === "durationMin") {
+    d.durationMin = clampDuration(el.value);
+  } else {
+    const typed = String(el.value || "").trim();
+    d.classType = findClassType(typed) || typed; // canonical spelling if known, else the new name verbatim
+  }
   save(); patchClass(d);
 }
 const fieldByName = {
