@@ -11,7 +11,7 @@ import { verify } from "./harness.mjs";
 const TOKENS = [
   "--bg", "--card", "--control", "--sunken", "--text", "--muted", "--border", "--border-strong",
   "--workout", "--recovery", "--rest", "--danger", "--danger-border", "--danger-bg", "--on-accent",
-  "--chip", "--done-bg", "--done-border", "--holiday",
+  "--chip", "--done-bg", "--done-border", "--holiday", "--shadow",
 ];
 
 verify(async ({ page, ck, reset }) => {
