@@ -628,12 +628,21 @@ function classField(el) {
   }
   save(); patchClass(d);
 }
+// The shared wind-down's planned duration (minutes) — a target on state.winddown (the singleton,
+// so no data-routine). Unlike steady/class it isn't live-patched: the per-day wind-down labels
+// aren't in the DOM while editing (the central editor is shown instead), so a plain save keeps
+// the input's focus and the new duration renders on the cards when you leave Edit mode.
+function winddownField(el) {
+  state.winddown.durationMin = clampDuration(el.value);
+  save();
+}
 const fieldByName = {
   "picker-search": pickerSearch,
   "food-search": foodSearch,
   "circuit-field": circuitField,
   "steady-field": steadyField,
   "class-field": classField,
+  "winddown-field": winddownField,
   "load-mode": loadModeField,
   // Band selects/toggles carry no data-k (logged out-of-band so hydrate can't
   // blank an unlogged default), so they're dispatched here, ahead of data-k.

@@ -104,11 +104,11 @@ export const nonNegSec = (n) => { n = Math.round(+n); return Number.isFinite(n) 
 export function placement(kind, id, sets) {
   return kind === "strength" ? { id, sets: clampSets(sets) } : { id };
 }
-// A routine reference from a data-routine attribute: a number for a real routine, or the
-// "holiday" sentinel for the shared Holiday Workout (which routineDef resolves to
-// state.holiday). Kept here so every parse site (clicks, submit, the picker)
-// coerces identically and Number("holiday")=NaN can't leak through.
-export const parseRoutine = (v) => (v === "holiday" ? "holiday" : Number(v));
+// A routine reference from a data-routine attribute: a number for a real routine, or a string
+// sentinel for a shared app-level segment — "holiday" (the Holiday Workout) or "winddown" (the
+// Wind-down), which routineDef resolves to state.holiday / state.winddown. Kept here so every
+// parse site (clicks, submit, the picker) coerces identically and Number("holiday")=NaN can't leak.
+export const parseRoutine = (v) => (v === "holiday" || v === "winddown" ? v : Number(v));
 
 // The loading-mode record for an exercise (default standard). An absent/unknown
 // `ex.loadMode` resolves to the first LOAD_MODES entry. Pure — both the renderer
