@@ -5,14 +5,14 @@
 
 import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, NUTRIENTS, LOAD_MODES, BANDS } from "./constants.js";
 import {
-  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, classesKey, foodKey, steadyKey,
-  circuitOf, circuitSummary, circuitTimeLabel, steadyOf, steadySummary, loadMode, repsLabel, bandFor, kcalBurn, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
+  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, foodKey, cellScalarKey,
+  circuitOf, circuitSummary, circuitTimeLabel, steadyOf, steadySummary, classOf, loadMode, repsLabel, bandFor, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, routineDef, weekSchedule,
   previousSets, effectiveSets, effectiveRounds, routineLoad, holidaySwap, previousRoutineTotal, previousSteady, previousMeasure, bmiFor, nutritionTotals, routineNutrition, entryNutrition,
-  classTotals, weekBodyweight, classRate, logList,
+  classTotals, classTypeNames, logList,
 } from "./state.js";
 import { scanSupported } from "./scan.js";
 
@@ -40,7 +40,6 @@ function renderHeader() {
 function renderWeek() {
   const block = currentBlock();
   const wk = state.ui.week;
-  const kg = weekBodyweight(block, wk); // per-week value — hoisted out of the routines loop (each renderClasses needs it)
   // In Edit mode the block name becomes an inline input; otherwise it's static.
   const nameHtml = editing
     ? '<input type="text" id="block-name-input" class="block-name-input" value="' + esc(block.name) + '" placeholder="Block name" aria-label="Block name" maxlength="40">'
@@ -51,20 +50,19 @@ function renderWeek() {
     // Block start date (the Monday weekdays derive from) — editable in Edit mode; a free
     // date (no snap), so a midweek start is representable (ADR-0005).
     (editing ? '<label class="block-start-l">Block starts <input type="date" id="block-start-input" class="block-start-input" value="' + esc(block.startDate) + '" aria-label="Block start date"></label>' : "") +
-    // Shared autocomplete list of known class types — every add-class form's type
-    // input references this by id, so adding a type makes it offered everywhere.
-    '<datalist id="class-types">' + state.classTypes.map((t) => '<option value="' + esc(t.name) + '">').join("") + "</datalist>" +
+    // Shared autocomplete list of known class types — a class routine's Edit-mode type input
+    // references this by id. The names are derived (seeds ∪ class routines in use — classTypeNames).
+    '<datalist id="class-types">' + classTypeNames().map((n) => '<option value="' + esc(n) + '">').join("") + "</datalist>" +
     (editing ? renderHolidayEdit() : "") +
-    (editing ? renderClassTypesEdit() : "") +
     weekSchedule(block, wk).map((n, i) => {
       // weekSchedule yields a bijection over block.routines, so find always hits.
       const d = block.routines.find((r) => r.routine === n);
-      return renderRoutine(block, d, wk, kg, i);
+      return renderRoutine(block, d, wk, i);
     }).join("");
   hydrate();
 }
 
-function renderRoutine(block, d, wk, kg, position) {
+function renderRoutine(block, d, wk, position) {
   const cell = cellKey(block.id, wk, d.routine);
   // The routine's weekday + date, derived from the block start + week offset + its
   // position in this week's schedule (here the render index) — the header label that
@@ -88,6 +86,7 @@ function renderRoutine(block, d, wk, kg, position) {
   if (ed.kind === "strength") body = renderStrength(ed, wk, cell, editing && !holiday);
   else if (ed.kind === "recovery") body = renderRecovery(ed, wk, cell);
   else if (ed.kind === "steady") body = renderSteady(ed, wk, cell);
+  else if (ed.kind === "class") body = renderClass(ed, wk, cell);
   else body = renderRest(cell);
 
   return '<div class="routine ' + ed.kind + (collapsed ? " is-collapsed" : "") + (holiday ? " is-holiday" : "") + '" data-cell="' + cell + '">' +
@@ -128,8 +127,8 @@ function renderRoutine(block, d, wk, kg, position) {
       "</div>" +
       '<div class="routine-panel routine-panel-workout">' +
         '<div class="routine-body">' + body + "</div>" +
-        (editing && ed.kind !== "rest" && !holiday ? renderAddZone(d) : "") +
-        renderClasses(cell, kg) +
+        // A class routine holds no placed exercises (ADR-0010), so it gets no add-zone.
+        (editing && ed.kind !== "rest" && ed.kind !== "class" && !holiday ? renderAddZone(d) : "") +
       "</div>" +
       '<div class="routine-panel routine-panel-nutrition">' + renderRoutineFood(cell) + "</div>" +
     "</div></div>" +
@@ -138,8 +137,8 @@ function renderRoutine(block, d, wk, kg, position) {
 
 // The collapsed routine's one-line totals (CSS-hidden while expanded). Strength routines
 // show tonnage; recovery routines show the circuit's estimated total time, plus tonnage
-// when a banded move makes the routine load-bearing; any routine adds logged class minutes.
-// Empty (no line) for a rest routine with nothing logged.
+// when a banded move makes the routine load-bearing; steady shows minutes + resistance; a
+// class shows its type, minutes + logged burn. Empty (no line) for a rest routine with nothing logged.
 function routineSummary(block, d, wk, cell) {
   const bits = [];
   // The volume figure carries the SAME data-vol-cell as the body's routine-volume line,
@@ -154,13 +153,18 @@ function routineSummary(block, d, wk, cell) {
   } else if (d.kind === "steady") {
     // Steady carries no tonnage; its line is the duration done (actual, else planned) + the
     // logged resistance/level — the two facts a collapsed steady day is worth showing.
-    const mins = state.log[steadyKey(cell, "mins")], resist = state.log[steadyKey(cell, "resist")];
+    const mins = state.log[cellScalarKey(cell, "mins")], resist = state.log[cellScalarKey(cell, "resist")];
     bits.push((mins || steadyOf(d).durationMin) + " min" + (resist ? " · L" + esc(resist) : ""));
   } else if (d.kind === "strength") {
     bits.push(volBit(routineLoad(block, wk, d).total));
+  } else if (d.kind === "class") {
+    // A class carries no tonnage; its line is the type, the minutes done (actual, else planned)
+    // and the wearable's logged burn if there is one (ADR-0010/0014).
+    const c = classOf(d);
+    const cmins = state.log[cellScalarKey(cell, "mins")] || c.durationMin;
+    const kcal = parseFloat(state.log[cellScalarKey(cell, "kcal")]);
+    bits.push((c.classType ? esc(c.classType) + " · " : "") + cmins + " min" + (kcal > 0 ? " · ~" + fmt(kcal) + " kcal" : ""));
   }
-  const mins = logList(classesKey(cell)).reduce((s, c) => s + (parseFloat(c.mins) || 0), 0);
-  if (mins > 0) bits.push("Classes " + fmt(mins) + " min");
   // Nutrition: once any food is logged, the routine's derived kcal + full macro line — so a
   // collapsed routine still shows what it ate (CONTEXT.md "Collapsed routine"). Rebuilt on every
   // full render (food add/remove renders), so it needs no live-patch hook like volume.
@@ -168,33 +172,48 @@ function routineSummary(block, d, wk, cell) {
   return bits.length ? '<div class="routine-summary">' + bits.join(" · ") + "</div>" : "";
 }
 
-// The per-routine class logger — a list of logged classes (type · note · minutes ·
-// ~kcal, each removable) and an add form, on every routine kind. Classes are logged
-// activity (shown in both modes), not part of the routine template. `kg` is the
-// week's bodyweight, used (with the type's rate) to estimate each class's burn.
-function renderClasses(cell, kg) {
-  const list = logList(classesKey(cell));
-  const items = list.map((c, i) => {
-    const kcal = kcalBurn(classRate(c.type), parseFloat(c.mins), kg);
-    return '<li class="class-item"><span class="class-text">' +
-      '<span class="class-type">' + esc(c.type) + "</span>" +
-      (c.desc ? ' <span class="class-desc">' + esc(c.desc) + "</span>" : "") +
-      ' <span class="class-mins">' + esc(String(c.mins)) + " min</span>" +
-      (kcal > 0 ? ' <span class="class-kcal">~' + fmt(kcal) + " kcal</span>" : "") + "</span>" +
-      '<button class="remove" type="button" data-action="class-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove class">×</button></li>';
-  }).join("");
-  return '<div class="classes" data-cell="' + cell + '">' +
-    (list.length ? '<ul class="class-list">' + items + "</ul>" : "") +
-    '<div class="class-add">' +
-      '<button class="link class-add-btn" type="button" data-action="form-open">＋ Add class</button>' +
-      '<form class="class-form" hidden>' +
-        '<input list="class-types" name="type" placeholder="Type (e.g. Pilates)" autocomplete="off" required>' +
-        '<input name="desc" placeholder="What you did (optional)">' +
-        '<input type="number" inputmode="numeric" min="1" name="mins" placeholder="Mins" required>' +
-        '<div class="form-actions"><button type="submit">Add</button>' +
-        '<button type="button" class="link" data-action="form-cancel">Cancel</button></div>' +
-      "</form>" +
-    "</div></div>";
+// A class routine: a scheduled group class (Box-Fit, Pilates) — no Library exercise, just a
+// class type + planned duration (ADR-0010). Per session it logs actual minutes, the wearable's
+// calorie burn (typed, not modeled — ADR-0014), and a free-text note (what you did). Not
+// load-bearing and not progression-tracked — a class is conditioning you show up to. The mins /
+// calories inputs carry data-refresh="classes" so the header Classes total re-patches live.
+function renderClass(d, wk, cell) {
+  const c = classOf(d);
+  return '<div class="class-session" data-cell="' + cell + '">' +
+      '<div class="ex-head"><span class="ex-name" data-class-name="' + cell + '">' + (c.classType ? esc(c.classType) : "No class set") + "</span>" +
+      '<span class="ex-target" data-class-target="' + cell + '">Target ' + c.durationMin + " min</span></div>" +
+    "</div>" +
+    '<div class="class-log">' +
+      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + cellScalarKey(cell, "mins") + '" data-type="text" data-refresh="classes" placeholder="' + c.durationMin + '"></label>' +
+      '<label class="inline">Calories<input type="number" inputmode="numeric" min="0" data-k="' + cellScalarKey(cell, "kcal") + '" data-type="text" data-refresh="classes" placeholder="kcal"></label>' +
+      '<label class="inline class-note-l">Notes<input type="text" data-k="' + cellScalarKey(cell, "note") + '" data-type="text" placeholder="What you did"></label>' +
+    "</div>" +
+    (editing ? renderClassEdit(d) : "");
+}
+
+// Edit-mode class controls: the class type (a name, autocompleted from the shared class-types
+// list) and the planned duration. Both live on the routine template; changing either live-patches
+// the session card (patchClass) so a text input keeps focus mid-type (mirrors renderSteadyEdit).
+function renderClassEdit(d) {
+  const c = classOf(d);
+  return '<div class="circuit-edit">' +
+    '<label class="circuit-field-l">Class ' +
+      '<input type="text" list="class-types" class="class-type-field" data-fh="class-field" data-routine="' + d.routine + '" data-field="classType" value="' + esc(c.classType) + '" placeholder="e.g. Box-Fit"></label>' +
+    '<label class="circuit-field-l">Duration ' +
+      '<input type="number" inputmode="numeric" min="1" class="circuit-field" data-fh="class-field" data-routine="' + d.routine + '" data-field="durationMin" value="' + c.durationMin + '">min</label>' +
+    "</div>";
+}
+
+// Live-patch a class routine's session card (name + target) when its type or duration changes in
+// Edit mode, keeping the input focused mid-type. Patches via dedicated data-class-name /
+// data-class-target hooks (not by position in the borrowed .ex-head), mirroring patchSteadyTime.
+export function patchClass(d) {
+  const cell = cellKey(currentBlock().id, state.ui.week, d.routine);
+  const c = classOf(d);
+  const name = document.querySelector('[data-class-name="' + cell + '"]');
+  const target = document.querySelector('[data-class-target="' + cell + '"]');
+  if (name) name.textContent = c.classType || "No class set";
+  if (target) target.textContent = "Target " + c.durationMin + " min";
 }
 
 // Edit-mode editor for the shared Holiday Workout — the band-only routine any routine can
@@ -228,21 +247,9 @@ function renderHolidayEdit() {
     "</div>";
 }
 
-// Edit-mode editor for the class-type calorie rates (kcal/min/kg). One row per
-// type; a new type created by logging starts at 0 and is set here. Live-patches
-// the header total on change (renderClassTotal), so a rate input keeps focus.
-function renderClassTypesEdit() {
-  return '<div class="class-types-edit"><div class="ct-head">Class burn rates <span class="ct-unit">kcal / min / kg</span></div>' +
-    state.classTypes.map((t) =>
-      '<label class="ct-row"><span class="ct-name">' + esc(t.name) + "</span>" +
-      '<input type="number" class="ct-rate" data-fh="ct-rate" data-type-name="' + esc(t.name) + '" inputmode="decimal" step="0.01" min="0" value="' + esc(String(t.rate)) + '"></label>'
-    ).join("") + "</div>";
-}
-
-// The header's Classes line (week + block: minutes, plus estimated burn once a
-// bodyweight makes it computable). Shown only once anything's logged so it doesn't
-// clutter an empty header. Parallels the Volume line; exported so a live rate edit
-// can re-patch it without a full render.
+// The header's Classes line (week + block: minutes, plus the wearable's logged burn). Shown
+// only once a class logs minutes or calories so it doesn't clutter an empty header. Parallels
+// the Volume line; exported so a live minutes/calories edit can re-patch it without a full render.
 export function renderClassTotal() {
   const el = document.getElementById("class-total");
   if (!el) return;
@@ -250,7 +257,7 @@ export function renderClassTotal() {
   const week = classTotals(b, [state.ui.week]);
   const block = classTotals(b, ALL_WEEKS);
   const part = (t) => "<strong>" + fmt(t.mins) + " min</strong>" + (t.kcal > 0 ? " · <strong>~" + fmt(t.kcal) + " kcal</strong>" : "");
-  el.innerHTML = (week.mins || block.mins)
+  el.innerHTML = (week.mins || block.mins || week.kcal || block.kcal)
     ? "Classes · " + part(week) + " this week · " + part(block) + " this block"
     : "";
 }
@@ -448,7 +455,7 @@ export function patchCircuitTime(d) {
 
 function renderRest(cell) {
   return '<p class="rest-note">No structured exercise — focus on hydration, nutrition, and muscle repair.</p>' +
-    '<label class="inline block">How your joints / knees feel<input type="text" data-k="' + cell + '.joints" data-type="text" placeholder="e.g. knees happy, left wrist a little tight"></label>';
+    '<label class="inline block">How your joints / knees feel<input type="text" data-k="' + cellScalarKey(cell, "joints") + '" data-type="text" placeholder="e.g. knees happy, left wrist a little tight"></label>';
 }
 
 // A steady routine: cardio activity card(s) with their how-to, then a single per-session log
@@ -466,8 +473,8 @@ function renderSteady(d, wk, cell) {
   return (ex ? activityCard(d, ex, "") : '<p class="muted small">No activity set — add one in Edit mode.</p>') +
     '<div class="steady-log">' +
       '<span class="steady-target" data-steady-cell="' + cell + '">Target ' + dur + " min</span>" +
-      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + steadyKey(cell, "mins") + '" data-type="text" placeholder="' + dur + '"></label>' +
-      '<label class="inline">Resistance' + (levels ? " /" + levels : "") + '<input type="number" inputmode="numeric" min="0"' + (levels ? ' max="' + levels + '"' : "") + ' data-k="' + steadyKey(cell, "resist") + '" data-type="text"></label>' +
+      '<label class="inline">Minutes<input type="number" inputmode="numeric" min="0" data-k="' + cellScalarKey(cell, "mins") + '" data-type="text" placeholder="' + dur + '"></label>' +
+      '<label class="inline">Resistance' + (levels ? " /" + levels : "") + '<input type="number" inputmode="numeric" min="0"' + (levels ? ' max="' + levels + '"' : "") + ' data-k="' + cellScalarKey(cell, "resist") + '" data-type="text"></label>' +
     "</div>" + ghost +
     (editing ? renderSteadyEdit(d) : "");
 }

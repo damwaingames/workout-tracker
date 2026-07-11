@@ -12,8 +12,8 @@ import {
   WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, classesKey, foodKey, steadyKey, scheduleKey,
-  placement, loadMode, circuitOf, clampSets, clampRounds, uniqueId, validYMD, bandFor, bandKg, kcalBurn,
+  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, foodKey, cellScalarKey, scheduleKey,
+  placement, loadMode, circuitOf, clampSets, clampRounds, uniqueId, validYMD, bandFor, bandKg,
 } from "./helpers.js";
 
 /* ---------------------------------------------------------------------- *
@@ -173,13 +173,11 @@ function seedBlock(id, name) {
 
 export function defaultState() {
   return {
-    version: 3, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")],
+    version: 4, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")],
     log: {}, ui: { block: "b1", week: 1 }, notes: "",
     // Body stats: the measurement catalogue, the user's tracked subset, and a
     // one-time profile (height → BMI). Weekly values live in `log` (measureKey).
     measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
-    // Editable list of class types ({ name, rate }) for the per-routine class logger.
-    classTypes: DEFAULT_CLASS_TYPES.map((c) => ({ ...c })),
     // The shared band-only routine any routine can swap in via its 🏝 toggle.
     holiday: seedHoliday(),
     // The Pantry: { barcode → Food } catalogue of foods looked up from Open Food
@@ -198,7 +196,7 @@ export function setState(s) { state = s; }
 export function setEditing(v) { editing = v; }
 
 function normalise(s) {
-  if (!s || (s.version !== 2 && s.version !== 3) || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
+  if (!s || (s.version !== 2 && s.version !== 3 && s.version !== 4) || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
   if (!s.log) s.log = {};
   if (!s.library) s.library = seedLibrary();
   // Body stats are additive — older v2 saves predate them, so backfill the
@@ -214,7 +212,6 @@ function normalise(s) {
   // predate it. Backfill to the Monday of createdAt's week (ADR-0005), today's week if
   // createdAt is missing too. Runs after migrateRoutines so every block is well-formed.
   s.blocks.forEach((b) => { if (!b.startDate) b.startDate = mondayOf(b.createdAt || today()); });
-  normaliseClassTypes(s);
   migrateSets(s);
   migrateCircuit(s);
   migrateContexts(s);
@@ -234,10 +231,11 @@ function normalise(s) {
   }
   if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (typeof s.notes !== "string") s.notes = "";
-  // Schema is now v3 (exercise contexts — ADR-0007). A migrated v2 save is well-formed by
-  // here; stamp it so the next save persists the bump. STORAGE_KEY stays "…-v2" (a storage
-  // slot name, not the schema number) so existing data is never orphaned on upgrade.
-  s.version = 3;
+  // Schema is now v4 (class routine kind — ADR-0010). A migrated v2/v3 save is well-formed by
+  // here; stamp it so the next save persists the bump. The migration is non-destructive: old
+  // blocks keep working and any pre-v4 `.classes` add-on log keys are left inert (never read).
+  // STORAGE_KEY stays "…-v2" (a storage slot name, not the schema number) so data isn't orphaned.
+  s.version = 4;
   return s;
 }
 export { normalise };
@@ -369,33 +367,6 @@ function migrateContexts(s) {
   });
 }
 
-// Class types are { name, rate (kcal/min/kg) }. Coerce each entry to that shape:
-// a bare string (an earlier shape) becomes { name }, leaving the single rate pass
-// below to supply its rate — the one place rate is normalised. A stored rate of 0
-// is a deliberate "no burn estimate for this type" choice and is kept; only a
-// missing, negative, or non-numeric rate falls back to the seed rate for a known
-// type (else 0). A missing/invalid list → the seed defaults.
-function normaliseClassTypes(s) {
-  const seedRate = Object.fromEntries(DEFAULT_CLASS_TYPES.map((c) => [c.name, c.rate]));
-  if (!Array.isArray(s.classTypes)) { s.classTypes = DEFAULT_CLASS_TYPES.map((c) => ({ ...c })); return; }
-  const coerced = s.classTypes
-    .map((c) => (typeof c === "string" ? { name: c } : c))
-    .filter((c) => c && c.name)
-    .map((c) => { const r = parseFloat(c.rate); return { name: c.name, rate: Number.isFinite(r) && r >= 0 ? r : (seedRate[c.name] || 0) }; });
-  // Collapse case-duplicate type names ("Box-Fit" / "Box-fit" / "box-fit") to a
-  // single entry — keeping the first spelling seen and the highest rate in the
-  // group — so a typed case variant can't fork a second type. addClass matches the
-  // same way and classRate reads case-insensitively, so older logged classes under
-  // a variant spelling still resolve to the kept rate.
-  const byLower = new Map();
-  coerced.forEach((c) => {
-    const prev = byLower.get(c.name.toLowerCase());
-    if (prev) prev.rate = Math.max(prev.rate, c.rate);
-    else byLower.set(c.name.toLowerCase(), c);
-  });
-  s.classTypes = Array.from(byLower.values());
-}
-
 export function load() {
   let parsed = null;
   try { parsed = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { parsed = null; }
@@ -503,8 +474,8 @@ const importParts = (data) => ({
 // runs only once errors is empty. Errors are structural/semantic and reject the whole import;
 // coercions are cosmetic fixes the merge applies + reports.
 export function validateBlockImport(data) {
-  if (!data || typeof data !== "object" || (data.version !== 2 && data.version !== 3)) {
-    return { errors: ["This isn't a workout-tracker export at version 2 or 3."], coercions: [] };
+  if (!data || typeof data !== "object" || (data.version !== 2 && data.version !== 3 && data.version !== 4)) {
+    return { errors: ["This isn't a workout-tracker export at version 2, 3 or 4."], coercions: [] };
   }
   const { importLib, blocks } = importParts(data);
   if (!blocks.length) return { errors: ["The file has no blocks to import."], coercions: [] };
@@ -518,6 +489,15 @@ export function validateBlockImport(data) {
     if (new Set(nums).size !== nums.length) errors.push(label + ": has duplicate routine numbers");
     b.routines.forEach((r) => {
       if (!r || !ROUTINE_KINDS.includes(r.kind)) { errors.push(label + " routine " + (r && r.routine) + ": unknown kind " + JSON.stringify(r && r.kind)); return; }
+      // A class routine holds a class type + duration, not placed exercises (ADR-0010) — validate
+      // those instead and skip the library/context checks (it has nothing to place).
+      if (r.kind === "class") {
+        if (typeof r.classType !== "string" || !r.classType.trim()) errors.push(label + " routine " + r.routine + ": a class routine needs a classType name");
+        if (r.durationMin != null && !(Number(r.durationMin) > 0)) errors.push(label + " routine " + r.routine + ": durationMin must be a positive number");
+        // A class holds no placed exercises; any listed are cosmetic noise, dropped on merge (not a reject).
+        if (Array.isArray(r.exercises) && r.exercises.length) coercions.push(label + " routine " + r.routine + ": dropped exercises listed on a class routine");
+        return;
+      }
       (Array.isArray(r.exercises) ? r.exercises : []).forEach((p) => {
         const ex = p && lib(p.id);
         if (!ex) { errors.push(label + " routine " + r.routine + ": exercise " + JSON.stringify(p && p.id) + " isn't in the library"); return; }
@@ -548,7 +528,10 @@ export function mergeBlockImport(data) {
   blocks.forEach((b) => {
     const id = (b.id && !taken[b.id]) ? b.id : uniqueId("b" + nextBlockNumber(), (x) => taken[x]);
     taken[id] = true;
-    state.blocks.push({ ...b, id, createdAt: b.createdAt || today(), startDate: mondayOf(b.startDate || today()) });
+    // Drop any exercises the import listed on a class routine (it holds none — the coercion above
+    // reported it), so the stored shape stays clean rather than relying on migrateSets to empty it.
+    const routines = b.routines.map((r) => (r.kind === "class" ? { ...r, exercises: [] } : r));
+    state.blocks.push({ ...b, id, routines, createdAt: b.createdAt || today(), startDate: mondayOf(b.startDate || today()) });
     landed = id;
   });
   if (landed) { state.ui.block = landed; state.ui.week = 1; }
@@ -644,7 +627,10 @@ export function holidaySwap(cell, d) { return isHoliday(cell) ? state.holiday : 
 export function routineLoad(block, wk, d) {
   const cell = cellKey(block.id, wk, d.routine);
   const eff = holidaySwap(cell, d);
-  if (eff.kind === "rest" || eff.kind === "steady") return { total: 0, loadBearing: false };
+  // No tonnage accrues for the kinds that hold no weighted placement: rest, steady, or a class
+  // (ADR-0010). Explicit here rather than relying on migrateSets happening to stamp exercises:[]
+  // — so this never depends on an unrelated migration to avoid `undefined.forEach`.
+  if (eff.kind === "rest" || eff.kind === "steady" || eff.kind === "class") return { total: 0, loadBearing: false };
   let total = 0, loadBearing = eff.kind === "strength";
   eff.exercises.forEach((p) => {
     const ex = state.library[p.id];
@@ -715,7 +701,7 @@ export function previousSteady(block, wk, d) {
     const pd = b.routines.find((x) => x.routine === d.routine);
     if (!pd) return null;
     const cell = cellKey(b.id, w, pd.routine);
-    const mins = state.log[steadyKey(cell, "mins")], resist = state.log[steadyKey(cell, "resist")];
+    const mins = state.log[cellScalarKey(cell, "mins")], resist = state.log[cellScalarKey(cell, "resist")];
     return (mins || resist) ? { mins: mins || "", resist: resist || "" } : null;
   });
 }
@@ -801,43 +787,37 @@ export function nutritionTotals(block, weeks) {
   return { ...sum, kcalDays };
 }
 
-// The class type matching a name, case-insensitively — the one definition of "the
-// same class type" (names are deduped case-insensitively in normaliseClassTypes, so
-// at most one matches). Both the rate lookup and addClass's reuse-or-create read
-// through this. Returns the stored { name, rate } or undefined.
+// The class-type names in play: the seeds unioned with every class routine's type across all
+// blocks. The single source for BOTH the Edit-mode autocomplete (the datalist) and case
+// canonicalisation, so what's offered and what a typed spelling resolves to can never disagree.
+// A class type is just a name (ADR-0014), never mutated on a stored list — deriving it is why
+// there's no persisted state.classTypes to keep in sync (any legacy one sits inert, unread).
+export function classTypeNames() {
+  const names = new Set(DEFAULT_CLASS_TYPES);
+  state.blocks.forEach((b) => b.routines.forEach((r) => { if (r.kind === "class" && r.classType) names.add(r.classType); }));
+  return [...names];
+}
+// The canonical class-type name matching `name` case-insensitively ("box-fit" → "Box-Fit"), or
+// undefined. Reads the derived set, so canonicalisation and the offered list stay in lockstep.
 export function findClassType(name) {
   const lc = String(name).toLowerCase();
-  return state.classTypes.find((c) => c && c.name.toLowerCase() === lc);
-}
-// The rate (kcal/min/kg) for a class type, 0 if unknown. Case-insensitive (via
-// findClassType) so a class logged under a variant spelling still resolves its rate.
-export function classRate(name) {
-  const t = findClassType(name);
-  return t ? (parseFloat(t.rate) || 0) : 0;
+  return classTypeNames().find((n) => n.toLowerCase() === lc);
 }
 
-// The bodyweight (kg) used for a week's class-calorie estimates: that week's
-// logged reading, else the most recent earlier one, else 0 (→ no estimate).
-export function weekBodyweight(block, wk) {
-  const cur = parseFloat(state.log[measureKey(block.id, wk, "bodyweight")]);
-  if (cur > 0) return cur;
-  const bi = Math.max(0, state.blocks.findIndex((b) => b.id === block.id));
-  const prev = parseFloat(previousMeasure("bodyweight", bi, wk));
-  return prev > 0 ? prev : 0;
-}
-
-// Class minutes + estimated calorie burn over a set of weeks (one week / all
-// weeks). Mirrors nutritionTotals' scan; burn uses each week's bodyweight and the
-// type's rate, summed from the same per-class round the labels show.
+// Class minutes + logged calorie burn over a set of weeks (one week / all weeks). Sums the
+// per-session actuals on class-kind cells — minutes and the wearable's logged kcal (ADR-0014)
+// — the figures the header Classes line shows. Each is counted on its own (a class with only
+// kcal, or only minutes, still contributes). Mirrors nutritionTotals' scan.
 export function classTotals(block, weeks) {
   let mins = 0, kcal = 0;
   weeks.forEach((wk) => {
-    const kg = weekBodyweight(block, wk);
     block.routines.forEach((d) => {
-      logList(classesKey(cellKey(block.id, wk, d.routine))).forEach((c) => {
-        const m = parseFloat(c.mins);
-        if (m > 0) { mins += m; kcal += kcalBurn(classRate(c.type), m, kg); }
-      });
+      if (d.kind !== "class") return;
+      const cell = cellKey(block.id, wk, d.routine);
+      const m = parseFloat(state.log[cellScalarKey(cell, "mins")]);
+      const k = parseFloat(state.log[cellScalarKey(cell, "kcal")]);
+      if (m > 0) mins += m;
+      if (k > 0) kcal += k;
     });
   });
   return { mins, kcal };

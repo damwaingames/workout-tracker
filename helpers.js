@@ -69,20 +69,17 @@ export const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mI
 // food-entry list (foodKey); read only by migrateNutrition, which folds any of these
 // it finds into a single quick entry and deletes them. Kept so old saves still migrate.
 export const nutKey = (cell, field) => cell + ".nut." + field;
-// Classes logged on a routine cell — a single ".classes" key holding an array of
-// { type, desc, mins } (variable length, so not the scalar data-k path). The
-// block.id prefix (via cell) means deleteBlock's purge sweeps it up too.
-export const classesKey = (cell) => cell + ".classes";
 // Food eaten on a routine — a single ".food" key holding an array of food entries:
 // a pantry entry { barcode, grams } (nutrition read live from state.pantry) or an
 // ad-hoc quick entry { name, kcal, carb, fat, protein }. Variable length like
 // classes, so not the scalar path; the block.id prefix (via cell) means deleteBlock's
 // purge sweeps it up too. The routine's kcal + macros are the derived sum (routineNutrition).
 export const foodKey = (cell) => cell + ".food";
-// A steady cell's per-session scalars, the most-coupled flat keys in the app (written by the
-// log inputs, read by routineSummary AND the previousSteady cross-week scan), so the literal
-// lives here once. field: "mins" (actual minutes done) | "resist" (the machine's level).
-export const steadyKey = (cell, field) => cell + "." + field;
+// A cell's per-session flat scalar key — one home for the `cell + "." + field` shape shared by
+// every kind that logs loose values on its cell: steady (`mins`/`resist`), class (`mins`/`kcal`/
+// `note`), and a rest day's `joints`. A cell belongs to one routine of one kind, so these field
+// names never collide across kinds. The block.id prefix (via cell) is swept by purgeBlockLog.
+export const cellScalarKey = (cell, field) => cell + "." + field;
 // A week's routine schedule — the ordered routine numbers for one block/week, stored as
 // a single key (like measureKey, not hung off a cell). Absent → weekSchedule derives the
 // order. The block.id prefix means purgeBlockLog sweeps it on block delete (ADR-0005).
@@ -193,6 +190,13 @@ export function steadyOf(d) {
 export function steadySummary(d) {
   return steadyOf(d).durationMin + " min steady";
 }
+// A class routine's plan: one class type (a bare name, canonicalised case-insensitively
+// against classTypeNames) + a planned duration, defaulted like steadyOf. Actual minutes, the
+// wearable's calorie burn, and the note are logged per cell (the session), not on the
+// template. A class carries no exercises and no tonnage (ADR-0010).
+export function classOf(d) {
+  return { classType: typeof d.classType === "string" ? d.classType : "", durationMin: clampDuration(d.durationMin) };
+}
 
 export function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
 export function uniqueId(base, has) {
@@ -207,8 +211,3 @@ export function esc(s) {
 }
 
 export function fmt(n) { return Math.round(n).toLocaleString(); }
-
-// Estimated calorie burn for a class: rate (kcal/min/kg) × minutes × bodyweight,
-// rounded. Any missing/zero factor → 0 (no estimate). Pure, so the per-class label
-// and the rolled-up total compute it identically.
-export const kcalBurn = (rate, mins, kg) => Math.round((rate || 0) * (mins || 0) * (kg || 0));

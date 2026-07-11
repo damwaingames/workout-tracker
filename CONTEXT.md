@@ -9,13 +9,13 @@ separate and deliberately not redefined here.
 - **Block** — a 4-week training cycle. Has an id, a name, seven **routines**, a **start
   date** (the Monday everything's **weekday**s derive from), and a per-week **schedule**.
   The unit `Reset`/`New block`/`Delete block` operate on.
-- **Routine** — the recurring training unit (the catalogue entry), one of four **kinds**:
+- **Routine** — the recurring training unit (the catalogue entry), one of five **kinds**:
   `strength` (logged sets), `recovery` (a **circuit**), `steady` (one unbroken **duration**
-  of steady-state cardio), or `rest`. Identified by a number
+  of steady-state cardio), `rest`, or `class` (a scheduled group **class**). Identified by a number
   (1–7) that is the **progression key** — the last segment of every cell key (`.d{n}` on
   the wire, frozen — ADR-0005), what every temporal scan ranks by. Its kind drives how a
   placed exercise is logged and counted; *which* exercises it accepts is the inverse — an
-  exercise declares the **contexts** it's valid in (ADR-0007). Placed onto a **weekday** each week by the **schedule**.
+  exercise declares the **contexts** it's valid in (ADR-0011). Placed onto a **weekday** each week by the **schedule**.
   _Avoid_: Day (the historical term; the persisted key segment still reads `.d`).
 - **Schedule** — a week's ordered arrangement of the block's seven routines across that
   week's weekdays: a permutation, one per `(block, week)`. The single driver of render
@@ -30,8 +30,9 @@ separate and deliberately not redefined here.
   **reorder** it. _Avoid_: slot, date stamp.
 - **Collapsed routine** — a routine folded down to just its header + focus + a one-line
   totals **summary** (strength → volume; recovery → circuit total time, plus volume when
-  load-bearing; any routine → class minutes, and — once food is logged — kcal + the full
-  macro line `Nc / Nf / Np`), to cut mobile scroll. State is a persisted
+  load-bearing; steady → minutes + resistance; class → class type, minutes + burn; any
+  routine → its **Session RPE**, and — once food is logged — kcal + the full macro line
+  `Nc / Nf / Np`), to cut mobile scroll. State is a persisted
   per-cell `.collapsed` flag (absent = expanded, like `.done`); completing a routine sets
   it, the header chevron toggles it. The body slides via a grid-row transition — so
   `toggleRoutine` and `afterDone` flip the class in place rather than re-rendering (a
@@ -45,13 +46,18 @@ separate and deliberately not redefined here.
   was logged in them. (Template-or-override, not the **schedule**'s lazy-lookback — ADR-0008.)
 - **Library** — the `{id → record}` catalogue of exercises. Append-only from the UI
   (no delete), which is what lets `migrateLibrary` reconcile it against the seed safely.
-- **Context** — the set of routine **kinds** an exercise is valid to be placed in
-  (`strength`, `recovery`, `steady`), carried on the exercise record. Replaces the old single
-  exercise **type**: a move can belong to several (bodyweight core sits in both `strength`
-  and `recovery`), and the rule is *behaviour follows the routine, validity follows the
-  exercise* — the same move logs as weight×reps in a strength routine and as a per-round
-  station in a recovery **circuit**. **Banded** is the precedent: a cross-context property
-  read per routine, not per exercise type. _Avoid_: type (the retired scalar gate).
+- **Context** — the set of **placement surfaces** an exercise is valid on, carried on the
+  exercise record: the routine kinds that accept placed exercises (`strength`, `recovery`,
+  `steady`) plus the **wind-down** (`mobility`). A surface is not always a routine kind and a
+  kind is not always a surface — `mobility` is the wind-down segment (no routine kind), while
+  `class` holds a class type and `rest` holds nothing (kinds with no context); the sets only
+  overlap. Replaces the old single exercise **type**: a move can belong to several (bodyweight
+  core sits in both `strength` and `recovery`), and the rule is *behaviour follows the surface,
+  validity follows the exercise* — the same move logs as weight×reps in a strength routine and
+  as a per-round station in a recovery **circuit**. **Banded** is the precedent: a
+  cross-context property read per surface, not per exercise type.
+  _ADRs_: 0011
+  _Avoid_: type (the retired scalar gate).
 - **Setup, cue, focus** — three guidance fields, split by *who owns them* so a movement
   isn't duplicated per context. **setup** (exercise): how to perform it, context-free.
   **cue** (exercise): the movement's *intrinsic* quality target ("move with the breath"),
@@ -59,11 +65,13 @@ separate and deliberately not redefined here.
   **effort target** — so interval-vs-steady RPEs live here, never duplicated onto the
   exercise. That ownership split is what lets one `seated-elliptical` serve both `recovery`
   and `steady` instead of being two near-identical records. An effort target is an
-  *instruction*, not a metric: RPE is feel-based and self-normalising — constant perceived
-  effort even as absolute intensity climbs with fitness — so RPE itself is never the logged
-  metric. What climbs at constant RPE is the **absolute output**: a `steady` routine
-  progresses by its logged **resistance/level** (the ordinal setting on the machine), not by
-  the kg **tonnage** that strength's overload delta reads — a steady routine carries no tonnage.
+  *instruction*, not a **progression** metric: RPE is feel-based and self-normalising —
+  constant perceived effort even as absolute intensity climbs with fitness — so it never
+  drives progression. What climbs at constant RPE is the **absolute output**: a `steady`
+  routine progresses by its logged **resistance/level** (the ordinal setting on the machine),
+  not by the kg **tonnage** that strength's overload delta reads — a steady routine carries no
+  tonnage. (That same self-normalising quality is why RPE *is* logged as a **Session RPE** —
+  a fatigue record, a different job entirely.)
 - **Loading mode** — how a strength exercise's logged set maps to tonnage
   (`standard` / `per-side` / `two-dumbbell`); a per-exercise multiplier pair (`wMult`,
   `rMult`). Distinct from **banded**.
@@ -75,10 +83,28 @@ separate and deliberately not redefined here.
   and the machine's **resistance/level** (bounded by the activity's `levels` — the elliptical's
   10). Progression is the resistance **ghost** (last session's level + minutes), not tonnage.
   _Avoid_: cardio (that's the activity), interval (that's a `recovery` circuit).
-- **Class** — an extra logged session (`{ type, desc, mins }`) on top of the planned
-  workout, on any routine kind. Each **class type** carries a `rate` (kcal/min/kg). Type
-  names are matched case-insensitively (logging "box-fit" reuses "Box-Fit"), so a
-  spelling variant can't fork a duplicate type.
+- **Class** — a `class` routine **kind**: a scheduled group session (Box-Fit, Pilates)
+  that owns its own **weekday** rather than being squeezed onto a training day. Holds one
+  **class type** (just a name) + a planned **duration**; its cell logs done, actual minutes,
+  a **note** (what you did), and the **calorie burn** read from your wearable — a class's
+  absolute-output metric, the analogue of strength's **tonnage** and steady's
+  **resistance/level** (a class has neither). Type names match case-insensitively (logging
+  "box-fit" reuses "Box-Fit"), so a spelling variant can't fork a duplicate type.
+  _ADRs_: 0010, 0014
+  _Avoid_: the retired "extra class on any day" add-on (a class is now always its own
+  routine); the retired modeled burn (`rate × mins × bodyweight`).
+- **Wind-down** — the single app-level cool-down segment (`state.winddown`): one curated list
+  of **mobility**-context stretches + a target **duration**, defined once (like the **Holiday
+  Workout**) and shown beneath every non-rest routine. Carries its own per-cell done-tick,
+  separate from the routine's, and counts toward no total. Not a **routine** — it owns no
+  routine number or **weekday**, and isn't carried in a block **import**.
+  _ADRs_: 0011, 0013
+  _Avoid_: cooldown, stretch routine.
+- **Session RPE** — a per-session felt-intensity score (1–10) logged on each **routine** and
+  on the **wind-down**: how hard *that session* was *today*. A fatigue record only, never an
+  input to progression — the logged inverse of an **effort target** (the unlogged instruction).
+  Load / recovery *trends* are deliberately out of scope; the wearable owns those.
+  _ADRs_: 0012
 - **Holiday routine** — a routine swapped to the shared **Holiday Workout** for one cell,
   for when you're away from your kit. The Holiday Workout (`state.holiday`) is a
   single app-level band-only strength routine, defined once in Edit mode and reused

@@ -6,14 +6,14 @@
 import { ALL_WEEKS, DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
   placement, clampSets, clampRounds, clampDuration, circuitOf,
-  nonNegSec, slugify, uniqueId, today, mondayOf, cellKey, setsKey, roundsKey, bandKey, classesKey, foodKey, scheduleKey, parseRoutine,
+  nonNegSec, slugify, uniqueId, today, mondayOf, cellKey, setsKey, roundsKey, bandKey, foodKey, scheduleKey, parseRoutine,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
   currentBlock, routineDef, placeMove, currentCell, effectiveSets, effectiveRounds, weekSchedule, nextBlockNumber, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
-  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, hydrate, repopulate, hydrateNotes, foodResultsHTML,
+  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, patchClass, hydrate, repopulate, hydrateNotes, foodResultsHTML,
 } from "./render.js";
 import { lookupBarcode, searchFoods } from "./off.js";
 import { scanBarcode } from "./scan.js";
@@ -138,7 +138,6 @@ export function handleClick(e) {
       state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
       save(); render(); break;
     }
-    case "class-remove": removeClass(el.dataset.cell, Number(el.dataset.i)); break;
     case "food-remove": removeFood(el.dataset.cell, Number(el.dataset.i)); break;
     case "food-open": foodOpen(el); break;
     case "food-close": foodClose(el); break;
@@ -199,8 +198,6 @@ function routineTab(el) {
 }
 
 export function handleSubmit(e) {
-  const classForm = e.target.closest(".class-form");
-  if (classForm) { e.preventDefault(); return addClass(classForm); }
   const foodForm = e.target.closest(".food-quick-form");
   if (foodForm) { e.preventDefault(); return addQuickEntry(foodForm); }
   const gramsForm = e.target.closest(".food-grams-form");
@@ -217,31 +214,6 @@ export function handleSubmit(e) {
   const zone = form.closest(".add-zone");
   if (zone && zone.dataset.picker === "measure") return addNewMeasurement(form);
   addNewExercise(form, zone ? parseRoutine(zone.dataset.routine) : NaN);
-}
-
-// Log a class on a routine cell: type (required) + free-text note + minutes (>0).
-// Classes are an array under one cell key; a brand-new type is remembered in the
-// editable classTypes list so the datalist offers it next time.
-function addClass(form) {
-  const cell = form.closest(".classes").dataset.cell;
-  const fd = new FormData(form);
-  const type = String(fd.get("type") || "").trim();
-  const mins = parseFloat(fd.get("mins"));
-  if (!type || !(mins > 0)) return;
-  const desc = String(fd.get("desc") || "").trim();
-  // Match an existing type case-insensitively so "Box-Fit" / "box-fit" don't fork
-  // duplicates; reuse its canonical spelling (and log the class under that), else
-  // remember the new type (rate starts at 0; set it in the Edit-mode editor).
-  const known = findClassType(type);
-  const canonical = known ? known.name : type;
-  if (!known) state.classTypes.push({ name: canonical, rate: 0 });
-  logPush(classesKey(cell), { type: canonical, desc, mins });
-  render();
-}
-
-function removeClass(cell, i) {
-  logRemoveAt(classesKey(cell), i);
-  render();
 }
 
 // Read the NUTRIENTS fields off a form as { values, any } — `any` flags whether any nutrient
@@ -640,25 +612,34 @@ function bandDefaultField(el) {
   const ex = state.library[el.dataset.ex];
   if (ex) { ex.defaultBand = el.value; save(); render(); }
 }
-// A class type's calorie rate (kcal/min/kg) on the editable classTypes list.
-// Live-patch the header total only, so the rate input keeps focus while typing
-// (per-class ~kcal labels refresh on the next full render).
-function classRateField(el) {
-  const t = state.classTypes.find((c) => c.name === el.dataset.typeName);
-  if (t) { t.rate = parseFloat(el.value) || 0; save(); renderClassTotal(); }
+// A class routine's type + planned duration, both on the routine template. Like steadyField it
+// live-patches the session card (patchClass) so the type text input keeps focus mid-type. A typed
+// type is canonicalised to an existing class type's spelling (case-insensitive) so "box-fit" and
+// "Box-Fit" don't diverge; a brand-new name is stored verbatim (offered via classTypeNames, so
+// no classTypes mutation is needed here — which would otherwise fire on every keystroke).
+function classField(el) {
+  const d = routineDef(Number(el.dataset.routine));
+  if (!d) return;
+  if (el.dataset.field === "durationMin") {
+    d.durationMin = clampDuration(el.value);
+  } else {
+    const typed = String(el.value || "").trim();
+    d.classType = findClassType(typed) || typed; // canonical spelling if known, else the new name verbatim
+  }
+  save(); patchClass(d);
 }
 const fieldByName = {
   "picker-search": pickerSearch,
   "food-search": foodSearch,
   "circuit-field": circuitField,
   "steady-field": steadyField,
+  "class-field": classField,
   "load-mode": loadModeField,
   // Band selects/toggles carry no data-k (logged out-of-band so hydrate can't
   // blank an unlogged default), so they're dispatched here, ahead of data-k.
   "band-pick": bandPickField,
   "banded-toggle": bandedToggleField,
   "band-default": bandDefaultField,
-  "ct-rate": classRateField,
 };
 
 // Live-patch refreshers keyed by an input's data-refresh tag — the same data-*→map
@@ -669,6 +650,7 @@ const fieldByName = {
 const refreshBy = {
   volumes: renderVolumes,  // weight / reps / banded round-reps → routine + week + block tonnage
   bmi: renderBmi,          // a measurement value → the BMI line
+  classes: renderClassTotal, // a class's logged minutes / calories → the header Classes total
 };
 
 // What a stateful checkbox runs after it logs, keyed by its data-after tag — the same

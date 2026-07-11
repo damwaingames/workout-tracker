@@ -16,9 +16,10 @@ export const CIRCUIT_DEFAULTS = { rounds: 2, workSec: 60, restSec: 15, roundRest
 // effort target (RPE) lives in the routine's focus, not here; the resistance/level logged
 // per session is the progression signal (see CONTEXT "Steady").
 export const STEADY_DEFAULTS = { durationMin: 30 };
-// The four routine kinds (ADR-0007). The block-import validator reads from here so "what
-// kinds exist" has one home; `rest` holds no exercises, the other three do.
-export const ROUTINE_KINDS = ["strength", "recovery", "steady", "rest"];
+// The five routine kinds. The block-import validator reads from here so "what kinds exist"
+// has one home. Which hold placed exercises: `strength`, `recovery`, `steady` (the contexts —
+// ADR-0011); `rest` holds nothing; `class` holds a class type + duration, not exercises (ADR-0010).
+export const ROUTINE_KINDS = ["strength", "recovery", "steady", "rest", "class"];
 // The four nutrition fields, in display order. A routine's totals are the derived sum of
 // its food entries (see routineNutrition); a quick entry stores these `id`s directly, a
 // pantry entry derives them from its Food's per-100g values. `id` is the field key
@@ -64,16 +65,12 @@ export const BANDS = [
 // derived so the "sensible default" lives in one place rather than as a literal.
 export const DEFAULT_BAND = BANDS[Math.floor(BANDS.length / 2)].id;
 
-// Seed types for the "class" logger — a class is any extra session you did on a
-// routine (type + free-text note + minutes), logged on top of the planned workout.
-// Each type carries a `rate` in kcal/min/kg, so a class's calorie burn estimates
-// as rate × minutes × bodyweight. The list is editable: a new type typed into the
-// add-class form is remembered (starting at rate 0, set in the Edit-mode editor).
-export const DEFAULT_CLASS_TYPES = [
-  { name: "Yoga", rate: 0.02 },
-  { name: "Pilates", rate: 0.04 },
-  { name: "Box-Fit", rate: 0.08 },
-];
+// Seed names for class routines (ADR-0010) — a class is its own routine kind (Box-Fit,
+// Pilates), holding one class type + a planned duration. A class type is just a name now
+// (its burn is logged from your wearable per session, not modeled — ADR-0014), so it needs
+// no stored list: classTypeNames derives the autocomplete/canonicalisation set from these
+// seeds unioned with the class routines actually in use, never a persisted, mutated array.
+export const DEFAULT_CLASS_TYPES = ["Yoga", "Pilates", "Box-Fit"];
 
 // Google Drive backup (Phase 1 of device sync — ADR-0006). A Drive backup is the
 // whole Store as one blob in the app's hidden per-app Drive folder, moved by hand.
@@ -89,4 +86,4 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "2.4.1";
+export const APP_VERSION = "3.0.0";
