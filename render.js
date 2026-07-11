@@ -90,6 +90,15 @@ function renderRoutine(block, d, wk, position) {
   else if (ed.kind === "class") body = renderClass(ed, wk, cell);
   else body = renderRest(cell);
 
+  // A rest routine is only its note — no session extras. Every other kind gets the session block:
+  // the felt-intensity Session RPE (ADR-0012), the Edit-mode add-zone (never on class — ADR-0010),
+  // and the view-mode shared wind-down (ADR-0013). Named once so "rest has no session" lives in one
+  // place, not re-derived on three adjacent lines.
+  const sessionExtras = ed.kind === "rest" ? "" :
+    renderSessionRpe(cell, "rpe", "Session RPE") +
+    (editing && ed.kind !== "class" && !holiday ? renderAddZone(d) : "") +
+    (!editing ? renderWinddown(cell) : "");
+
   return '<div class="routine ' + ed.kind + (collapsed ? " is-collapsed" : "") + (holiday ? " is-holiday" : "") + '" data-cell="' + cell + '">' +
     '<div class="routine-head">' +
       '<div class="routine-head-main">' +
@@ -128,11 +137,7 @@ function renderRoutine(block, d, wk, position) {
       "</div>" +
       '<div class="routine-panel routine-panel-workout">' +
         '<div class="routine-body">' + body + "</div>" +
-        // A class routine holds no placed exercises (ADR-0010), so it gets no add-zone.
-        (editing && ed.kind !== "rest" && ed.kind !== "class" && !holiday ? renderAddZone(d) : "") +
-        // The shared wind-down (ADR-0013) shows under every non-rest day in view mode; in Edit mode
-        // it's edited once centrally (renderWinddownEdit), so it isn't repeated per card here.
-        (!editing && ed.kind !== "rest" ? renderWinddown(cell) : "") +
+        sessionExtras +
       "</div>" +
       '<div class="routine-panel routine-panel-nutrition">' + renderRoutineFood(cell) + "</div>" +
     "</div></div>" +
@@ -169,6 +174,10 @@ function routineSummary(block, d, wk, cell) {
     const kcal = parseFloat(state.log[cellScalarKey(cell, "kcal")]);
     bits.push((c.classType ? esc(c.classType) + " · " : "") + cmins + " min" + (kcal > 0 ? " · ~" + fmt(kcal) + " kcal" : ""));
   }
+  // Session RPE (ADR-0012): the day's felt intensity, echoed here so a collapsed routine still
+  // shows how hard it was. A logged record, not a total — shown only once entered.
+  const rpe = state.log[cellScalarKey(cell, "rpe")];
+  if (rpe) bits.push("RPE " + esc(rpe));
   // Nutrition: once any food is logged, the routine's derived kcal + full macro line — so a
   // collapsed routine still shows what it ate (CONTEXT.md "Collapsed routine"). Rebuilt on every
   // full render (food add/remove renders), so it needs no live-patch hook like volume.
@@ -261,7 +270,18 @@ function renderWinddown(cell) {
     '<label class="winddown-done"><input type="checkbox" data-k="' + cellScalarKey(cell, "winddown") + '" data-type="check">' +
       '🧘 Wind-down · ' + state.winddown.durationMin + " min</label>" +
     '<div class="winddown-moves">' + names.join(" · ") + "</div>" +
+    // The wind-down carries its own Session RPE (ADR-0012), logged separately from the day's
+    // main session (typically much lower — a cool-down, not the workout).
+    renderSessionRpe(cell, "wdrpe", "RPE") +
     "</div>";
+}
+
+// A Session RPE input (ADR-0012): a 1–10 fatigue score for how hard the session felt today,
+// logged per cell under `field`. A record only — no data-refresh, and read by no progression
+// scan. Reused for a routine's own session (field "rpe") and the wind-down's ("wdrpe").
+function renderSessionRpe(cell, field, label) {
+  return '<label class="inline session-rpe">' + esc(label) +
+    '<input type="number" inputmode="numeric" min="1" max="10" data-k="' + cellScalarKey(cell, field) + '" data-type="text" placeholder="1–10"></label>';
 }
 
 // Edit-mode editor for the shared Wind-down (ADR-0013) — one definition shown under every

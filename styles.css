@@ -334,6 +334,11 @@ nav.weeks {
 .winddown-edit-h { font-size: 1rem; margin: 0 0 .2rem; }
 .winddown-edit .routine-body { margin-top: .6rem; }
 
+/* Session RPE (ADR-0012) — a per-session 1–10 fatigue field on each non-rest routine, plus a
+ * separate one on the wind-down. A logged record; also echoed in the collapsed summary. */
+.session-rpe { margin-top: .5rem; }
+.winddown .session-rpe { margin-top: .35rem; }
+
 /* Header class-minutes line — parallels .volume. */
 .class-total { font-size: .8rem; color: var(--muted); margin: .15rem 0 0; font-variant-numeric: tabular-nums; }
 .class-total strong { color: var(--workout); }
