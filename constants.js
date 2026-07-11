@@ -16,6 +16,10 @@ export const CIRCUIT_DEFAULTS = { rounds: 2, workSec: 60, restSec: 15, roundRest
 // effort target (RPE) lives in the routine's focus, not here; the resistance/level logged
 // per session is the progression signal (see CONTEXT "Steady").
 export const STEADY_DEFAULTS = { durationMin: 30 };
+// The shared wind-down segment's default planned duration (minutes) — a short cool-down
+// shown under every non-rest routine (ADR-0013). Like STEADY_DEFAULTS, the sensible default
+// lives here rather than as a literal in seedWinddown / the clamp fallback.
+export const WINDDOWN_DEFAULTS = { durationMin: 10 };
 // The five routine kinds. The block-import validator reads from here so "what kinds exist"
 // has one home. Which hold placed exercises: `strength`, `recovery`, `steady` (the contexts —
 // ADR-0011); `rest` holds nothing; `class` holds a class type + duration, not exercises (ADR-0010).
@@ -86,4 +90,4 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "3.0.0";
+export const APP_VERSION = "3.1.0";

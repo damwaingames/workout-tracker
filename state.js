@@ -9,7 +9,7 @@
  * for the importer). Property mutation (state.log[k] = …) works from anywhere. */
 
 import {
-  WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
+  WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, WINDDOWN_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
 } from "./constants.js";
 import {
   today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, foodKey, cellScalarKey, scheduleKey,
@@ -31,6 +31,14 @@ function S(id, name, setup, targetReps, loadMode) {
 // record's contexts by hand to share one move with another kind (ADR-0007).
 function C(id, name) {
   return { id, name, contexts: ["recovery"] };
+}
+// A mobility move — a stretch / cool-down drill for the wind-down (the `mobility` placement
+// surface, ADR-0011). Like a circuit move it carries no sets (the wind-down is a checklist, not
+// logged); `targetReps` is its hold / rep guide, `cue` an optional intrinsic pointer.
+function mob(id, name, setup, targetReps, cue) {
+  const ex = { id, name, contexts: ["mobility"], setup, targetReps };
+  if (cue) ex.cue = cue;
+  return ex;
 }
 // A catalogue is an {id → record} map; both the exercise library and the
 // measurement catalogue are built this way.
@@ -83,6 +91,17 @@ function seedLibrary() {
     C("seated-forward-fold-stretch", "Seated Forward Fold Stretch"),
     C("quad-stretch", "Quad Stretch"),
     C("childs-pose-or-seated-torso-twist", "Child's Pose or Seated Torso Twist"),
+    // Wind-down mobility moves (ADR-0013). Seeded valid only in `mobility`; the wind-down
+    // picker offers these (plus the recovery stretches widened below).
+    mob("cat-cow", "Cat-Cow", "On hands and knees, alternate arching your spine up (cat) and dropping your belly with chest lifted (cow).", "8–10 slow", "Move with the breath — inhale to cow, exhale to cat."),
+    mob("arm-circles", "Arm Circles", "Stand tall, arms out to the sides. Draw slow, controlled circles — forward, then backward.", "10 each way"),
+    mob("cross-arm-stretch", "Cross-Arm Stretch", "Bring one arm across your chest; use the other forearm to draw it gently closer. Swap sides.", "30s each side"),
+    mob("cow-face", "Cow Face", "One arm reaches down the back from above, the other up from below; clasp hands (or a strap) between the shoulder blades. Swap sides.", "30s each side"),
+    mob("thoracic-opener", "Thoracic Opener", "On all fours, thread one arm under your torso, then reach it up and open through the chest, eyes following the hand. Swap sides.", "8–10 each side", "Rotate through the upper back, not the low back."),
+    mob("worlds-greatest-stretch", "World's Greatest Stretch", "From a lunge with the front foot planted, drop the same-side elbow toward the floor, then rotate that arm up to the ceiling. Swap sides.", "5 each side"),
+    mob("isometric-contractions", "Isometric Contractions", "Gently contract the target muscle against little or no resistance and hold, breathing steadily.", "20–30s holds", "Chase a controlled squeeze, not fatigue."),
+    mob("pigeon-pose", "Pigeon Pose", "From all fours, bring one shin forward across the mat, extend the other leg back, and fold over the front shin. Swap sides.", "45–60s each side", "Ease in — back off if the knee complains."),
+    mob("tree-pose", "Tree Pose", "Stand on one leg; place the other foot on the calf or inner thigh (never the knee), hands at heart or overhead. Swap sides.", "30s each side", "Fix your gaze on one point to steady the balance."),
     // A steady-state cardio activity — valid in a recovery circuit (driven as intervals) or a
     // `steady` routine (one duration). `levels` is the machine's resistance scale, the ordinal
     // a steady session logs as its progression signal (CONTEXT "Steady").
@@ -110,6 +129,11 @@ function seedLibrary() {
   // recovery circuit station, so it's valid in both kinds (ADR-0007). The seed-union in
   // migrateContexts carries this widening to existing saves, not just fresh installs.
   lib["hollow-body-holds"].contexts = ["recovery", "strength"];
+  // These recovery stretches double as wind-down moves — widen them to the `mobility` surface
+  // (ADR-0011) so the wind-down picker offers them alongside the mobility-only moves. The
+  // seed-union in migrateLibrary carries this widening to existing saves, not just fresh ones.
+  ["quad-stretch", "glute-squeezes", "chest-opener-stretch", "childs-pose-or-seated-torso-twist"]
+    .forEach((id) => { lib[id].contexts = [...new Set([...lib[id].contexts, "mobility"])]; });
   return lib;
 }
 
@@ -125,6 +149,21 @@ function seedHoliday() {
       "banded-monster-walks", "banded-glute-bridges", "banded-push-ups",
       "banded-clamshells", "banded-plank-leg-abductions",
     ].map((id) => placement("strength", id, DEFAULT_SETS)),
+  };
+}
+
+// The shared wind-down (ADR-0013): one app-level cool-down segment shown under every non-rest
+// routine, edited once. `kind: "mobility"` is NOT a routine kind — it's the placement surface
+// (ADR-0011) that routineDef("winddown") exposes, so the add / remove / create-move handlers and
+// the picker reach state.winddown through the same path as the holiday sentinel reaches
+// state.holiday. Bare {id} placements (a checklist, no sets); the duration is a target only.
+function seedWinddown() {
+  return {
+    kind: "mobility", durationMin: WINDDOWN_DEFAULTS.durationMin,
+    exercises: [
+      "cat-cow", "arm-circles", "cross-arm-stretch", "quad-stretch",
+      "pigeon-pose", "childs-pose-or-seated-torso-twist",
+    ].map((id) => placement("mobility", id)),
   };
 }
 
@@ -180,6 +219,8 @@ export function defaultState() {
     measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
     // The shared band-only routine any routine can swap in via its 🏝 toggle.
     holiday: seedHoliday(),
+    // The shared wind-down cool-down segment, shown under every non-rest routine (ADR-0013).
+    winddown: seedWinddown(),
     // The Pantry: { barcode → Food } catalogue of foods looked up from Open Food
     // Facts — the offline cache and quick-pick in one, append-only. Empty until a
     // lookup populates it; food entries reference it by barcode (see foodKey).
@@ -194,6 +235,20 @@ export let state;
 export let editing = false;
 export function setState(s) { state = s; }
 export function setEditing(v) { editing = v; }
+
+// Backfill a shared app-level segment (state.holiday / state.winddown) against its seed: a
+// missing or non-object value is replaced wholesale; otherwise each seed field whose stored
+// value is the wrong shape (array-vs-not, or a differing typeof) is reset from the seed. The
+// seed is the schema — add a field to a seed and it backfills here automatically, with no
+// per-field check to keep in step. Additive, so old saves migrate without a schema bump.
+function backfillFromSeed(cur, seed) {
+  if (!cur || typeof cur !== "object") return seed;
+  Object.keys(seed).forEach((k) => {
+    const ok = Array.isArray(seed[k]) ? Array.isArray(cur[k]) : typeof cur[k] === typeof seed[k];
+    if (!ok) cur[k] = seed[k];
+  });
+  return cur;
+}
 
 function normalise(s) {
   if (!s || (s.version !== 2 && s.version !== 3 && s.version !== 4) || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
@@ -217,18 +272,12 @@ function normalise(s) {
   migrateContexts(s);
   migrateLibrary(s);
   migrateNutrition(s);
-  // The Holiday Workout is additive (older v2 saves predate it) — backfill it, or
-  // any missing field on a partial one, from the seed. Runs after migrateLibrary so
-  // its band moves are guaranteed in the library. Per-cell `.holiday` flags live in
-  // the log and need no migration.
-  if (!s.holiday || typeof s.holiday !== "object") s.holiday = seedHoliday();
-  else {
-    const h = seedHoliday();
-    if (typeof s.holiday.kind !== "string") s.holiday.kind = h.kind;
-    if (typeof s.holiday.title !== "string") s.holiday.title = h.title;
-    if (typeof s.holiday.focus !== "string") s.holiday.focus = h.focus;
-    if (!Array.isArray(s.holiday.exercises)) s.holiday.exercises = h.exercises;
-  }
+  // The Holiday Workout and Wind-down are shared app-level segments, both additive (pre-v4 saves
+  // predate them) — backfill a missing one whole, or any wrong-shaped field, from its seed. Both
+  // run after migrateLibrary so their moves are guaranteed in the library. Per-cell `.holiday` /
+  // `.winddown` flags live in the log and need no migration.
+  s.holiday = backfillFromSeed(s.holiday, seedHoliday());
+  s.winddown = backfillFromSeed(s.winddown, seedWinddown());
   if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (typeof s.notes !== "string") s.notes = "";
   // Schema is now v4 (class routine kind — ADR-0010). A migrated v2/v3 save is well-formed by
@@ -379,11 +428,14 @@ export function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)
  * ---------------------------------------------------------------------- */
 export function currentBlock() { return state.blocks.find((b) => b.id === state.ui.block) || state.blocks[0]; }
 export function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
-// A routine by its number within the current block, or the shared Holiday Workout for
-// the "holiday" sentinel — so the structural edit handlers (sets / add / remove /
-// the picker) operate on state.holiday through the same path as a real routine.
+// A routine by its number within the current block, or a shared app-level segment for a
+// sentinel — the "holiday" Holiday Workout or the "winddown" Wind-down — so the structural edit
+// handlers (sets / add / remove / the picker) operate on state.holiday / state.winddown through
+// the same path as a real routine. The wind-down's `kind: "mobility"` is what makes its picker
+// offer mobility moves and its placements land bare (ADR-0011/0013).
 export function routineDef(routine) {
   if (routine === "holiday") return state.holiday;
+  if (routine === "winddown") return state.winddown;
   return currentBlock().routines.find((d) => d.routine === routine);
 }
 

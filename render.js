@@ -54,6 +54,7 @@ function renderWeek() {
     // references this by id. The names are derived (seeds ∪ class routines in use — classTypeNames).
     '<datalist id="class-types">' + classTypeNames().map((n) => '<option value="' + esc(n) + '">').join("") + "</datalist>" +
     (editing ? renderHolidayEdit() : "") +
+    (editing ? renderWinddownEdit() : "") +
     weekSchedule(block, wk).map((n, i) => {
       // weekSchedule yields a bijection over block.routines, so find always hits.
       const d = block.routines.find((r) => r.routine === n);
@@ -129,6 +130,9 @@ function renderRoutine(block, d, wk, position) {
         '<div class="routine-body">' + body + "</div>" +
         // A class routine holds no placed exercises (ADR-0010), so it gets no add-zone.
         (editing && ed.kind !== "rest" && ed.kind !== "class" && !holiday ? renderAddZone(d) : "") +
+        // The shared wind-down (ADR-0013) shows under every non-rest day in view mode; in Edit mode
+        // it's edited once centrally (renderWinddownEdit), so it isn't repeated per card here.
+        (!editing && ed.kind !== "rest" ? renderWinddown(cell) : "") +
       "</div>" +
       '<div class="routine-panel routine-panel-nutrition">' + renderRoutineFood(cell) + "</div>" +
     "</div></div>" +
@@ -244,6 +248,41 @@ function renderHolidayEdit() {
     '<p class="muted small">A band-only day you can swap into any day with its 🏝 toggle — for when you’re away from your kit. It logs separately, so your normal progression picks up where it left off.</p>' +
     '<div class="routine-body">' + moves + "</div>" +
     renderAddZone({ kind: hd.kind, routine: "holiday" }) +
+    "</div>";
+}
+
+// The wind-down as it appears under a training day (ADR-0013): the shared mobility checklist
+// (defined once in renderWinddownEdit) plus a per-cell done-tick. A reminder + a tick — the
+// moves aren't logged and count toward no total. Nothing shows until moves are set in Edit mode.
+function renderWinddown(cell) {
+  const names = state.winddown.exercises.map((p) => state.library[p.id]).filter(Boolean).map((ex) => esc(ex.name));
+  if (!names.length) return "";
+  return '<div class="winddown" data-cell="' + cell + '">' +
+    '<label class="winddown-done"><input type="checkbox" data-k="' + cellScalarKey(cell, "winddown") + '" data-type="check">' +
+      '🧘 Wind-down · ' + state.winddown.durationMin + " min</label>" +
+    '<div class="winddown-moves">' + names.join(" · ") + "</div>" +
+    "</div>";
+}
+
+// Edit-mode editor for the shared Wind-down (ADR-0013) — one definition shown under every
+// non-rest day, edited once here. The move rows (name + how-to + remove) and the mobility picker
+// reach state.winddown through the "winddown" sentinel (routineDef); the duration is a target.
+// The per-day done-tick lives on each routine card, not here.
+function renderWinddownEdit() {
+  const wd = state.winddown;
+  const moves = wd.exercises.map((p) => {
+    const ex = state.library[p.id];
+    return ex ? activityCard({ kind: "mobility", routine: "winddown" }, ex, "") : "";
+  }).join("");
+  return '<div class="winddown-edit">' +
+    '<h2 class="winddown-edit-h">🧘 Wind-down</h2>' +
+    '<p class="muted small">A short cool-down shown under every training day — the same stretches, ticked off per day. Edit it once here.</p>' +
+    '<div class="circuit-edit">' +
+      '<label class="circuit-field-l">Duration ' +
+      '<input type="number" inputmode="numeric" min="1" class="circuit-field" data-fh="winddown-field" value="' + wd.durationMin + '">min</label>' +
+    "</div>" +
+    '<div class="routine-body">' + moves + "</div>" +
+    renderAddZone({ kind: "mobility", routine: "winddown" }) +
     "</div>";
 }
 
@@ -530,23 +569,33 @@ function pickerZone(o) {
     "</div></div>";
 }
 
+// The picker's per-surface labels — one row per placement surface, so adding a surface is a row
+// here rather than a new arm on four parallel ternaries. `recovery` is the fallback (circuit
+// moves). The only genuinely kind-specific part left — strength's reps+sets fields — stays an
+// explicit branch in renderAddZone; everything else a placement surface differs by is just copy.
+const ADD_ZONE = {
+  strength: { add: "＋ Add exercise", search: "Search strength exercises…", create: "＋ Create a new exercise", noun: "Exercise", submit: "Add to day" },
+  steady:   { add: "＋ Add activity", search: "Search cardio…",             create: "＋ Create a new activity", noun: "Activity", submit: "Add to day" },
+  mobility: { add: "＋ Add stretch",  search: "Search stretches…",          create: "＋ Create a new stretch",  noun: "Stretch",  submit: "Add to wind-down" },
+  recovery: { add: "＋ Add move",     search: "Search circuit moves…",      create: "＋ Create a new move",     noun: "Move",     submit: "Add to day" },
+};
+
 function renderAddZone(d) {
-  // The routine's kind fixes how a placed move is logged, so there's no type picker and the
-  // form fields differ by kind: a strength routine collects reps + sets; a recovery or steady
-  // routine collects neither (timing/duration live on the routine). A move's contexts gate
-  // which routines will accept it (ADR-0007).
-  const strength = d.kind === "strength", steady = d.kind === "steady";
+  // The surface fixes how a placed move is logged, so there's no type picker — only the labels
+  // and (for strength) the extra reps+sets fields differ. A move's contexts gate which surfaces
+  // will accept it (ADR-0011).
+  const z = ADD_ZONE[d.kind] || ADD_ZONE.recovery;
   return pickerZone({
     kind: "exercise",
     routine: d.routine,
-    addLabel: strength ? "＋ Add exercise" : steady ? "＋ Add activity" : "＋ Add move",
-    searchPlaceholder: strength ? "Search strength exercises…" : steady ? "Search cardio…" : "Search circuit moves…",
-    createLabel: strength ? "＋ Create a new exercise" : steady ? "＋ Create a new activity" : "＋ Create a new move",
-    submitLabel: "Add to day",
+    addLabel: z.add,
+    searchPlaceholder: z.search,
+    createLabel: z.create,
+    submitLabel: z.submit,
     formFields:
-      '<input name="name" placeholder="' + (strength ? "Exercise" : steady ? "Activity" : "Move") + ' name" required>' +
+      '<input name="name" placeholder="' + z.noun + ' name" required>' +
       '<input name="setup" placeholder="How-to / setup (optional)">' +
-      (strength
+      (d.kind === "strength"
         ? '<input name="targetReps" placeholder="Target reps" value="8–12">' +
           '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>'
         : ""),

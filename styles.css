@@ -324,6 +324,16 @@ nav.weeks {
 .holiday-edit-h { font-size: 1rem; margin: 0 0 .2rem; }
 .holiday-edit .routine-body { margin-top: .6rem; }
 
+/* The shared Wind-down under each training day (ADR-0013) — a compact reminder + a per-day
+ * done-tick, separated like the class section was. The move names sit under the tick. */
+.winddown { margin-top: .75rem; padding-top: .6rem; border-top: 1px dashed var(--border); }
+.winddown-done { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; font-weight: 600; color: var(--text); cursor: pointer; }
+.winddown-moves { margin-top: .3rem; font-size: .8rem; color: var(--muted); }
+/* Edit-mode Wind-down editor — the shared mobility segment, defined once. */
+.winddown-edit { margin: .5rem 0 1rem; padding: .7rem .8rem; border: 1px solid var(--border); border-radius: 8px; background: #fafafa; }
+.winddown-edit-h { font-size: 1rem; margin: 0 0 .2rem; }
+.winddown-edit .routine-body { margin-top: .6rem; }
+
 /* Header class-minutes line — parallels .volume. */
 .class-total { font-size: .8rem; color: var(--muted); margin: .15rem 0 0; font-variant-numeric: tabular-nums; }
 .class-total strong { color: var(--workout); }
