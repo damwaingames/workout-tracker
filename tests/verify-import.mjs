@@ -86,4 +86,25 @@ verify(async ({ page, ck, ls, reset }) => {
   s = await ls();
   ck("malformed start date rejected — nothing added", s.blocks.length === countNow);
   ck("malformed date reported as invalid, not snapped", dialogs.some((m) => m.includes("isn't a valid") && !m.includes("snapped")));
+
+  // ---- 7) class routine (ADR-0010) imports cleanly at version 4 with a type + duration ----
+  const before7 = (await ls()).blocks.length;
+  await importFile({
+    version: 4, blocks: [{ id: "bC", name: "Class Block", createdAt: "2026-06-01", startDate: "2026-06-01",
+      routines: [{ routine: 1, kind: "class", title: "Box-Fit", focus: "conditioning", classType: "Box-Fit", durationMin: 45 }] }],
+  });
+  s = await ls();
+  const cb = s.blocks.find((b) => b.name === "Class Block");
+  ck("v4 class routine imports (block appended)", s.blocks.length === before7 + 1 && !!cb);
+  ck("class routine keeps its type + duration", cb && cb.routines[0].kind === "class" && cb.routines[0].classType === "Box-Fit" && cb.routines[0].durationMin === 45);
+
+  // ---- 8) reject: a class routine with no class type ----
+  const before8 = (await ls()).blocks.length;
+  await importFile({
+    version: 4, blocks: [{ id: "bNoType", name: "No Type", createdAt: "2026-06-01", startDate: "2026-06-01",
+      routines: [{ routine: 1, kind: "class", title: "x", focus: "x", durationMin: 30 }] }],
+  });
+  s = await ls();
+  ck("class routine without a classType rejected — nothing added", s.blocks.length === before8);
+  ck("missing classType reported", dialogs.some((m) => m.includes("needs a classType")));
 });
