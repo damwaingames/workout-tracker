@@ -4,8 +4,9 @@
  * round-trippable Store blob): a projection is a derived, lossy, one-way view. A leaf like
  * io.js / drive.js — it holds the *integration format* (the record shape, the clientRecordId
  * upsert contract) and imports the store queries it needs, so state.js never has to know what a
- * Health Connect NutritionRecord looks like. Nothing in the app calls this yet — it's the
- * projection half, staged ahead of the native companion. */
+ * Health Connect NutritionRecord looks like. The Publish button (renderNutrition) hands
+ * allNutritionRecords() to the Android share sheet via shareNutrition(); the stateless companion
+ * is that sheet's ACTION_SEND target and does the native write. */
 
 import { ALL_WEEKS, NUTRIENTS } from "./constants.js";
 import { cellKey, foodKey, scheduledDate, fmtYMD } from "./helpers.js";
@@ -47,4 +48,37 @@ export function allNutritionRecords() {
     });
   });
   return out;
+}
+
+// True when this browser can share files (Web Share API, Level 2) — Chrome/Android does. It's the
+// only place the Publish button appears, like scanSupported gates the camera button (ADR-0003);
+// guarded so a browser without navigator.canShare simply omits the button rather than erroring.
+export function nutritionShareSupported() {
+  try {
+    return typeof navigator !== "undefined"
+      && typeof navigator.canShare === "function"
+      && navigator.canShare({ files: [new File([""], "n.json", { type: "application/json" })] });
+  } catch {
+    return false;
+  }
+}
+
+// Publish the nutrition projection: hand it to the Android share sheet as a JSON file, where the
+// companion app (its ACTION_SEND target) receives and writes it (ADR-0015). application/json keeps
+// the sheet to the companion, not every chat app. Nothing-to-publish is surfaced rather than
+// sharing an empty file; a dismissed sheet (AbortError) is the user's choice, so stay silent; only
+// a real failure alerts.
+export async function shareNutrition() {
+  const records = allNutritionRecords();
+  if (!records.length) {
+    window.alert("No nutrition logged yet — log some food first, then publish.");
+    return;
+  }
+  const file = new File([JSON.stringify(records)], "nutrition-projection.json", { type: "application/json" });
+  try {
+    await navigator.share({ files: [file], title: "Nutrition" });
+  } catch (e) {
+    if (e && e.name === "AbortError") return; // the user dismissed the share sheet
+    window.alert("Couldn't share your nutrition: " + (e && e.message ? e.message : e));
+  }
 }

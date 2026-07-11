@@ -10,6 +10,7 @@ import { NUTRIENTS, ALL_WEEKS } from "./constants.js";
 import { foodKey, esc, fmt } from "./helpers.js";
 import { state, currentBlock, nutritionTotals, entryNutrition, routineNutrition, logList } from "./state.js";
 import { scanSupported } from "./scan.js";
+import { nutritionShareSupported, allNutritionRecords } from "./health.js";
 
 // The per-routine food breakdown moved into each routine card's Nutrition tab (renderRoutineFood);
 // this card keeps only the roll-ups — the one place to read how the week is tracking.
@@ -28,7 +29,15 @@ export function renderNutrition() {
     "<h2>Nutrition</h2>" +
     '<p class="muted small">Log food per day on each day card’s <strong>Nutrition</strong> tab.</p>' +
     '<div class="nut-totals">' + totalLine("Week", week) + totalLine("Block", all) + "</div>" +
-    '<p class="nut-avg muted small">Avg ' + perDay(week) + " this week · " + perDay(all) + " this block</p>";
+    '<p class="nut-avg muted small">Avg ' + perDay(week) + " this week · " + perDay(all) + " this block</p>" +
+    // Publish the whole nutrition projection to Health Connect via the Android share sheet. Shown
+    // only where the browser can share files (Chrome/Android) AND there's actually a projection to
+    // publish — the predicate matches shareNutrition's scope (every block, not just this one's
+    // total), so the "can I publish?" signal can't disagree with what publish does. The feature
+    // check leads so non-sharing browsers skip the all-blocks walk. The write is native (ADR-0015).
+    (nutritionShareSupported() && allNutritionRecords().length
+      ? '<button type="button" class="ghost nut-publish" data-action="publish-nutrition">Publish to Health Connect</button>'
+      : "");
 }
 
 // NUTRIENTS as a row of number inputs. `value(n)` prefills the field (edit forms) or is
