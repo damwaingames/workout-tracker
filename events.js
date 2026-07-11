@@ -13,8 +13,9 @@ import {
   currentBlock, routineDef, placeMove, currentCell, effectiveSets, effectiveRounds, weekSchedule, nextBlockNumber, defaultState, M, findClassType, pantryList,
 } from "./state.js";
 import {
-  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, patchClass, hydrate, repopulate, hydrateNotes, foodResultsHTML,
+  render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, patchClass, hydrate, repopulate, hydrateNotes,
 } from "./render.js";
+import { foodResultsHTML } from "./render-nutrition.js";
 import { lookupBarcode, searchFoods } from "./off.js";
 import { scanBarcode } from "./scan.js";
 import { exportBackup, importBackup, importBlockFile, drivePush, drivePull } from "./io.js";

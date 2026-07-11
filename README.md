@@ -62,11 +62,13 @@ The app is plain ES modules (no build step), loaded from `index.html` via `<scri
 - `helpers.js` — pure helpers: log-key grammar, clamps, formatting, circuit maths.
 - `state.js` — seed data, the mutable store (`state`/`editing` + setters), schema migrations, persistence, and the queries that read over the store.
 - `render.js` — turns the store into DOM (plus the focus-preserving live patchers).
+- `render-nutrition.js` — the nutrition view (the roll-up card, each routine's Nutrition-tab food block, finder rows, macro line). Split out of `render.js` as a self-contained cluster; `render.js` imports its three entry points, `events.js` imports `foodResultsHTML`.
 - `events.js` — click / submit / field handlers and the block, backup & Drive operations.
-- `off.js` / `scan.js` / `drive.js` — the network/device leaves: Open Food Facts lookups, the camera barcode scanner, and the Google Drive backup transport. Each imports only constants and is imported by `events.js`.
+- `io.js` — data I/O: file export / import, the block-import merge, and the Drive backup transport, lifted out of `events.js`.
+- `off.js` / `scan.js` / `drive.js` — the network/device leaves: Open Food Facts lookups, the camera barcode scanner, and the Google Drive backup transport. Each imports only constants and is imported by `events.js` / `io.js`.
 - `main.js` — entry point: load, wire listeners, first render, register the service worker.
 
-Imports flow one way (`constants ← helpers ← state ← render ← events ← main`, with `off`/`scan`/`drive` as leaves into `events`), so there are no circular dependencies.
+Imports flow one way (`constants ← helpers ← state ← render ← events ← main`, with `render-nutrition` a leaf into `render`/`events`, and `off`/`scan`/`drive`/`io` as leaves into `events`), so there are no circular dependencies.
 
 ## Tests
 
