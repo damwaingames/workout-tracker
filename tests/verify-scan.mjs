@@ -62,6 +62,15 @@ verify(async ({ page, ck, reset, ls }) => {
   ck("Scan button present when BarcodeDetector supported",
     await page.isVisible(`${sel} [data-action="food-scan"]`));
 
+  // The camera preview sits above the results (right under the Scan button) so it opens in view,
+  // not below the fold — regression guard for that DOM ordering.
+  ck("scanner preview precedes the results list in the finder", await page.evaluate((s) => {
+    const finder = document.querySelector(s + " .food-finder");
+    const scanner = finder.querySelector(".food-scanner");
+    const results = finder.querySelector(".food-results");
+    return !!(scanner.compareDocumentPosition(results) & Node.DOCUMENT_POSITION_FOLLOWING);
+  }, sel));
+
   await page.click(`${sel} [data-action="food-scan"]`);
   // The scan resolves with the barcode, runs the lookup, and paints the result row.
   await page.waitForSelector(`${sel} .food-result[data-barcode="${BARCODE}"]`);
