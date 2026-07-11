@@ -396,6 +396,9 @@ async function foodScan(el) {
   const scanner = finder.querySelector(".food-scanner");
   const results = finder.querySelector(".food-results");
   scanner.hidden = false;
+  // Bring the camera into view — the finder can sit low on a long card, so even under the search
+  // row the preview may open below the fold. Centre it so you see what the camera's pointed at.
+  scanner.scrollIntoView({ block: "center", behavior: "smooth" });
   activeScan = scanBarcode(scanner.querySelector(".scan-video"));
   try {
     const barcode = await activeScan.done;

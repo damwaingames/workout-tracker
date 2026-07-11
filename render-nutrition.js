@@ -117,13 +117,15 @@ export function renderRoutineFood(cell) {
           // (ADR-0003); the search / barcode-type / Pantry / quick-entry paths stand alone.
           (scanSupported() ? '<button type="button" class="food-scan-btn" data-action="food-scan" aria-label="Scan a barcode with the camera">Scan</button>' : "") +
         "</div>" +
-        '<ul class="food-results"></ul>' +
-        // Live camera preview, revealed by Scan: the <video> the scanner decodes against
-        // plus a Cancel. playsinline + muted so a phone autoplays it inline.
+        // Live camera preview, revealed by Scan — placed right under the search row (where the Scan
+        // button is) so the camera opens *in view*, not below the results/quick-entry list (which
+        // forced a scroll to see what the camera was pointed at). playsinline + muted autoplays it
+        // inline on a phone.
         '<div class="food-scanner" hidden>' +
           '<video class="scan-video" playsinline muted></video>' +
           '<button type="button" class="link food-scan-cancel" data-action="food-scan-cancel">Cancel</button>' +
         "</div>" +
+        '<ul class="food-results"></ul>' +
         '<div class="food-quick">' +
           '<button type="button" class="link" data-action="form-open">Quick entry (no barcode)</button>' +
           '<form class="food-quick-form" hidden>' +
