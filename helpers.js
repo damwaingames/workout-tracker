@@ -13,7 +13,7 @@ export function today() { return fmtYMD(new Date()); }
 // Local-time YYYY-MM-DD ⇄ Date. Parsing via components (not `new Date(str)`, which
 // reads the string as UTC and can shift the day across a timezone) keeps weekday
 // derivation correct in every locale.
-function fmtYMD(d) {
+export function fmtYMD(d) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 function parseYMD(s) { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1); }
