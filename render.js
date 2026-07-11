@@ -90,6 +90,15 @@ function renderRoutine(block, d, wk, position) {
   else if (ed.kind === "class") body = renderClass(ed, wk, cell);
   else body = renderRest(cell);
 
+  // A rest routine is only its note — no session extras. Every other kind gets the session block:
+  // the felt-intensity Session RPE (ADR-0012), the Edit-mode add-zone (never on class — ADR-0010),
+  // and the view-mode shared wind-down (ADR-0013). Named once so "rest has no session" lives in one
+  // place, not re-derived on three adjacent lines.
+  const sessionExtras = ed.kind === "rest" ? "" :
+    renderSessionRpe(cell, "rpe", "Session RPE") +
+    (editing && ed.kind !== "class" && !holiday ? renderAddZone(d) : "") +
+    (!editing ? renderWinddown(cell) : "");
+
   return '<div class="routine ' + ed.kind + (collapsed ? " is-collapsed" : "") + (holiday ? " is-holiday" : "") + '" data-cell="' + cell + '">' +
     '<div class="routine-head">' +
       '<div class="routine-head-main">' +
@@ -128,14 +137,7 @@ function renderRoutine(block, d, wk, position) {
       "</div>" +
       '<div class="routine-panel routine-panel-workout">' +
         '<div class="routine-body">' + body + "</div>" +
-        // Session RPE (ADR-0012): a per-cell fatigue score on every non-rest session — a logged
-        // record, never a progression input. Shown in both modes (a logged field, like weights).
-        (ed.kind !== "rest" ? renderSessionRpe(cell, "rpe", "Session RPE") : "") +
-        // A class routine holds no placed exercises (ADR-0010), so it gets no add-zone.
-        (editing && ed.kind !== "rest" && ed.kind !== "class" && !holiday ? renderAddZone(d) : "") +
-        // The shared wind-down (ADR-0013) shows under every non-rest day in view mode; in Edit mode
-        // it's edited once centrally (renderWinddownEdit), so it isn't repeated per card here.
-        (!editing && ed.kind !== "rest" ? renderWinddown(cell) : "") +
+        sessionExtras +
       "</div>" +
       '<div class="routine-panel routine-panel-nutrition">' + renderRoutineFood(cell) + "</div>" +
     "</div></div>" +
