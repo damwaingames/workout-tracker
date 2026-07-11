@@ -1,5 +1,9 @@
 # Exercise validity is a set of contexts; behaviour comes from the routine
 
+> **Status: Superseded by [ADR-0011](0011-contexts-are-placement-surfaces.md).** The
+> set-of-contexts model and the behaviour-from-routine rule are retained there; ADR-0011
+> widens "routine kinds" to "placement surfaces" so the wind-down (`mobility`) is a context.
+
 Exercises carried a single `type` (`strength`/`circuit`) that hard-gated which routine
 kind could hold them. We replaced it with a set of **contexts** — the routine kinds a move
 is valid to be placed in. Validity is the exercise's property, but how a placed move is
