@@ -236,6 +236,20 @@ export let editing = false;
 export function setState(s) { state = s; }
 export function setEditing(v) { editing = v; }
 
+// Backfill a shared app-level segment (state.holiday / state.winddown) against its seed: a
+// missing or non-object value is replaced wholesale; otherwise each seed field whose stored
+// value is the wrong shape (array-vs-not, or a differing typeof) is reset from the seed. The
+// seed is the schema — add a field to a seed and it backfills here automatically, with no
+// per-field check to keep in step. Additive, so old saves migrate without a schema bump.
+function backfillFromSeed(cur, seed) {
+  if (!cur || typeof cur !== "object") return seed;
+  Object.keys(seed).forEach((k) => {
+    const ok = Array.isArray(seed[k]) ? Array.isArray(cur[k]) : typeof cur[k] === typeof seed[k];
+    if (!ok) cur[k] = seed[k];
+  });
+  return cur;
+}
+
 function normalise(s) {
   if (!s || (s.version !== 2 && s.version !== 3 && s.version !== 4) || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
   if (!s.log) s.log = {};
@@ -258,28 +272,12 @@ function normalise(s) {
   migrateContexts(s);
   migrateLibrary(s);
   migrateNutrition(s);
-  // The Holiday Workout is additive (older v2 saves predate it) — backfill it, or
-  // any missing field on a partial one, from the seed. Runs after migrateLibrary so
-  // its band moves are guaranteed in the library. Per-cell `.holiday` flags live in
-  // the log and need no migration.
-  if (!s.holiday || typeof s.holiday !== "object") s.holiday = seedHoliday();
-  else {
-    const h = seedHoliday();
-    if (typeof s.holiday.kind !== "string") s.holiday.kind = h.kind;
-    if (typeof s.holiday.title !== "string") s.holiday.title = h.title;
-    if (typeof s.holiday.focus !== "string") s.holiday.focus = h.focus;
-    if (!Array.isArray(s.holiday.exercises)) s.holiday.exercises = h.exercises;
-  }
-  // The wind-down is additive too (pre-v4 saves predate it) — backfill it, or any missing field
-  // on a partial one, from the seed. Runs after migrateLibrary so its mobility moves are in the
-  // library. Per-cell `.winddown` done flags live in the log and need no migration.
-  if (!s.winddown || typeof s.winddown !== "object") s.winddown = seedWinddown();
-  else {
-    const w = seedWinddown();
-    if (typeof s.winddown.kind !== "string") s.winddown.kind = w.kind;
-    if (typeof s.winddown.durationMin !== "number") s.winddown.durationMin = w.durationMin;
-    if (!Array.isArray(s.winddown.exercises)) s.winddown.exercises = w.exercises;
-  }
+  // The Holiday Workout and Wind-down are shared app-level segments, both additive (pre-v4 saves
+  // predate them) — backfill a missing one whole, or any wrong-shaped field, from its seed. Both
+  // run after migrateLibrary so their moves are guaranteed in the library. Per-cell `.holiday` /
+  // `.winddown` flags live in the log and need no migration.
+  s.holiday = backfillFromSeed(s.holiday, seedHoliday());
+  s.winddown = backfillFromSeed(s.winddown, seedWinddown());
   if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (typeof s.notes !== "string") s.notes = "";
   // Schema is now v4 (class routine kind — ADR-0010). A migrated v2/v3 save is well-formed by

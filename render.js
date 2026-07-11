@@ -569,23 +569,33 @@ function pickerZone(o) {
     "</div></div>";
 }
 
+// The picker's per-surface labels — one row per placement surface, so adding a surface is a row
+// here rather than a new arm on four parallel ternaries. `recovery` is the fallback (circuit
+// moves). The only genuinely kind-specific part left — strength's reps+sets fields — stays an
+// explicit branch in renderAddZone; everything else a placement surface differs by is just copy.
+const ADD_ZONE = {
+  strength: { add: "＋ Add exercise", search: "Search strength exercises…", create: "＋ Create a new exercise", noun: "Exercise", submit: "Add to day" },
+  steady:   { add: "＋ Add activity", search: "Search cardio…",             create: "＋ Create a new activity", noun: "Activity", submit: "Add to day" },
+  mobility: { add: "＋ Add stretch",  search: "Search stretches…",          create: "＋ Create a new stretch",  noun: "Stretch",  submit: "Add to wind-down" },
+  recovery: { add: "＋ Add move",     search: "Search circuit moves…",      create: "＋ Create a new move",     noun: "Move",     submit: "Add to day" },
+};
+
 function renderAddZone(d) {
-  // The routine's kind fixes how a placed move is logged, so there's no type picker and the
-  // form fields differ by kind: a strength routine collects reps + sets; a recovery or steady
-  // routine collects neither (timing/duration live on the routine). A move's contexts gate
-  // which routines will accept it (ADR-0007).
-  const strength = d.kind === "strength", steady = d.kind === "steady", mobility = d.kind === "mobility";
+  // The surface fixes how a placed move is logged, so there's no type picker — only the labels
+  // and (for strength) the extra reps+sets fields differ. A move's contexts gate which surfaces
+  // will accept it (ADR-0011).
+  const z = ADD_ZONE[d.kind] || ADD_ZONE.recovery;
   return pickerZone({
     kind: "exercise",
     routine: d.routine,
-    addLabel: strength ? "＋ Add exercise" : steady ? "＋ Add activity" : mobility ? "＋ Add stretch" : "＋ Add move",
-    searchPlaceholder: strength ? "Search strength exercises…" : steady ? "Search cardio…" : mobility ? "Search stretches…" : "Search circuit moves…",
-    createLabel: strength ? "＋ Create a new exercise" : steady ? "＋ Create a new activity" : mobility ? "＋ Create a new stretch" : "＋ Create a new move",
-    submitLabel: mobility ? "Add to wind-down" : "Add to day",
+    addLabel: z.add,
+    searchPlaceholder: z.search,
+    createLabel: z.create,
+    submitLabel: z.submit,
     formFields:
-      '<input name="name" placeholder="' + (strength ? "Exercise" : steady ? "Activity" : mobility ? "Stretch" : "Move") + ' name" required>' +
+      '<input name="name" placeholder="' + z.noun + ' name" required>' +
       '<input name="setup" placeholder="How-to / setup (optional)">' +
-      (strength
+      (d.kind === "strength"
         ? '<input name="targetReps" placeholder="Target reps" value="8–12">' +
           '<label class="sets-field">Sets <input name="sets" type="number" min="' + MIN_SETS + '" max="' + MAX_SETS + '" value="' + DEFAULT_SETS + '"></label>'
         : ""),
