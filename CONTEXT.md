@@ -157,6 +157,16 @@ separate and deliberately not redefined here.
   device's Store with the blob. Whole-blob **last-write-wins**, no per-item merge —
   deliberately Phase 1 of device sync (ADR-0006). _Avoid_: sync (the destination, not
   today's behaviour), cloud save.
+- **Nutrition projection** — the app's per-day nutrition (kcal + macros) reshaped for an
+  external chart system (Android **Health Connect**) and **published** one-way to it: a
+  derived, lossy, read-only view of the **Store**, one record per logged **weekday**, keyed
+  by that day's **cell**. Categorically *not* an **Export** (the whole round-trippable Store
+  blob) nor a **Drive backup** (a bidirectional twin): there is no read-back, no "restore
+  from Health Connect", no merge — the Store stays the sole source of truth and Health
+  Connect is a downstream sink. **Publish** is its verb (one-way, to a system the app
+  doesn't own), deliberately distinct from **back up** and the reserved **sync**.
+  _ADRs_: 0015, 0016
+  _Avoid_: export (the whole-Store blob), sync / backup (round-trippable), feed.
 - **Import** — bringing an external block design and new exercises into the **Store** by
   *merging*: a strict subset of an **export** (`library?` / `blocks?`) added additively — new
   library entries appended (never clobbering your edits), a block appended under a fresh id if

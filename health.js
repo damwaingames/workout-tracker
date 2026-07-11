@@ -1,9 +1,11 @@
-/* Health Connect export adapter — turns the logged nutrition into per-day records the native
- * companion app writes to Android Health Connect (the write itself is native; see the
- * health-connect-backlog spike). A leaf like io.js / drive.js: it holds the *integration
- * format* (the record shape, the clientRecordId upsert contract) and imports the store queries
- * it needs, so state.js never has to know what a Health Connect NutritionRecord looks like.
- * Nothing in the app calls this yet — it's the export half, staged ahead of the native write. */
+/* Nutrition projection builder — reshapes the logged nutrition into the per-day records the app
+ * PUBLISHES one-way to Android Health Connect via a stateless companion (ADR-0015/0016; the write
+ * itself is native — see the health-connect-backlog spike). NOT an Export (that's the whole
+ * round-trippable Store blob): a projection is a derived, lossy, one-way view. A leaf like
+ * io.js / drive.js — it holds the *integration format* (the record shape, the clientRecordId
+ * upsert contract) and imports the store queries it needs, so state.js never has to know what a
+ * Health Connect NutritionRecord looks like. Nothing in the app calls this yet — it's the
+ * projection half, staged ahead of the native companion. */
 
 import { ALL_WEEKS, NUTRIENTS } from "./constants.js";
 import { cellKey, foodKey, scheduledDate, fmtYMD } from "./helpers.js";

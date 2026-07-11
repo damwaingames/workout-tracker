@@ -66,7 +66,7 @@ The app is plain ES modules (no build step), loaded from `index.html` via `<scri
 - `events.js` — click / submit / field handlers and the block, backup & Drive operations.
 - `io.js` — data I/O: file export / import, the block-import merge, and the Drive backup transport, lifted out of `events.js`.
 - `off.js` / `scan.js` / `drive.js` — the network/device leaves: Open Food Facts lookups, the camera barcode scanner, and the Google Drive backup transport. Each imports only constants and is imported by `events.js` / `io.js`.
-- `health.js` — the Health Connect export adapter: derives per-day `NutritionRecord` payloads (stable cell-key `clientId` for idempotent upsert) from the logged nutrition, for a future native companion app to write. A leaf reading `state`/`helpers`/`constants`; no in-app consumer yet (the write is native).
+- `health.js` — the **nutrition projection** builder: derives the per-day `NutritionRecord` payloads (stable cell-key `clientId` for idempotent upsert) the app *publishes* one-way to Android Health Connect via a stateless companion app (ADR-0015/0016). A leaf reading `state`/`helpers`/`constants`; no in-app consumer yet (the write is native).
 - `main.js` — entry point: load, wire listeners, first render, register the service worker.
 
 Imports flow one way (`constants ← helpers ← state ← render ← events ← main`, with `render-nutrition` a leaf into `render`/`events`, and `off`/`scan`/`drive`/`io` as leaves into `events`; `health` is a staged leaf reading `state` with no consumer yet), so there are no circular dependencies.
