@@ -50,33 +50,27 @@ export function allNutritionRecords() {
   return out;
 }
 
-// True when this browser can share files (Web Share API, Level 2) — Chrome/Android does. It's the
-// only place the Publish button appears, like scanSupported gates the camera button (ADR-0003);
-// guarded so a browser without navigator.canShare simply omits the button rather than erroring.
+// True when this browser can share at all (Web Share API) — Chrome/Android can. It's the only place
+// the Publish button appears, like scanSupported gates the camera button (ADR-0003).
 export function nutritionShareSupported() {
-  try {
-    return typeof navigator !== "undefined"
-      && typeof navigator.canShare === "function"
-      && navigator.canShare({ files: [new File([""], "n.json", { type: "application/json" })] });
-  } catch {
-    return false;
-  }
+  return typeof navigator !== "undefined" && typeof navigator.share === "function";
 }
 
-// Publish the nutrition projection: hand it to the Android share sheet as a JSON file, where the
-// companion app (its ACTION_SEND target) receives and writes it (ADR-0015). application/json keeps
-// the sheet to the companion, not every chat app. Nothing-to-publish is surfaced rather than
-// sharing an empty file; a dismissed sheet (AbortError) is the user's choice, so stay silent; only
-// a real failure alerts.
+// Publish the nutrition projection: hand it to the Android share sheet, where the companion app
+// (its ACTION_SEND text/plain target) receives and writes it (ADR-0015). Shared as TEXT, not a
+// file: Chrome's Web Share blocks a file whose MIME isn't on its allowlist (application/json is
+// not — it rejects with NotAllowedError "Permission denied"), whereas text always shares; the
+// companion reads it from the intent's EXTRA_TEXT. Nothing-to-publish is surfaced rather than
+// sharing empty; a dismissed sheet (AbortError) is the user's choice, so stay silent; only a real
+// failure alerts.
 export async function shareNutrition() {
   const records = allNutritionRecords();
   if (!records.length) {
     window.alert("No nutrition logged yet — log some food first, then publish.");
     return;
   }
-  const file = new File([JSON.stringify(records)], "nutrition-projection.json", { type: "application/json" });
   try {
-    await navigator.share({ files: [file], title: "Nutrition" });
+    await navigator.share({ text: JSON.stringify(records), title: "Nutrition" });
   } catch (e) {
     if (e && e.name === "AbortError") return; // the user dismissed the share sheet
     window.alert("Couldn't share your nutrition: " + (e && e.message ? e.message : e));
