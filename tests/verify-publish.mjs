@@ -1,10 +1,11 @@
 import { verify } from "./harness.mjs";
 
-/* Publish to Health Connect (v3.4.0): the Nutrition card's Publish button hands the nutrition
- * projection (allNutritionRecords) to the Android share sheet as an application/json file, for the
- * companion app to receive and write (ADR-0015). Headless Chromium has no Web Share, so we mock
- * canShare/share to force the button on and capture what gets shared — then assert the shared file
- * IS the projection. Also checks the button is gated out when there's nothing to publish. */
+/* Publish to Health Connect (v3.4.1): the Nutrition card's Publish button hands the nutrition
+ * projection (allNutritionRecords) to the Android share sheet as TEXT, for the companion app to
+ * receive (EXTRA_TEXT) and write (ADR-0015). Shared as text, not an application/json file: Chrome's
+ * Web Share blocks that MIME with a NotAllowedError. Headless Chromium has no Web Share, so we mock
+ * share to force the button on and capture the payload — then assert the shared text IS the
+ * projection. Also checks the button is gated out when there's nothing to publish. */
 verify(async ({ page, ck, reset }) => {
   // Log a day's food through the real UI (reset()'s reseed isn't persisted until a mutation, so
   // this is also how we get a Store to publish from) — mirrors verify-nutrition's addFood.
@@ -20,10 +21,9 @@ verify(async ({ page, ck, reset }) => {
     await page.waitForTimeout(40);
   };
 
-  // Force Web Share "supported" and capture the shared payload (headless has neither API).
+  // Force Web Share "supported" and capture the shared payload (headless has no navigator.share).
   await page.addInitScript(() => {
     window.__shared = null;
-    navigator.canShare = () => true;
     navigator.share = async (data) => { window.__shared = data; };
   });
 
@@ -37,18 +37,14 @@ verify(async ({ page, ck, reset }) => {
   await addFood("b1.w1.d1", { name: "Test meal", kcal: 500, carb: 50, fat: 10, protein: 30 });
   ck("Publish button appears once nutrition exists", (await page.$('[data-action="publish-nutrition"]')) !== null);
 
-  // ---- Clicking shares the projection as an application/json file ----
+  // ---- Clicking shares the projection as text (not a file — Chrome blocks application/json) ----
   await page.click('[data-action="publish-nutrition"]');
   await page.waitForTimeout(60);
-  const shared = await page.evaluate(async () => {
-    const f = window.__shared && window.__shared.files && window.__shared.files[0];
-    return f ? { name: f.name, type: f.type, text: await f.text() } : null;
-  });
-  ck("shared a file", shared !== null);
-  ck("file named nutrition-projection.json", shared && shared.name === "nutrition-projection.json");
-  ck("file is application/json", shared && shared.type === "application/json");
+  const shared = await page.evaluate(() => window.__shared);
+  ck("shared something", shared !== null);
+  ck("shared as text, not a file", shared && typeof shared.text === "string" && !shared.files);
 
-  const records = shared ? JSON.parse(shared.text) : [];
+  const records = shared && shared.text ? JSON.parse(shared.text) : [];
   const rec = records.find((r) => r.clientId === "b1.w1.d1");
   ck("projection carries the logged day (clientId = cell)", !!rec);
   ck("record has the day's kcal", rec && rec.kcal === 500);
