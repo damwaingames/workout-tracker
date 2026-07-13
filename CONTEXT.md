@@ -141,10 +141,19 @@ separate and deliberately not redefined here.
   (`{ name, kcal, carb, fat, protein }`) for food with no barcode — loose fruit,
   meals out — that carries its own numbers. A routine's kcal + macros are the **derived
   sum** of its entries, replacing the four hand-typed scalars the grid used; a
-  pantry entry contributes `per100g × grams / 100`. Each routine card **tabs** between
-  its Workout (exercises/circuit + classes) and its Nutrition (the food-entry list +
-  derived totals); the active tab is a per-cell `.tab` flag, kin to `.collapsed`,
-  switched independently per routine.
+  pantry entry contributes `per100g × grams / 100`. Each entry also carries the **meal**
+  it was logged under. Each routine card **tabs** between its Workout (exercises/circuit +
+  classes) and its Nutrition (the food-entry list, grouped by **meal**, + derived totals);
+  the active tab is a per-cell `.tab` flag, kin to `.collapsed`, switched independently per
+  routine.
+- **Meal** — which of *breakfast · lunch · dinner · snack* a **food entry** belongs to,
+  chosen in the finder when the food is logged (pre-selected to the current hour) and stored
+  on the entry as `meal`. The Nutrition tab groups a routine's entries under meal headings,
+  each with its own derived subtotal (the day total is still the sum across all meals). The
+  named, fixed set (`MEALS`) is what lets the **nutrition projection** carry a stable
+  per-meal upsert id and a real Health Connect *MealType* (ADR-0017). A mealless entry (a
+  migrated legacy total, or one from a pre-meal backup) falls back to the first meal
+  (`mealOf`). _Avoid_: category, section (the *rendering* of a meal, not the meal).
 
 ## Store & log
 
@@ -157,15 +166,18 @@ separate and deliberately not redefined here.
   device's Store with the blob. Whole-blob **last-write-wins**, no per-item merge —
   deliberately Phase 1 of device sync (ADR-0006). _Avoid_: sync (the destination, not
   today's behaviour), cloud save.
-- **Nutrition projection** — the app's per-day nutrition (kcal + macros) reshaped for an
+- **Nutrition projection** — the app's logged nutrition (kcal + macros) reshaped for an
   external chart system (Android **Health Connect**) and **published** one-way to it: a
-  derived, lossy, read-only view of the **Store**, one record per logged **weekday**, keyed
-  by that day's **cell**. Categorically *not* an **Export** (the whole round-trippable Store
-  blob) nor a **Drive backup** (a bidirectional twin): there is no read-back, no "restore
-  from Health Connect", no merge — the Store stays the sole source of truth and Health
-  Connect is a downstream sink. **Publish** is its verb (one-way, to a system the app
-  doesn't own), deliberately distinct from **back up** and the reserved **sync**.
-  _ADRs_: 0015, 0016
+  derived, lossy, read-only view of the **Store**, one record per logged **meal** on a day,
+  keyed by that day's **cell** + the **meal** (`cell.meal`) and tagged with the meal so the
+  companion can set a native *MealType* — without which Health Connect stores the record but
+  never shows it (ADR-0017, sharpening 0016's per-day record). Categorically *not* an
+  **Export** (the whole round-trippable Store blob) nor a **Drive backup** (a bidirectional
+  twin): there is no read-back, no "restore from Health Connect", no merge — the Store stays
+  the sole source of truth and Health Connect is a downstream sink. **Publish** is its verb
+  (one-way, to a system the app doesn't own), deliberately distinct from **back up** and the
+  reserved **sync**.
+  _ADRs_: 0015, 0016, 0017
   _Avoid_: export (the whole-Store blob), sync / backup (round-trippable), feed.
 - **Import** — bringing an external block design and new exercises into the **Store** by
   *merging*: a strict subset of an **export** (`library?` / `blocks?`) added additively — new

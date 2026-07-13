@@ -6,7 +6,7 @@
 import { ALL_WEEKS, DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
 import {
   placement, clampSets, clampRounds, clampDuration, circuitOf,
-  nonNegSec, slugify, uniqueId, today, mondayOf, cellKey, setsKey, roundsKey, bandKey, foodKey, scheduleKey, parseRoutine,
+  nonNegSec, slugify, uniqueId, today, mondayOf, cellKey, setsKey, roundsKey, bandKey, foodKey, defaultMeal, scheduleKey, parseRoutine,
 } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
@@ -237,13 +237,22 @@ function readQuickEntry(form) {
   return any ? { name: String(fd.get("name") || "").trim(), ...values } : null;
 }
 
+// The meal a finder's next add joins: the checked radio, or the current-hour default if none is
+// checked (belt-and-braces — foodOpen checks one on reveal). One reader for every add path.
+function selectedMeal(finder) {
+  const r = finder && finder.querySelector(".food-meal-select input:checked");
+  return r ? r.value : defaultMeal();
+}
+
 // Log an ad-hoc quick entry on a routine cell — un-barcoded food (loose fruit, meals out) that
 // carries its own kcal + macros, the snapshot exception to the pantry-reference model
-// (ADR-0004). Food entries are an array under one cell key, exactly like classes.
+// (ADR-0004). Food entries are an array under one cell key, exactly like classes; each carries
+// the `meal` it was logged under (the finder's selected meal).
 function addQuickEntry(form) {
   const entry = readQuickEntry(form);
   if (!entry) return;
-  logPush(foodKey(form.closest(".food").dataset.cell), entry);
+  const meal = selectedMeal(form.closest(".food-finder"));
+  logPush(foodKey(form.closest(".food").dataset.cell), { ...entry, meal });
   render();
 }
 
@@ -266,24 +275,29 @@ function revealRowEdit(el, cls) {
   reveal(el.closest(".food-item").querySelector(cls));
 }
 
-// Save an in-place grams edit: replace the entry at its index, preserving the barcode
-// (read from the stored entry, not the DOM). Re-renders so the row + routine total re-derive.
+// Save an in-place grams edit: replace the entry at its index, preserving the barcode and its
+// meal (both read from the stored entry, not the DOM — the edit row only carries grams). Re-
+// renders so the row + subtotals + day total re-derive.
 function saveGramsEdit(form) {
   const cell = form.dataset.cell;
   const i = Number(form.dataset.i);
   const grams = parseFloat(new FormData(form).get("grams"));
   const entry = logList(foodKey(cell))[i];
   if (!entry || !entry.barcode || !(grams > 0)) return;
-  logReplaceAt(foodKey(cell), i, { barcode: entry.barcode, grams });
+  logReplaceAt(foodKey(cell), i, { barcode: entry.barcode, grams, meal: entry.meal });
   render();
 }
 
 // Save an in-place quick-entry edit: same shape + all-zero guard as the add form (shared
-// readQuickEntry), but replacing the entry at its index rather than appending.
+// readQuickEntry), but replacing the entry at its index rather than appending. The meal is
+// carried over from the stored entry (the edit form doesn't re-pick it).
 function saveQuickEdit(form) {
   const entry = readQuickEntry(form);
   if (!entry) return;
-  logReplaceAt(foodKey(form.dataset.cell), Number(form.dataset.i), entry);
+  const cell = form.dataset.cell;
+  const i = Number(form.dataset.i);
+  const meal = (logList(foodKey(cell))[i] || {}).meal;
+  logReplaceAt(foodKey(cell), i, { ...entry, meal });
   render();
 }
 
@@ -324,6 +338,9 @@ function foodOpen(el) {
   const finder = el.closest(".food-add").querySelector(".food-finder");
   el.hidden = true;
   finder.hidden = false;
+  // Pre-select the meal that fits the current hour, so logging breakfast at 8am is one tap.
+  const meal = finder.querySelector('.food-meal-select input[value="' + defaultMeal() + '"]');
+  if (meal) meal.checked = true;
   foundFoods = {};
   const input = finder.querySelector(".food-search");
   input.value = "";
@@ -433,14 +450,16 @@ function foodPick(el) {
   reveal(form);
 }
 
-// Confirm the portion: push a pantry entry { barcode, grams } onto the routine, then render
-// (which closes the finder). The food is already in the Pantry from foodPick.
+// Confirm the portion: push a pantry entry { barcode, grams, meal } onto the routine, then
+// render (which closes the finder). The food is already in the Pantry from foodPick; the meal
+// is the finder's selected one (the grams form lives inside the finder, author path included).
 function addFoodEntry(form) {
   const cell = form.closest(".food").dataset.cell;
   const barcode = form.dataset.barcode;
   const grams = parseFloat(new FormData(form).get("grams"));
   if (!state.pantry[barcode] || !(grams > 0)) return;
-  logPush(foodKey(cell), { barcode, grams });
+  const meal = selectedMeal(form.closest(".food-finder"));
+  logPush(foodKey(cell), { barcode, grams, meal });
   render();
 }
 

@@ -12,7 +12,7 @@ import {
   WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, WINDDOWN_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, foodKey, cellScalarKey, scheduleKey,
+  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, foodKey, mealOf, cellScalarKey, scheduleKey,
   placement, loadMode, circuitOf, clampSets, clampRounds, uniqueId, validYMD, bandFor, bandKg,
 } from "./helpers.js";
 
@@ -798,17 +798,29 @@ export function entryNutrition(entry) {
   return out;
 }
 
-// A routine's nutrition: the *derived* sum of its food entries, as { kcal, carb, fat,
-// protein }. The single place a routine total is computed — render and nutritionTotals
-// both read through here, so the four nutrients can never drift apart.
-export function routineNutrition(cell) {
+// The derived nutrition of a set of food entries, as { kcal, carb, fat, protein } — the shared
+// accumulator behind the routine total (all entries) and every per-meal subtotal (one bucket),
+// so the two can never drift in *how* they sum: the meal totals are the day total, just partitioned.
+// Keyed off NUTRIENTS so the nutrient set has one home.
+export function sumNutrition(entries) {
   const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
-  logList(foodKey(cell)).forEach((e) => {
+  entries.forEach((e) => {
     const n = entryNutrition(e);
     NUTRIENTS.forEach((x) => { sum[x.id] += n[x.id]; });
   });
   return sum;
 }
+
+// A routine's nutrition: the derived sum of *all* its food entries. The single place a routine
+// total is computed — render and nutritionTotals both read through here.
+export const routineNutrition = (cell) => sumNutrition(logList(foodKey(cell)));
+
+// One meal's nutrition on a routine: the same sum narrowed to the entries bucketed under `meal`
+// (via mealOf, so a mealless/legacy entry counts under the default meal exactly as it renders).
+// Drives the per-meal subtotal and the per-meal Health Connect record. Because mealOf is total,
+// Σ mealNutrition over MEALS === routineNutrition exactly — the two cannot drift.
+export const mealNutrition = (cell, meal) =>
+  sumNutrition(logList(foodKey(cell)).filter((e) => mealOf(e) === meal));
 
 // The Pantry as a name-sorted array, optionally narrowed to foods whose name / brand /
 // barcode contains `query` (case-insensitive). Drives the finder's offline quick-pick —

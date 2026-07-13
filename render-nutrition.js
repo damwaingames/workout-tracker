@@ -6,9 +6,9 @@
  * it composes (renderNutrition / renderRoutineFood / nutritionLine); events.js imports
  * foodResultsHTML to patch the finder list in place. */
 
-import { NUTRIENTS, ALL_WEEKS } from "./constants.js";
-import { foodKey, esc, fmt } from "./helpers.js";
-import { state, currentBlock, nutritionTotals, entryNutrition, routineNutrition, logList } from "./state.js";
+import { NUTRIENTS, ALL_WEEKS, MEALS } from "./constants.js";
+import { foodKey, mealOf, esc, fmt } from "./helpers.js";
+import { state, currentBlock, nutritionTotals, entryNutrition, routineNutrition, sumNutrition, logList } from "./state.js";
 import { scanSupported } from "./scan.js";
 import { nutritionShareSupported, allNutritionRecords } from "./health.js";
 
@@ -61,6 +61,18 @@ function gramsInput(value) {
   return '<input type="number" inputmode="decimal" step="any" min="0" name="grams" value="' + value + '" aria-label="Grams">';
 }
 
+// The finder's meal picker — a radio per MEAL. None is checked at render time: foodOpen checks
+// the current-hour default when it reveals the finder, so the pre-selection tracks the clock
+// rather than a stale render-time choice (and an add still falls back to the default if somehow
+// none is checked). Radios are cell-named so two routines' groups never cross-wire.
+function mealSelect(cell) {
+  return '<div class="food-meal-select" role="radiogroup" aria-label="Meal">' +
+    MEALS.map((m) =>
+      '<label class="food-meal-opt"><input type="radio" name="meal-' + esc(cell) + '" value="' + m.id + '">' +
+      "<span>" + esc(m.label) + "</span></label>").join("") +
+    "</div>";
+}
+
 // One logged food row: name + portion/own numbers + the full macro line, plus its in-place
 // editors. A pantry row edits grams (logReplaceAt, barcode preserved) and can correct the
 // *food's* nutrition (→ trusted, propagates — ADR-0004); a quick row edits its own numbers.
@@ -96,19 +108,37 @@ function foodItemHTML(e, i, cell) {
     '<button class="remove" type="button" data-action="food-remove" data-cell="' + cell + '" data-i="' + i + '" aria-label="Remove food">×</button></li>';
 }
 
-// One routine's food block — its list of entries, the derived routine total, and the add finder
-// (search / barcode / scan / Pantry pick / quick entry). Lives in the routine card's
-// Nutrition tab; the container carries data-cell so the food handlers resolve the cell.
-// A pantry entry shows its Food's name + grams; a quick entry shows its name.
+// One routine's food block — its entries grouped under meal headings (each with a derived
+// meal subtotal), the derived day total, and the add finder (search / barcode / scan / Pantry
+// pick / quick entry). Lives in the routine card's Nutrition tab; the container carries
+// data-cell so the food handlers resolve the cell. A pantry entry shows its Food's name +
+// grams; a quick entry shows its name. Only meals that logged something render (an empty day is
+// just the Add button); which meal a new food joins is chosen in the finder (mealSelect).
 export function renderRoutineFood(cell) {
   const list = logList(foodKey(cell));
-  const items = list.map((e, i) => foodItemHTML(e, i, cell)).join("");
+  // Group by meal, keeping each entry's ORIGINAL index — remove/edit are index-addressed into
+  // the one flat list, so a filtered position must never stand in for it.
+  const sections = MEALS.map((meal) => {
+    const rows = list.map((e, i) => ({ e, i })).filter(({ e }) => mealOf(e) === meal.id);
+    if (!rows.length) return "";
+    // Subtotal sums the rows we've already filtered (sumNutrition) — same accumulator as the day
+    // total, no second walk of the list.
+    const sub = nutritionLine(sumNutrition(rows.map(({ e }) => e)));
+    return '<div class="food-meal" data-meal="' + meal.id + '">' +
+      '<div class="food-meal-head"><span class="food-meal-name">' + esc(meal.label) + "</span>" +
+      '<span class="food-meal-sub">' + sub + "</span></div>" +
+      '<ul class="food-list">' + rows.map(({ e, i }) => foodItemHTML(e, i, cell)).join("") + "</ul>" +
+      "</div>";
+  }).join("");
   return '<div class="food" data-cell="' + cell + '">' +
-    (list.length ? '<ul class="food-list">' + items + "</ul>" : "") +
+    sections +
     (list.length ? '<div class="food-total">' + nutritionLine(routineNutrition(cell)) + "</div>" : "") +
     '<div class="food-add">' +
       '<button class="link food-add-btn" type="button" data-action="food-open">＋ Add food</button>' +
       '<div class="food-finder" hidden>' +
+        // Which meal a newly-added food joins. foodOpen checks the current-hour default when it
+        // reveals the finder, and every add path (pick / quick / scan) reads the checked one.
+        mealSelect(cell) +
         '<div class="food-search-row">' +
           '<input class="food-search" data-fh="food-search" placeholder="Search foods or barcode…" autocomplete="off" aria-label="Search foods or enter a barcode">' +
           '<button type="button" data-action="food-find">Find</button>' +

@@ -552,8 +552,21 @@ textarea { width: 100%; resize: vertical; }
 .food-name { font-weight: 600; color: var(--text); }
 .food-detail { color: var(--muted); font-variant-numeric: tabular-nums; }
 .food-kcal { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.food-total { font-size: .8rem; color: var(--text); font-variant-numeric: tabular-nums; }
+.food-total { font-size: .8rem; color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
 .food-add-btn { padding: .2rem 0; }
+/* Meal grouping: each logged meal is a small section with a heading + its own subtotal; only
+ * meals that logged something render. The day total (.food-total) sits under them all. */
+.food-meal { margin-bottom: .45rem; }
+.food-meal-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem;
+  font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+  border-bottom: 1px solid var(--border); padding-bottom: .12rem; }
+.food-meal-name { font-weight: 700; }
+.food-meal-sub { font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The finder's meal picker — pill radios; the checked one is emphasised (:has). */
+.food-meal-select { display: flex; flex-wrap: wrap; gap: .3rem; }
+.food-meal-opt { display: inline-flex; align-items: center; gap: .25rem; font-size: .78rem;
+  padding: .18rem .5rem; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
+.food-meal-opt:has(input:checked) { border-color: var(--text); color: var(--text); font-weight: 600; }
 /* The finder: a search/barcode row, a results list (Pantry quick-pick or Open Food
  * Facts hits), the quick-entry fallback, and Close. Revealed by "＋ Add food". */
 .food-finder { margin-top: .4rem; display: flex; flex-direction: column; gap: .5rem; padding: .55rem; border: 1px solid var(--border); border-radius: 8px; background: var(--sunken); }

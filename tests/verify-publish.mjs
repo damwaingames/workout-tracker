@@ -45,8 +45,11 @@ verify(async ({ page, ck, reset }) => {
   ck("shared as text, not a file", shared && typeof shared.text === "string" && !shared.files);
 
   const records = shared && shared.text ? JSON.parse(shared.text) : [];
-  const rec = records.find((r) => r.clientId === "b1.w1.d1");
-  ck("projection carries the logged day (clientId = cell)", !!rec);
+  // One record per logged meal; the quick entry lands under the finder's current-hour default
+  // meal, so match on the cell prefix rather than a fixed meal (ADR-0017).
+  const rec = records.find((r) => r.clientId.startsWith("b1.w1.d1."));
+  ck("projection carries the logged day (clientId = cell + meal)", !!rec);
+  ck("record is tagged with a meal", rec && typeof rec.meal === "string" && rec.clientId === "b1.w1.d1." + rec.meal);
   ck("record has the day's kcal", rec && rec.kcal === 500);
   ck("record carries the macros", rec && rec.carb === 50 && rec.fat === 10 && rec.protein === 30);
 });
