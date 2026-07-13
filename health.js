@@ -1,4 +1,4 @@
-/* Nutrition projection builder — reshapes the logged nutrition into the per-day records the app
+/* Nutrition projection builder — reshapes the logged nutrition into the per-meal records the app
  * PUBLISHES one-way to Android Health Connect via a stateless companion (ADR-0015/0016; the write
  * itself is native — see the health-connect-backlog spike). NOT an Export (that's the whole
  * round-trippable Store blob): a projection is a derived, lossy, one-way view. A leaf like
@@ -8,43 +8,47 @@
  * allNutritionRecords() to the Android share sheet via shareNutrition(); the stateless companion
  * is that sheet's ACTION_SEND target and does the native write. */
 
-import { ALL_WEEKS, NUTRIENTS } from "./constants.js";
-import { cellKey, foodKey, scheduledDate, fmtYMD } from "./helpers.js";
-import { state, routineNutrition, weekSchedule, logList } from "./state.js";
+import { ALL_WEEKS, NUTRIENTS, MEALS } from "./constants.js";
+import { cellKey, foodKey, mealOf, scheduledDate, fmtYMD } from "./helpers.js";
+import { state, mealNutrition, weekSchedule, logList } from "./state.js";
 
 // Cap IEEE-754 float noise (0.1+0.2…) at one decimal without rounding the value away — Health
 // Connect stores energy/macros as Doubles and does its own display rounding, so the export
 // keeps the precision the app has rather than flattening to whole numbers at the boundary.
 const round1 = (v) => Math.round(v * 10) / 10;
 
-// A single logged day as a Health Connect NutritionRecord payload, or null when that day logged
-// no food. `clientId` is the cell key — a *stable* per-day id, so re-syncing a day UPSERTS its
-// record instead of duplicating it (Health Connect keys upserts on clientRecordId; the native
-// side supplies clientRecordVersion = write time). `date` is the routine's calendar day (block
+// A single logged (day, meal) as a Health Connect NutritionRecord payload, or null when that
+// meal logged no food that day. `clientId` is the cell key + meal — a *stable* per-day-per-meal
+// id, so re-syncing UPSERTS the meal's record instead of duplicating it (Health Connect keys
+// upserts on clientRecordId; the native side supplies clientRecordVersion = write time). `meal`
+// is the projection tag the companion maps to a native MealType, so the food lands in the right
+// meal in Google Health — a record carrying neither a meal type nor a name is stored but never
+// shown (ADR-0017, amending 0016's per-day record). `date` is the routine's calendar day (block
 // start + week offset + its position in that week's schedule — ADR-0005, so a reorder moves the
-// date, never the cell key). The nutrients are the day's derived totals at full precision (only
-// float noise trimmed), built from NUTRIENTS so the nutrient set keeps its one home.
-export function nutritionRecord(block, wk, routine) {
+// date, never the id). The nutrients are the meal's derived totals at full precision (only float
+// noise trimmed), built from NUTRIENTS so the nutrient set keeps its one home.
+export function mealRecord(block, wk, routine, meal) {
   const cell = cellKey(block.id, wk, routine);
-  if (!logList(foodKey(cell)).length) return null; // no logged food → no record for the day
-  const n = routineNutrition(cell);
+  if (!logList(foodKey(cell)).some((e) => mealOf(e) === meal)) return null; // no food this meal
+  const n = mealNutrition(cell, meal);
   const position = weekSchedule(block, wk).indexOf(routine);
   const nutrients = Object.fromEntries(NUTRIENTS.map((x) => [x.id, round1(n[x.id])]));
-  return { clientId: cell, date: fmtYMD(scheduledDate(block.startDate, wk, position)), ...nutrients };
+  return { clientId: cell + "." + meal, date: fmtYMD(scheduledDate(block.startDate, wk, position)), meal, ...nutrients };
 }
 
-// Every logged day across every block as NutritionRecord payloads — the block × week × routine
-// walk with empty days dropped, for a full Health Connect backfill/export. The per-day unit
-// (nutritionRecord) is what a future write-on-log path re-emits for a single edited day; this is
-// the initial scan over that same builder.
+// Every logged meal on a routine's day, in day order — the per-record unit a future write-on-log
+// path re-emits for a single edited day; empty meals drop out.
+export function routineMealRecords(block, wk, routine) {
+  return MEALS.map((m) => mealRecord(block, wk, routine, m.id)).filter(Boolean);
+}
+
+// Every logged meal across every block as NutritionRecord payloads — the block × week × routine
+// × meal walk with empty meals dropped, for a full Health Connect backfill/export.
 export function allNutritionRecords() {
   const out = [];
   state.blocks.forEach((block) => {
     ALL_WEEKS.forEach((wk) => {
-      block.routines.forEach((r) => {
-        const rec = nutritionRecord(block, wk, r.routine);
-        if (rec) out.push(rec);
-      });
+      block.routines.forEach((r) => { out.push(...routineMealRecords(block, wk, r.routine)); });
     });
   });
   return out;

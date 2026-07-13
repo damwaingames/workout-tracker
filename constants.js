@@ -36,6 +36,18 @@ export const NUTRIENTS = [
   { id: "fat", label: "Fat", head: "Fat", unit: "g", off: "fat_100g" },
   { id: "protein", label: "Protein", head: "Protein", unit: "g", off: "proteins_100g" },
 ];
+// The four meals a food entry can be logged under, in day order. A food entry carries its
+// `meal` id (see mealOf, which defaults a mealless/legacy entry to the first); the Nutrition
+// tab groups entries under these headings, and the Health Connect projection emits one record
+// per logged meal, tagged with this `id` — the companion maps it to a native MealType so the
+// day's food lands in the right meal in Google Health (ADR-0017, amending 0016). `id` is the
+// stored key + projection tag; `label` is the heading. One home for "what meals exist".
+export const MEALS = [
+  { id: "breakfast", label: "Breakfast" },
+  { id: "lunch", label: "Lunch" },
+  { id: "dinner", label: "Dinner" },
+  { id: "snack", label: "Snack" },
+];
 // How a strength exercise's logged set maps to tonnage (weight × reps). The
 // stored weight/reps are always exactly what the user typed; a non-standard mode
 // only scales that set's contribution to the volume total and relabels one input.
@@ -90,4 +102,4 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "3.4.2";
+export const APP_VERSION = "3.5.0";

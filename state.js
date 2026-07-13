@@ -12,7 +12,7 @@ import {
   WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, WINDDOWN_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, foodKey, cellScalarKey, scheduleKey,
+  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, foodKey, mealOf, cellScalarKey, scheduleKey,
   placement, loadMode, circuitOf, clampSets, clampRounds, uniqueId, validYMD, bandFor, bandKg,
 } from "./helpers.js";
 
@@ -804,6 +804,21 @@ export function entryNutrition(entry) {
 export function routineNutrition(cell) {
   const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
   logList(foodKey(cell)).forEach((e) => {
+    const n = entryNutrition(e);
+    NUTRIENTS.forEach((x) => { sum[x.id] += n[x.id]; });
+  });
+  return sum;
+}
+
+// One meal's nutrition on a routine — the derived sum of just the entries bucketed under
+// `meal` (via mealOf, so a mealless/legacy entry counts under the default meal exactly as it
+// renders). Mirrors routineNutrition, narrowed by meal; drives the per-meal subtotal in the
+// Nutrition tab and the per-meal Health Connect record. The day total stays routineNutrition
+// (every meal), so the two can't drift: sum of the meals equals the day.
+export function mealNutrition(cell, meal) {
+  const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
+  logList(foodKey(cell)).forEach((e) => {
+    if (mealOf(e) !== meal) return;
     const n = entryNutrition(e);
     NUTRIENTS.forEach((x) => { sum[x.id] += n[x.id]; });
   });

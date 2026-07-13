@@ -5,7 +5,7 @@
 
 import {
   MIN_SETS, MAX_SETS, DEFAULT_SETS,
-  MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS, STEADY_DEFAULTS, LOAD_MODES, BANDS,
+  MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS, STEADY_DEFAULTS, LOAD_MODES, BANDS, MEALS,
 } from "./constants.js";
 
 export function today() { return fmtYMD(new Date()); }
@@ -75,6 +75,18 @@ export const nutKey = (cell, field) => cell + ".nut." + field;
 // classes, so not the scalar path; the block.id prefix (via cell) means deleteBlock's
 // purge sweeps it up too. The routine's kcal + macros are the derived sum (routineNutrition).
 export const foodKey = (cell) => cell + ".food";
+// The meal a food entry belongs to — its `meal` id when that names a known meal, else the
+// first meal (breakfast). The single normaliser, so render grouping, the meal subtotal, and
+// the Health Connect projection all bucket an entry identically — and a legacy/mealless entry
+// (e.g. a migrated `.nut.*` total, or one restored from a pre-meal backup) still lands in a
+// real meal rather than vanishing from every section. Keyed off MEALS so the set has one home.
+export const mealOf = (entry) =>
+  (entry && MEALS.some((m) => m.id === entry.meal)) ? entry.meal : MEALS[0].id;
+// The meal to pre-select when the finder opens — the one that fits the current hour, so
+// logging breakfast at 8am takes no extra tap. A convenience default only; the user can pick
+// any meal before adding. Boundaries are deliberately coarse (one home for "what's now").
+export const defaultMeal = (hour = new Date().getHours()) =>
+  hour < 11 ? "breakfast" : hour < 15 ? "lunch" : hour < 21 ? "dinner" : "snack";
 // A cell's per-session flat scalar key — one home for the `cell + "." + field` shape shared by
 // every kind that logs loose values on its cell: steady (`mins`/`resist`), class (`mins`/`kcal`/
 // `note`), and a rest day's `joints`. A cell belongs to one routine of one kind, so these field
