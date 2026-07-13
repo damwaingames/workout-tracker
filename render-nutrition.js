@@ -8,7 +8,7 @@
 
 import { NUTRIENTS, ALL_WEEKS, MEALS } from "./constants.js";
 import { foodKey, mealOf, esc, fmt } from "./helpers.js";
-import { state, currentBlock, nutritionTotals, entryNutrition, routineNutrition, mealNutrition, logList } from "./state.js";
+import { state, currentBlock, nutritionTotals, entryNutrition, routineNutrition, sumNutrition, logList } from "./state.js";
 import { scanSupported } from "./scan.js";
 import { nutritionShareSupported, allNutritionRecords } from "./health.js";
 
@@ -121,9 +121,12 @@ export function renderRoutineFood(cell) {
   const sections = MEALS.map((meal) => {
     const rows = list.map((e, i) => ({ e, i })).filter(({ e }) => mealOf(e) === meal.id);
     if (!rows.length) return "";
+    // Subtotal sums the rows we've already filtered (sumNutrition) — same accumulator as the day
+    // total, no second walk of the list.
+    const sub = nutritionLine(sumNutrition(rows.map(({ e }) => e)));
     return '<div class="food-meal" data-meal="' + meal.id + '">' +
-      '<div class="food-meal-head"><span class="food-meal-name">' + meal.label + "</span>" +
-      '<span class="food-meal-sub">' + nutritionLine(mealNutrition(cell, meal.id)) + "</span></div>" +
+      '<div class="food-meal-head"><span class="food-meal-name">' + esc(meal.label) + "</span>" +
+      '<span class="food-meal-sub">' + sub + "</span></div>" +
       '<ul class="food-list">' + rows.map(({ e, i }) => foodItemHTML(e, i, cell)).join("") + "</ul>" +
       "</div>";
   }).join("");
