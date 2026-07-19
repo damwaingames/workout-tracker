@@ -11,10 +11,10 @@ separate and deliberately not redefined here.
   length; N is variable). Owns the *plan* only, never an **exercise**'s **performance** history
   (ADR-0020), so deleting a block removes a plan, not history. _ADRs_: 0020, 0024. _Avoid_: cycle (a
   block need not be 4 weeks).
-- **Routine** — one weekday's content in a **block**'s **weekly template**: a **session** (a workout
-  you compose), a **class** (an external event), or **rest**. Reordering a day is a plain plan edit;
-  its **weekday** is a real date. _ADRs_: 0019, 0024. _Avoid_: Day (historical); kind (the retired
-  structural gate — `strength`/`recovery`/`steady` no longer distinct).
+- **Routine** — one weekday's slot in a **block**'s **weekly template**: it holds a **session** (a
+  workout you compose) or a **class** (an external event), or is empty — a **Rest** day. Reordering
+  a day is a plain plan edit; its **weekday** is a real date. _ADRs_: 0019, 0024. _Avoid_: Day
+  (historical); kind (the retired structural gate — `strength`/`recovery`/`steady` no longer distinct).
 - **Rest** — a **routine** with no body: an empty weekday, still drawn in the week grid (never
   collapsed away) so the seven days read true and you can't log to the wrong one. Not a kind — just
   absence made visible. _ADRs_: 0024.
@@ -42,14 +42,10 @@ separate and deliberately not redefined here.
   the week offset plus the day's position in the **weekly template**. Shown on each card ("Mon 16
   Jun"). A **performance** carries its own logged date, so an ad-hoc shift needs no re-planning.
   _ADRs_: 0024. _Avoid_: slot; schedule (the retired permutation layer).
-- **Collapsed routine** — a routine folded down to just its header + focus + a one-line
-  totals **summary** (strength → volume; recovery → circuit total time, plus volume when
-  load-bearing; steady → minutes + resistance; class → class type, minutes + burn; any
-  routine → its **Session RPE**), to cut mobile scroll. State is a persisted
-  per-cell `.collapsed` flag (absent = expanded, like `.done`); completing a routine sets
-  it, the header chevron toggles it. The body slides via a grid-row transition — so
-  `toggleRoutine` and `afterDone` flip the class in place rather than re-rendering (a
-  rebuilt element can't animate).
+- **Collapsed routine** — a **routine** folded to just its header + a one-line **summary** of
+  whatever its **Groups**/**Items** track, plus its **Session RPE**, to cut mobile scroll. A
+  persisted per-routine collapsed flag, set on completion and toggled by the header chevron.
+  _ADRs_: 0019.
 - **Exercise** — a movement the app knows about, owning both its *definition* — name, cueing, its
   intrinsic **volume** type (time or reps), **load** metric, **loading mode**, and required
   **equipment** — and its *history*, the timeline of **performances** it accumulates. Progression,
@@ -69,28 +65,25 @@ separate and deliberately not redefined here.
   **Holiday Session**, which takes exercises whose required kit ⊆ the reduced away-from-home set
   (mini-loops + resistance-bands + door-anchor). _ADRs_: 0023. _Avoid_: context / type (the retired
   validity gate — an exercise is *described*, not *gated*).
-- **Setup, cue, focus** — three guidance fields, split by *who owns them* so a movement
-  isn't duplicated per context. **setup** (exercise): how to perform it, context-free.
-  **cue** (exercise): the movement's *intrinsic* quality target ("move with the breath"),
-  unchanged across routines. **focus** (routine): the *session's* intent, including its
-  **effort target** — so interval-vs-steady RPEs live here, never duplicated onto the
-  exercise. That ownership split is what lets one `seated-elliptical` serve both `recovery`
-  and `steady` instead of being two near-identical records. An effort target is an
-  *instruction*, not a **progression** metric: RPE is feel-based and self-normalising —
-  constant perceived effort even as absolute intensity climbs with fitness — so it never
-  drives progression. What climbs at constant RPE is the **absolute output**: a `steady`
-  routine progresses by its logged **resistance/level** (the ordinal setting on the machine),
-  not by the kg **tonnage** that strength's overload delta reads — a steady routine carries no
-  tonnage. (That same self-normalising quality is why RPE *is* logged as a **Session RPE** —
-  a fatigue record, a different job entirely.)
-- **Loading mode** — how a strength exercise's logged set maps to tonnage
-  (`standard` / `per-side` / `two-dumbbell`); a per-exercise multiplier pair (`wMult`,
-  `rMult`). Distinct from **banded**.
-- **Banded move** — an exercise whose **load** metric is a **band family** rather than kg. Two
+- **Setup, cue, focus** — three guidance fields split by who owns them. **setup** (**exercise**):
+  how to perform it. **cue** (exercise): the movement's *intrinsic* quality target ("move with the
+  breath"), unchanged wherever it's placed. **focus** (the **session**'s intent): what a session is
+  *for*, including an **effort target** (e.g. an RPE to hold) — an *instruction*, never a
+  **progression** input (that's **double progression**; felt intensity is logged separately as
+  **Session RPE** and **RIR**). Owning setup/cue on the exercise and focus on the session is what
+  lets one movement serve every placement rather than being duplicated. _ADRs_: 0012, 0021.
+- **Loading mode** — how a free-weight **exercise**'s logged set is read: `standard` / `per-side`
+  (log one side, both worked) / `two-dumbbell` (log one dumbbell, both moved). Relabels the inputs
+  (`reps/side`, `kg/db`) and carries the `wMult`/`rMult` pair that keeps **tonnage** honest — not a
+  progression input (ADR-0029). Orthogonal to a **band** load metric. _ADRs_: 0029.
+- **Banded move** — an **exercise** whose **load** metric is a **band family** rather than kg. Two
   families — **mini-loop** and **long resistance-band** — share one x-light→x-heavy tier ladder
   but each has its own tier→kg table (a mini-loop "heavy" ≠ a long-band "heavy"). The exercise
-  declares its family; the performance logs a tier; tonnage is `family-kg(tier) × reps × rMult`.
-  _Avoid_: band (which family? — always name it).
+  declares its family; the performance logs a tier; its tier→kg feeds **tonnage** and **e1RM**
+  (ADR-0029), not a progression metric. _ADRs_: 0029. _Avoid_: band (which family? — always name it).
+- **Tonnage** — the volume-load figure: total **load** × **reps** over a loaded rep-**Item**, a
+  **session**, or a block ("3.5 tonnes today"). A readout only, never a **progression** signal — the
+  frontier judges (ADR-0029). Distinct from an **Item**'s **Volume** axis (time | reps). _ADRs_: 0029.
 - **Rail** — the explicit rep range `[floor, ceiling]` a rep-**volume** **item** is programmed to
   (8–12, 10–15): the bounds **double progression** works between, and what a **zone** derives from.
   _ADRs_: 0021. _Avoid_: rep range on the exercise (it's per placement; the exercise holds only a
@@ -107,10 +100,10 @@ separate and deliberately not redefined here.
   ghost); absent that, a **guide ghost** — an **e1RM**-seeded estimate from another zone
   (conservative, self-retiring). _ADRs_: 0021, 0022. _Avoid_: target (the double-progression
   *suggestion*; a Ghost is *history*).
-- **e1RM** — estimated one-rep max, derived from a **performance** by formula. Advisory only — a
-  cross-zone **trend**, the max **readout**, and the cold-start **guide ghost** — never the
-  per-session judge (that's **double progression**). Needs load > 0. _ADRs_: 0022. _Avoid_: 1RM
-  (a *tested* max; e1RM is estimated).
+- **e1RM** — estimated one-rep max, computed from a **performance** by the **Epley** formula
+  (`w × (1 + reps/30)`). Advisory only — a cross-zone **trend**, the max **readout**, and the
+  cold-start **guide ghost** — never the per-session judge (that's **double progression**). Needs
+  load > 0. _ADRs_: 0022. _Avoid_: 1RM (a *tested* max; e1RM is estimated).
 - **PR** — a personal record on an **exercise**: the best of an axis (its per-**zone** frontier, or
   top **e1RM**), derived from **performance** history and shown in the **Library**. _ADRs_: 0020, 0021.
 - **Circuit** — a **group** of timed **items** with a non-zero `rest-within` (rest between
