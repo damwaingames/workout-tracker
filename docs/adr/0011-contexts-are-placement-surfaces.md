@@ -1,5 +1,9 @@
 # An exercise's contexts are placement surfaces, not just routine kinds
 
+> **Status: Superseded by [ADR-0023](0023-exercise-described-by-intrinsic-properties-not-contexts.md).**
+> With the routine-kinds collapsed (ADR-0019) there are no surfaces to gate against; an exercise is
+> now described by intrinsic properties (volume type, load metric, equipment) that filter, not gate.
+
 Supersedes [ADR-0007](0007-exercise-contexts-behaviour-from-routine.md).
 
 An exercise carries a set of **contexts** — the places a move is valid to be placed — rather

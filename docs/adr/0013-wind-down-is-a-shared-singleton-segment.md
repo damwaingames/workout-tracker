@@ -1,5 +1,9 @@
 # The wind-down is one shared app-level segment, not a per-routine list
 
+> **Status: Superseded by [ADR-0028](0028-wind-down-is-a-standalone-daily-session.md).** The
+> wind-down is a daily freeform mobility *habit* (weekly-adherence tracked, outside the block), not
+> a cool-down segment shown beneath every training routine — the framing here had the wrong shape.
+
 A **wind-down** is a short cool-down (a curated list of `mobility`-context stretches + a target
 **duration**) that appears beneath every non-rest routine, with its own per-cell done-tick. We
 store it as a single app-level `state.winddown = { durationMin, exercises: [{id}, …] }`,

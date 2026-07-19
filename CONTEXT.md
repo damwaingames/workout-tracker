@@ -6,28 +6,42 @@ separate and deliberately not redefined here.
 
 ## Domain
 
-- **Block** — a 4-week training cycle. Has an id, a name, seven **routines**, a **start
-  date** (the Monday everything's **weekday**s derive from), and a per-week **schedule**.
-  The unit `Reset`/`New block`/`Delete block` operate on.
-- **Routine** — the recurring training unit (the catalogue entry), one of five **kinds**:
-  `strength` (logged sets), `recovery` (a **circuit**), `steady` (one unbroken **duration**
-  of steady-state cardio), `rest`, or `class` (a scheduled group **class**). Identified by a number
-  (1–7) that is the **progression key** — the last segment of every cell key (`.d{n}` on
-  the wire, frozen — ADR-0005), what every temporal scan ranks by. Its kind drives how a
-  placed exercise is logged and counted; *which* exercises it accepts is the inverse — an
-  exercise declares the **contexts** it's valid in (ADR-0011). Placed onto a **weekday** each week by the **schedule**.
-  _Avoid_: Day (the historical term; the persisted key segment still reads `.d`).
-- **Schedule** — a week's ordered arrangement of the block's seven routines across that
-  week's weekdays: a permutation, one per `(block, week)`. The single driver of render
-  order — never the date. Stored as a log key (so `purgeBlockLog` sweeps it); **absent →
-  the most-recent earlier arranged week in the same block, else identity (1–7)**, so
-  reordering an earlier week propagates forward and a new block is a clean slate.
-  Reordered in Edit mode by up/down **swap-with-neighbour**. _Avoid_: week plan, layout.
-- **Weekday** — the real calendar day a routine sits on for a given week:
-  `block start + (week − 1) × 7 + the routine's position in that week's schedule`. Shown on
-  each routine's card (e.g. "Mon 16 Jun") and **derived, never stored** — there is no
-  editable per-cell date (ADR-0005); to record doing a routine on a different day you
-  **reorder** it. _Avoid_: slot, date stamp.
+- **Block** — a **container** that assembles a **weekly template** — an ordered set of **routines**,
+  one per weekday — repeated over **N** real calendar weeks (its id, name, **start date**, and
+  length; N is variable). Owns the *plan* only, never an **exercise**'s **performance** history
+  (ADR-0020), so deleting a block removes a plan, not history. _ADRs_: 0020, 0024. _Avoid_: cycle (a
+  block need not be 4 weeks).
+- **Routine** — one weekday's content in a **block**'s **weekly template**: a **session** (a workout
+  you compose), a **class** (an external event), or **rest**. Reordering a day is a plain plan edit;
+  its **weekday** is a real date. _ADRs_: 0019, 0024. _Avoid_: Day (historical); kind (the retired
+  structural gate — `strength`/`recovery`/`steady` no longer distinct).
+- **Rest** — a **routine** with no body: an empty weekday, still drawn in the week grid (never
+  collapsed away) so the seven days read true and you can't log to the wrong one. Not a kind — just
+  absence made visible. _ADRs_: 0024.
+- **Session** — a **routine** you compose: an ordered list of **groups**. The single
+  training-routine the old `strength`/`recovery`/`steady` kinds collapsed into; whether it reads
+  as lifting, conditioning, or cardio is emergent from its **items**, not chosen up front. Never
+  a **class** (an external event is not composed). _ADRs_: 0019. _Avoid_: workout, kind.
+- **Group** — an ordered list of **items** performed for N **rounds**, with a `rest-within`
+  (between items; `0` = a **superset**) and a `rest-after` (after each round). The one rotation
+  primitive: a lone-item Group is N straight **sets**; a multi-item Group is a superset or a
+  **circuit**. _ADRs_: 0019. _Avoid_: superset / circuit (Group *configs*, not separate types);
+  block (that is the cycle).
+- **Item** — a member of a **group**: an exercise carrying a **volume** (measured in *time* or
+  *reps*) and a **load**. The unit a **round** steps through; *what it tracks* — not any routine
+  kind — is the only thing distinguishing a lifting item from a conditioning one. _ADRs_: 0019.
+  _Avoid_: station / set / move (all Items, differing only in volume/load).
+- **Load** — the resistance an **item** works against, as a magnitude on a *metric*: kg (free
+  weight — **bodyweight is just 0 kg**, `+N` once you add a plate), a **mini-loop** or **long
+  resistance-band** tier (two band families), an ordinal machine **level**, or *none* (a timed
+  skill/conditioning move with no resistance). The metric is
+  intrinsic to the **exercise**; the magnitude is logged per performance. One axis of an Item (the
+  other is its **volume**); a bench's `40 kg` and a steady machine's `level 6` are the same axis in
+  different units. _ADRs_: 0019. _Avoid_: weight / resistance (each is one metric, not the axis).
+- **Weekday** — the real calendar date a **routine** falls on: the **block**'s **start date** plus
+  the week offset plus the day's position in the **weekly template**. Shown on each card ("Mon 16
+  Jun"). A **performance** carries its own logged date, so an ad-hoc shift needs no re-planning.
+  _ADRs_: 0024. _Avoid_: slot; schedule (the retired permutation layer).
 - **Collapsed routine** — a routine folded down to just its header + focus + a one-line
   totals **summary** (strength → volume; recovery → circuit total time, plus volume when
   load-bearing; steady → minutes + resistance; class → class type, minutes + burn; any
@@ -36,27 +50,25 @@ separate and deliberately not redefined here.
   it, the header chevron toggles it. The body slides via a grid-row transition — so
   `toggleRoutine` and `afterDone` flip the class in place rather than re-rendering (a
   rebuilt element can't animate).
-- **Placement** — an exercise as it sits on a routine: `{ id, sets }` for strength, bare
-  `{ id }` for a circuit move (timing lives on the routine, not the move).
-- **Count override** — a single week's **set** count (strength) or **round** count (recovery)
-  when it differs from the block-wide **template** the other weeks inherit. Where week-to-week
-  *volume* progression lives: 2 sets in week 1 then 3 from week 2, or rounds climbing across a
-  cardio block. Lowering a week's count *hides* the surplus rows/rounds without deleting what
-  was logged in them. (Template-or-override, not the **schedule**'s lazy-lookback — ADR-0008.)
-- **Library** — the `{id → record}` catalogue of exercises. Append-only from the UI
-  (no delete), which is what lets `migrateLibrary` reconcile it against the seed safely.
-- **Context** — the set of **placement surfaces** an exercise is valid on, carried on the
-  exercise record: the routine kinds that accept placed exercises (`strength`, `recovery`,
-  `steady`) plus the **wind-down** (`mobility`). A surface is not always a routine kind and a
-  kind is not always a surface — `mobility` is the wind-down segment (no routine kind), while
-  `class` holds a class type and `rest` holds nothing (kinds with no context); the sets only
-  overlap. Replaces the old single exercise **type**: a move can belong to several (bodyweight
-  core sits in both `strength` and `recovery`), and the rule is *behaviour follows the surface,
-  validity follows the exercise* — the same move logs as weight×reps in a strength routine and
-  as a per-round station in a recovery **circuit**. **Banded** is the precedent: a
-  cross-context property read per surface, not per exercise type.
-  _ADRs_: 0011
-  _Avoid_: type (the retired scalar gate).
+- **Exercise** — a movement the app knows about, owning both its *definition* — name, cueing, its
+  intrinsic **volume** type (time or reps), **load** metric, **loading mode**, and required
+  **equipment** — and its *history*, the timeline of **performances** it accumulates. Progression,
+  **PRs**, and **e1RM** are its own, derived from that history. These properties *describe*, they
+  don't *gate* (ADR-0023): any exercise can be an **Item** in any **Group**. Self-contained:
+  exercises know about themselves. _ADRs_: 0020, 0023.
+- **Performance** — one logged effort of an **exercise**: a date, a **load**, a **volume**, and its
+  derived rep-zone, tagged with the **session** it was done in. The atomic unit of an exercise's
+  history and the sole source every derived figure (PR, e1RM, ghost) reads. _ADRs_: 0020.
+  _Avoid_: set / rep-log (a Performance may be time- or rep-**volume**).
+- **Library** — the catalogue of every **exercise**. Append-only in membership (never shrinks); an
+  unwanted exercise is **retired** — hidden from pickers, never deleted, since a **performance**
+  references it and deleting would orphan history (ADR-0020).
+- **Equipment** — the kit an **exercise** requires, a set of tags from a curated list matched to
+  real gear: `adjustable-dumbbells` · `dumbbells-3kg` · `martial-weights-1kg` · `mat` · `bench` ·
+  `mini-loops` · `resistance-bands` · `door-anchor`. Filters, never gates — its first job is the
+  **Holiday Session**, which takes exercises whose required kit ⊆ the reduced away-from-home set
+  (mini-loops + resistance-bands + door-anchor). _ADRs_: 0023. _Avoid_: context / type (the retired
+  validity gate — an exercise is *described*, not *gated*).
 - **Setup, cue, focus** — three guidance fields, split by *who owns them* so a movement
   isn't duplicated per context. **setup** (exercise): how to perform it, context-free.
   **cue** (exercise): the movement's *intrinsic* quality target ("move with the breath"),
@@ -74,44 +86,64 @@ separate and deliberately not redefined here.
 - **Loading mode** — how a strength exercise's logged set maps to tonnage
   (`standard` / `per-side` / `two-dumbbell`); a per-exercise multiplier pair (`wMult`,
   `rMult`). Distinct from **banded**.
-- **Banded move** — an exercise whose load comes from a resistance **band**, not free
-  weight: it logs a band tier + reps, and its tonnage is `band kg × reps × rMult`.
-- **Circuit** — a recovery routine's structure: rounds + work/rest/round-rest seconds.
-- **Steady** — a `steady` routine's structure: one planned **duration** (`durationMin`) of one
-  cardio activity, held at the RPE its **focus** sets. The cell logs `done`, **actual minutes**,
-  and the machine's **resistance/level** (bounded by the activity's `levels` — the elliptical's
-  10). Progression is the resistance **ghost** (last session's level + minutes), not tonnage.
-  _Avoid_: cardio (that's the activity), interval (that's a `recovery` circuit).
-- **Class** — a `class` routine **kind**: a scheduled group session (Box-Fit, Pilates)
-  that owns its own **weekday** rather than being squeezed onto a training day. Holds one
-  **class type** (just a name) + a planned **duration**; its cell logs done, actual minutes,
-  a **note** (what you did), and the **calorie burn** read from your wearable — a class's
-  absolute-output metric, the analogue of strength's **tonnage** and steady's
-  **resistance/level** (a class has neither). Type names match case-insensitively (logging
-  "box-fit" reuses "Box-Fit"), so a spelling variant can't fork a duplicate type.
-  _ADRs_: 0010, 0014
-  _Avoid_: the retired "extra class on any day" add-on (a class is now always its own
-  routine); the retired modeled burn (`rate × mins × bodyweight`).
-- **Wind-down** — the single app-level cool-down segment (`state.winddown`): one curated list
-  of **mobility**-context stretches + a target **duration**, defined once (like the **Holiday
-  Workout**) and shown beneath every non-rest routine. Carries its own per-cell done-tick,
-  separate from the routine's, and counts toward no total. Not a **routine** — it owns no
-  routine number or **weekday**, and isn't carried in a block **import**.
-  _ADRs_: 0011, 0013
-  _Avoid_: cooldown, stretch routine.
-- **Session RPE** — a per-session felt-intensity score (1–10) logged on each **routine** and
-  on the **wind-down**: how hard *that session* was *today*. A fatigue record only, never an
-  input to progression — the logged inverse of an **effort target** (the unlogged instruction).
-  Load / recovery *trends* are deliberately out of scope; the wearable owns those.
-  _ADRs_: 0012
-- **Holiday routine** — a routine swapped to the shared **Holiday Workout** for one cell,
-  for when you're away from your kit. The Holiday Workout (`state.holiday`) is a
-  single app-level band-only strength routine, defined once in Edit mode and reused
-  everywhere. A persisted per-cell `.holiday` flag (absent = normal, like `.done`)
-  ticks it in on any routine kind: the routine keeps its number (and its scheduled
-  **weekday**) but takes the Holiday Workout's kind / title / focus / exercises, and the
-  band moves log against that same cell. `routineDef("holiday")` resolves the sentinel to
-  `state.holiday` so the structural edit handlers reach it through the normal placement path.
+- **Banded move** — an exercise whose **load** metric is a **band family** rather than kg. Two
+  families — **mini-loop** and **long resistance-band** — share one x-light→x-heavy tier ladder
+  but each has its own tier→kg table (a mini-loop "heavy" ≠ a long-band "heavy"). The exercise
+  declares its family; the performance logs a tier; tonnage is `family-kg(tier) × reps × rMult`.
+  _Avoid_: band (which family? — always name it).
+- **Rail** — the explicit rep range `[floor, ceiling]` a rep-**volume** **item** is programmed to
+  (8–12, 10–15): the bounds **double progression** works between, and what a **zone** derives from.
+  _ADRs_: 0021. _Avoid_: rep range on the exercise (it's per placement; the exercise holds only a
+  default).
+- **Zone** — the coarse rep-band a loaded rep-item falls in — strength ≤6 / hypertrophy 7–14 /
+  endurance ≥15 — *derived* from its **rail**. Classification + trend only, never the mechanic; the
+  unit progression **threads** by, per **exercise**. Only rep-volume items have one. _ADRs_: 0021.
+  _Avoid_: rail (the exact range; a Zone is its coarse bucket).
+- **Double progression** — the progress rule: at fixed **load**, climb **volume** to the **rail**'s
+  ceiling, then add load and reset to the floor. Defines "beat this"; generalizes across metrics
+  (reps+kg ≡ minutes+level); its next-set suggestion is the **target**. _ADRs_: 0021. _Avoid_:
+  overload delta (the retired single-number progress metric).
+- **Ghost** — the reference shown before a set: your last in-**zone** **performance** (the *real*
+  ghost); absent that, a **guide ghost** — an **e1RM**-seeded estimate from another zone
+  (conservative, self-retiring). _ADRs_: 0021, 0022. _Avoid_: target (the double-progression
+  *suggestion*; a Ghost is *history*).
+- **e1RM** — estimated one-rep max, derived from a **performance** by formula. Advisory only — a
+  cross-zone **trend**, the max **readout**, and the cold-start **guide ghost** — never the
+  per-session judge (that's **double progression**). Needs load > 0. _ADRs_: 0022. _Avoid_: 1RM
+  (a *tested* max; e1RM is estimated).
+- **PR** — a personal record on an **exercise**: the best of an axis (its per-**zone** frontier, or
+  top **e1RM**), derived from **performance** history and shown in the **Library**. _ADRs_: 0020, 0021.
+- **Circuit** — a **group** of timed **items** with a non-zero `rest-within` (rest between
+  stations): the conditioning config of the one Group primitive, not a structure of its own.
+  _ADRs_: 0019.
+- **Steady** — a **group** of one time-**volume** **item** carrying a machine **level** as its
+  **load**, run for a single **round**: the steady-state-cardio config of the Group primitive.
+  Logs actual minutes + the level; progression is the resistance **ghost** (last session's level
+  + minutes). _ADRs_: 0019. _Avoid_: cardio (the activity); interval (a multi-round **circuit**).
+- **Class** — the one **routine** that is not a **session**: an external attended group session
+  (Box-Fit, Pilates) you *log* rather than compose — done, actual minutes, a **note**, and the
+  **calorie burn** read from your wearable. Deliberately never modelled as an **item** or a
+  degenerate exercise — that fold is the failure every other tracker makes. Holds one **class
+  type** (a name, matched case-insensitively so "box-fit" reuses "Box-Fit") + a planned
+  **duration**. _ADRs_: 0014, 0019. _Avoid_: degenerate exercise; the retired "extra class on any
+  day" add-on.
+- **Wind-down** — a **daily mobility habit**: an evening stretch done most nights (a weekly target
+  of ~6 of 7, typically skipping Sunday), *winged* by feel rather than a fixed plan. Tracked
+  *outside* the **block** as weekly adherence (like body **measurements**); any stretches logged are
+  ordinary **performances** on mobility **exercises**. Not a training **session**, not a post-workout
+  cool-down. _ADRs_: 0028. _Avoid_: cool-down segment; stretch routine (it's unplanned, by feel).
+- **Session RPE** — a per-**session** felt-intensity score (1–10): how hard *that session* was
+  *today*. A whole-session fatigue record only, never an input to progression. Distinct from **RIR**
+  (per-set intensity, not per-session fatigue). _ADRs_: 0012.
+- **RIR** — an optional per-**performance** proximity-to-failure marker in three buckets: *too easy*
+  (RIR 4+), *ideal* (RIR 2–3), *too hard* (to failure). **Advisory** like **e1RM** — it nudges the
+  **target** but never gates **double progression** (ADR-0027). _Avoid_: RPE (that's whole-session
+  fatigue — **Session RPE**); effort target (the unlogged instruction).
+- **Holiday Session** — a single catch-all **session** built from exercises whose required
+  **equipment** ⊆ the away-from-home kit (mini-loops + resistance-bands + door-anchor), defined
+  once and swapped in for a day when you're travelling. No special progression handling: the band
+  exercises accrue their own **performances** and the planned exercises' **ghosts** wait untouched
+  (ADR-0025). _ADRs_: 0025. _Avoid_: Holiday Workout / holiday routine (the retired per-cell swap).
 
 ## Store & log
 
@@ -148,29 +180,3 @@ separate and deliberately not redefined here.
   field re-patches live → `refreshBy`), `data-after` (which post-toggle effect a stateful
   checkbox runs → `afterCheck`). CSS classes are for styling and test selection
   only — they don't route behaviour.
-
-## Queries
-
-- **Routine load** (`routineLoad`) — a routine's training load as two facts from one walk:
-  `{ total, loadBearing }`. **Load-bearing** is structural, not value-based: a strength
-  routine always is; a recovery routine becomes load-bearing the moment a banded move is
-  placed (before any reps are logged, while `total` is still 0); a rest routine never is.
-  Render reads both facts here rather than re-deriving the banded predicate. A **holiday
-  routine** loads from the Holiday Workout instead (resolved here from the cell's `.holiday`
-  flag), so every caller — including `renderVolumes`' all-weeks scan — counts the right total.
-- **Progression** (`previousSets`) — the most-recent-earlier *non-empty* reading for an
-  exercise before a cursor. Banded moves track too (they log a reps field, so the scan
-  finds them) — their ghost placeholder + "Last:" line show last session's reps. A
-  **holiday routine** is skipped for free: that week logs the band moves, not the
-  routine's normal exercises, so the scan reads the normal exercise as empty there and
-  resumes against the last non-holiday week. The scan has no holiday-specific code — see
-  ADR-0002.
-- **Routine-volume delta** (`previousRoutineTotal`) — the progressive-overload change for a
-  routine vs the **most recent *normal* (non-holiday) session of that routine** — scanning
-  back across weeks and block boundaries (rank like `previousSets`, per routine number) for
-  the latest earlier same-routine that carried load, **skipping holiday weeks** and unlogged
-  weeks. So `normal · holiday · normal` compares the third week to the first, not the
-  holiday one in between. Null on a holiday routine itself (holiday weeks aren't a tracking
-  surface) or when there's no earlier normal session. Shown on the routine-volume line as a
-  signed `+N kg` / `−N kg` chip (green up / amber down); `renderVolumes` patches it live
-  in both the body line and the collapsed summary (shared `data-vol-delta`).

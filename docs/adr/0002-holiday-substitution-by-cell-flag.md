@@ -1,5 +1,9 @@
 # 2. Substitute the Holiday Workout by a per-cell flag, not a per-week placement list
 
+> **Status: Superseded by [ADR-0025](0025-holiday-is-a-swapped-in-session.md).** Holiday is now a
+> plain session swap; per-exercise progression (ADR-0020) makes the cell-flag and progression-skip
+> machinery unnecessary.
+
 Date: 2026-06-08
 
 ## Status
