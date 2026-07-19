@@ -31,8 +31,7 @@ separate and deliberately not redefined here.
 - **Collapsed routine** — a routine folded down to just its header + focus + a one-line
   totals **summary** (strength → volume; recovery → circuit total time, plus volume when
   load-bearing; steady → minutes + resistance; class → class type, minutes + burn; any
-  routine → its **Session RPE**, and — once food is logged — kcal + the full macro line
-  `Nc / Nf / Np`), to cut mobile scroll. State is a persisted
+  routine → its **Session RPE**), to cut mobile scroll. State is a persisted
   per-cell `.collapsed` flag (absent = expanded, like `.done`); completing a routine sets
   it, the header chevron toggles it. The body slides via a grid-row transition — so
   `toggleRoutine` and `afterDone` flip the class in place rather than re-rendering (a
@@ -113,47 +112,6 @@ separate and deliberately not redefined here.
   **weekday**) but takes the Holiday Workout's kind / title / focus / exercises, and the
   band moves log against that same cell. `routineDef("holiday")` resolves the sentinel to
   `state.holiday` so the structural edit handlers reach it through the normal placement path.
-- **Food** — a barcoded product record in the **Pantry**: a name, optional brand, and
-  per-100g nutrition (`kcal`/`carb`/`fat`/`protein` — the same fields the manual
-  nutrition grid used). Identified by its **barcode** (the primary key, so two
-  references to the same product resolve to one Food). Its usual origin is **Open Food
-  Facts**, but a Food can also be **authored locally** when OFF has no record of a
-  scanned/typed barcode.
-- **Trusted Food** — a Food whose numbers a human vouched for from the label, by
-  authoring it locally or hand-correcting it. The single source of authority flips from
-  OFF to the user: an OFF re-lookup must **not** overwrite a trusted Food (ADR-0004),
-  whereas a plain (untrusted) OFF-sourced Food is still refreshed by one. Not a separate
-  noun — a boolean property a Food carries.
-- **Pantry** — the `{ barcode → Food }` catalogue of every food looked up
-  (`state.pantry`). One structure doing two jobs: the **offline cache** (read when a
-  lookup can't reach the network) and the **quick-pick** list (the foods you eat
-  again and again). Populated from Open Food Facts when online, or **authored locally** when OFF has no
-  record of a barcode. **Append-only in membership** — never removed from the UI, like
-  the exercise **Library** and for the same reason: a logged entry references a Food by
-  barcode, so removing one would orphan history. Its *records*, though, are mutable: an
-  untrusted Food is refreshed by an OFF re-lookup, a **trusted** one only by your
-  hand-correction (ADR-0004). Deliberately *not* the
-  service-worker HTTP cache, which is versioned and wiped on every release.
-- **Food entry** — a food eaten on a routine; the nutrition analogue of a **Placement**.
-  Two kinds share one per-routine list: a *pantry entry* `{ barcode, grams }` that
-  references a **Food** in the **Pantry** (nutrition read live, so a later OFF
-  correction reaches the cells that logged it), and an ad-hoc *quick entry*
-  (`{ name, kcal, carb, fat, protein }`) for food with no barcode — loose fruit,
-  meals out — that carries its own numbers. A routine's kcal + macros are the **derived
-  sum** of its entries, replacing the four hand-typed scalars the grid used; a
-  pantry entry contributes `per100g × grams / 100`. Each entry also carries the **meal**
-  it was logged under. Each routine card **tabs** between its Workout (exercises/circuit +
-  classes) and its Nutrition (the food-entry list, grouped by **meal**, + derived totals);
-  the active tab is a per-cell `.tab` flag, kin to `.collapsed`, switched independently per
-  routine.
-- **Meal** — which of *breakfast · lunch · dinner · snack* a **food entry** belongs to,
-  chosen in the finder when the food is logged (pre-selected to the current hour) and stored
-  on the entry as `meal`. The Nutrition tab groups a routine's entries under meal headings,
-  each with its own derived subtotal (the day total is still the sum across all meals). The
-  named, fixed set (`MEALS`) is what lets the **nutrition projection** carry a stable
-  per-meal upsert id and a real Health Connect *MealType* (ADR-0017). A mealless entry (a
-  migrated legacy total, or one from a pre-meal backup) falls back to the first meal
-  (`mealOf`). _Avoid_: category, section (the *rendering* of a meal, not the meal).
 
 ## Store & log
 
@@ -166,23 +124,10 @@ separate and deliberately not redefined here.
   device's Store with the blob. Whole-blob **last-write-wins**, no per-item merge —
   deliberately Phase 1 of device sync (ADR-0006). _Avoid_: sync (the destination, not
   today's behaviour), cloud save.
-- **Nutrition projection** — the app's logged nutrition (kcal + macros) reshaped for an
-  external chart system (Android **Health Connect**) and **published** one-way to it: a
-  derived, lossy, read-only view of the **Store**, one record per logged **meal** on a day,
-  keyed by that day's **cell** + the **meal** (`cell.meal`) and tagged with the meal so the
-  companion can set a native *MealType* — without which Health Connect stores the record but
-  never shows it (ADR-0017, sharpening 0016's per-day record). Categorically *not* an
-  **Export** (the whole round-trippable Store blob) nor a **Drive backup** (a bidirectional
-  twin): there is no read-back, no "restore from Health Connect", no merge — the Store stays
-  the sole source of truth and Health Connect is a downstream sink. **Publish** is its verb
-  (one-way, to a system the app doesn't own), deliberately distinct from **back up** and the
-  reserved **sync**.
-  _ADRs_: 0015, 0016, 0017
-  _Avoid_: export (the whole-Store blob), sync / backup (round-trippable), feed.
 - **Import** — bringing an external block design and new exercises into the **Store** by
   *merging*: a strict subset of an **export** (`library?` / `blocks?`) added additively — new
   library entries appended (never clobbering your edits), a block appended under a fresh id if
-  its id collides, the **log** / **pantry** / profile left untouched. Distinct from **Restore**
+  its id collides, the **log** / profile left untouched. Distinct from **Restore**
   (file or Drive), which overwrites the whole Store wholesale (ADR-0006). A flawed block is
   rejected whole with an error list rather than half-applied (ADR-0009). _Avoid_: restore (the
   wholesale replace), upload, sync.

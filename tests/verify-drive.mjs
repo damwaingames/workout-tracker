@@ -4,7 +4,7 @@ import { GOOGLE_CLIENT_ID } from "../constants.js";
 /* Drive backup (ADR-0006): Phase-1 manual, whole-blob, last-write-wins to the hidden
  * appDataFolder. Headless has no Google session, so the GIS token client is stubbed via
  * addInitScript (hands back a fake access token) and the Drive REST endpoints are routed
- * to a single in-memory blob — the same mock-the-network shape verify-scan uses for OFF.
+ * to a single in-memory blob via page.route.
  * Exercises: the dormant-until-configured gate (buttons hidden with no Client ID), a
  * create → restore round-trip through the shared applyBackup path, and the empty-restore
  * message. The service-worker same-origin guard isn't covered here — the harness blocks

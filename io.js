@@ -32,7 +32,7 @@ function applyBackup(data) {
   }
   // Gate on version explicitly: normalise() resets unknown input to defaults,
   // so without this an incompatible backup would silently wipe current data.
-  if (data.version !== 2 && data.version !== 3 && data.version !== 4) {
+  if (data.version !== 2 && data.version !== 3 && data.version !== 4 && data.version !== 5) {
     window.alert("That backup is from an incompatible version — not importing. Your current data is unchanged.");
     return false;
   }

@@ -1,7 +1,7 @@
 import { verify } from "./harness.mjs";
 
 // ADR-0009: the block importer — a MERGE, not the wholesale Restore. New library exercises are
-// added, block(s) appended (re-id on collision), and the log / pantry / profile left alone.
+// added, block(s) appended (re-id on collision), and the log / profile left alone.
 // All-or-nothing: a structural/semantic fault rejects the import with an error list and changes
 // nothing; cosmetic faults (a non-Monday start) are coerced and reported.
 verify(async ({ page, ck, ls, reset }) => {

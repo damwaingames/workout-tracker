@@ -5,18 +5,17 @@
 
 import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, LOAD_MODES, BANDS } from "./constants.js";
 import {
-  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, foodKey, cellScalarKey,
+  cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, cellScalarKey,
   circuitOf, circuitSummary, circuitTimeLabel, steadyOf, steadySummary, classOf, loadMode, repsLabel, bandFor, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, routineDef, weekSchedule,
-  previousSets, effectiveSets, effectiveRounds, routineLoad, holidaySwap, previousRoutineTotal, previousSteady, previousMeasure, bmiFor, routineNutrition,
+  previousSets, effectiveSets, effectiveRounds, routineLoad, holidaySwap, previousRoutineTotal, previousSteady, previousMeasure, bmiFor,
   classTotals, classTypeNames, logList,
 } from "./state.js";
-import { renderNutrition, renderRoutineFood, nutritionLine } from "./render-nutrition.js";
 
-export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderNutrition(); renderClassTotal(); }
+export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderClassTotal(); }
 
 function renderHeader() {
   const sel = document.getElementById("block-select");
@@ -127,19 +126,8 @@ function renderRoutine(block, d, wk, position) {
     // .routine-collapsible is a one-row grid (1fr ↔ 0fr) so the inner height animates
     // to the content's natural size; the inner clips during the slide.
     '<div class="routine-collapsible"><div class="routine-collapsible-inner">' +
-      // Per-routine tabs: Workout (exercises/circuit + classes) ↔ Nutrition (food entries +
-      // derived totals). The active tab is the persisted .tab cell flag (absent =
-      // workout), reflected by hydrate; both panels render and CSS shows the active one,
-      // so switching is instant and an open finder survives a tab away-and-back.
-      '<div class="routine-tabs" role="tablist">' +
-        '<button class="routine-tab" type="button" role="tab" data-action="routine-tab" data-tab="workout" aria-selected="true">Workout</button>' +
-        '<button class="routine-tab" type="button" role="tab" data-action="routine-tab" data-tab="nutrition" aria-selected="false">Nutrition</button>' +
-      "</div>" +
-      '<div class="routine-panel routine-panel-workout">' +
-        '<div class="routine-body">' + body + "</div>" +
-        sessionExtras +
-      "</div>" +
-      '<div class="routine-panel routine-panel-nutrition">' + renderRoutineFood(cell) + "</div>" +
+      '<div class="routine-body">' + body + "</div>" +
+      sessionExtras +
     "</div></div>" +
     "</div>";
 }
@@ -178,10 +166,6 @@ function routineSummary(block, d, wk, cell) {
   // shows how hard it was. A logged record, not a total — shown only once entered.
   const rpe = state.log[cellScalarKey(cell, "rpe")];
   if (rpe) bits.push("RPE " + esc(rpe));
-  // Nutrition: once any food is logged, the routine's derived kcal + full macro line — so a
-  // collapsed routine still shows what it ate (CONTEXT.md "Collapsed routine"). Rebuilt on every
-  // full render (food add/remove renders), so it needs no live-patch hook like volume.
-  if (logList(foodKey(cell)).length) bits.push(nutritionLine(routineNutrition(cell)));
   return bits.length ? '<div class="routine-summary">' + bits.join(" · ") + "</div>" : "";
 }
 
@@ -745,12 +729,6 @@ export function hydrate() {
     routineEl.classList.toggle("is-collapsed", collapsed);
     const chevron = routineEl.querySelector(".routine-collapse");
     if (chevron) chevron.setAttribute("aria-expanded", String(!collapsed));
-    // Active tab: another absent-or-set per-cell flag (absent = Workout). CSS shows the
-    // matching panel off this class; mirror the buttons' aria-selected for a11y.
-    const nutrition = state.log[cell + ".tab"] === "nutrition";
-    routineEl.classList.toggle("tab-nutrition", nutrition);
-    routineEl.querySelectorAll(".routine-tab").forEach((b) =>
-      b.setAttribute("aria-selected", String((b.dataset.tab === "nutrition") === nutrition)));
   });
 }
 

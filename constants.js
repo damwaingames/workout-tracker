@@ -1,8 +1,8 @@
 /* Shared constants — imported by every other module. No dependencies of its own. */
 
 export const WEEKS = 4;
-// 1..WEEKS as a list, for the all-weeks scans (block totals, the nutrition migration) —
-// named once so the `Array.from(…, i + 1)` incantation isn't rebuilt at each call site.
+// 1..WEEKS as a list, for the all-weeks scans (block totals) — named once so the
+// `Array.from(…, i + 1)` incantation isn't rebuilt at each call site.
 // Read-only by every consumer (forEach / map), so a single shared array is safe.
 export const ALL_WEEKS = Array.from({ length: WEEKS }, (_, i) => i + 1);
 export const STORAGE_KEY = "workout-tracker-v2";
@@ -24,30 +24,6 @@ export const WINDDOWN_DEFAULTS = { durationMin: 10 };
 // has one home. Which hold placed exercises: `strength`, `recovery`, `steady` (the contexts —
 // ADR-0011); `rest` holds nothing; `class` holds a class type + duration, not exercises (ADR-0010).
 export const ROUTINE_KINDS = ["strength", "recovery", "steady", "rest", "class"];
-// The four nutrition fields, in display order. A routine's totals are the derived sum of
-// its food entries (see routineNutrition); a quick entry stores these `id`s directly, a
-// pantry entry derives them from its Food's per-100g values. `id` is the field key
-// (in entries, per100g, and the quick-entry form), `head` the short label, `unit` its
-// small print, `label` the aria name, and `off` the Open Food Facts nutriment key the
-// lookup reads to build per100g — so the OFF field names live in exactly one place.
-export const NUTRIENTS = [
-  { id: "kcal", label: "Calories", head: "Cals", unit: "kcal", off: "energy-kcal_100g" },
-  { id: "carb", label: "Carbs", head: "Carbs", unit: "g", off: "carbohydrates_100g" },
-  { id: "fat", label: "Fat", head: "Fat", unit: "g", off: "fat_100g" },
-  { id: "protein", label: "Protein", head: "Protein", unit: "g", off: "proteins_100g" },
-];
-// The four meals a food entry can be logged under, in day order. A food entry carries its
-// `meal` id (see mealOf, which defaults a mealless/legacy entry to the first); the Nutrition
-// tab groups entries under these headings, and the Health Connect projection emits one record
-// per logged meal, tagged with this `id` — the companion maps it to a native MealType so the
-// day's food lands in the right meal in Google Health (ADR-0017, amending 0016). `id` is the
-// stored key + projection tag; `label` is the heading. One home for "what meals exist".
-export const MEALS = [
-  { id: "breakfast", label: "Breakfast" },
-  { id: "lunch", label: "Lunch" },
-  { id: "dinner", label: "Dinner" },
-  { id: "snack", label: "Snack" },
-];
 // How a strength exercise's logged set maps to tonnage (weight × reps). The
 // stored weight/reps are always exactly what the user typed; a non-standard mode
 // only scales that set's contribution to the volume total and relabels one input.
@@ -102,4 +78,4 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each
 // deploy and keep CACHE in sw.js in lockstep — it carries the same number.
-export const APP_VERSION = "3.5.0";
+export const APP_VERSION = "4.0.0";

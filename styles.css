@@ -264,26 +264,6 @@ nav.weeks {
   .routine-collapse, .routine-collapsible { transition: none; }
 }
 
-/* Per-routine Workout | Nutrition tabs. Both panels render; CSS shows the one matching the
-   routine's .tab-nutrition class (set by hydrate / routineTab), so switching is instant. Workout
-   is the default (flag absent). The active tab's underline is derived from that same
-   class, so the buttons need no own state class. */
-.routine-tabs { display: flex; gap: .4rem; margin-top: .85rem; border-bottom: 1px solid var(--border); }
-.routine-tab {
-  background: none; border: 0; cursor: pointer; font: inherit;
-  font-size: .82rem; color: var(--muted);
-  padding: .35rem .15rem; margin-bottom: -1px;
-  border-bottom: 2px solid transparent;
-}
-.routine-tab:hover { color: var(--text); }
-.routine:not(.tab-nutrition) .routine-tab[data-tab="workout"],
-.routine.tab-nutrition .routine-tab[data-tab="nutrition"] {
-  color: var(--text); font-weight: 600; border-bottom-color: var(--workout);
-}
-.routine-panel-nutrition { display: none; padding-top: .85rem; }
-.routine.tab-nutrition .routine-panel-workout { display: none; }
-.routine.tab-nutrition .routine-panel-nutrition { display: block; }
-
 .routine-body { margin-top: .85rem; display: flex; flex-direction: column; gap: .8rem; }
 
 .exercise { border-top: 1px solid var(--border); padding-top: .7rem; }
@@ -517,7 +497,7 @@ textarea { width: 100%; resize: vertical; }
   cursor: pointer;
 }
 
-.notes-card, .measurements-card, .nutrition-card {
+.notes-card, .measurements-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -525,7 +505,7 @@ textarea { width: 100%; resize: vertical; }
   margin-top: 1.5rem;
   box-shadow: var(--shadow);
 }
-.notes-card h2, .measurements-card h2, .nutrition-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
+.notes-card h2, .measurements-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
 
 .measure-row { display: flex; align-items: center; gap: .5rem; padding: .45rem 0; border-top: 1px solid var(--border); }
 .measure-row:first-of-type { border-top: none; }
@@ -542,96 +522,6 @@ textarea { width: 100%; resize: vertical; }
 .bmi-line strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .measure-height { margin-top: .7rem; }
 .measure-height input { width: 5rem; }
-
-/* Food block — a routine's list of entries, a derived routine total, and the add finder. Lives
- * in each routine card's Nutrition tab (.routine-panel-nutrition); the .food-* styling is shared
- * with the Nutrition card's Week / Block roll-ups below. */
-.food-list { list-style: none; margin: .35rem 0 .3rem; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
-.food-item { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; font-size: .82rem; }
-.food-text { flex: 1; min-width: 0; }
-.food-name { font-weight: 600; color: var(--text); }
-.food-detail { color: var(--muted); font-variant-numeric: tabular-nums; }
-.food-kcal { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.food-total { font-size: .8rem; color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
-.food-add-btn { padding: .2rem 0; }
-/* Meal grouping: each logged meal is a small section with a heading + its own subtotal; only
- * meals that logged something render. The day total (.food-total) sits under them all. */
-.food-meal { margin-bottom: .45rem; }
-.food-meal-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem;
-  font-size: .68rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
-  border-bottom: 1px solid var(--border); padding-bottom: .12rem; }
-.food-meal-name { font-weight: 700; }
-.food-meal-sub { font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* The finder's meal picker — pill radios; the checked one is emphasised (:has). */
-.food-meal-select { display: flex; flex-wrap: wrap; gap: .3rem; }
-.food-meal-opt { display: inline-flex; align-items: center; gap: .25rem; font-size: .78rem;
-  padding: .18rem .5rem; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; }
-.food-meal-opt:has(input:checked) { border-color: var(--text); color: var(--text); font-weight: 600; }
-/* The finder: a search/barcode row, a results list (Pantry quick-pick or Open Food
- * Facts hits), the quick-entry fallback, and Close. Revealed by "＋ Add food". */
-.food-finder { margin-top: .4rem; display: flex; flex-direction: column; gap: .5rem; padding: .55rem; border: 1px solid var(--border); border-radius: 8px; background: var(--sunken); }
-.food-finder[hidden] { display: none; }
-.food-search-row { display: flex; gap: .4rem; }
-.food-search { flex: 1; min-width: 0; }
-.food-scan-btn { white-space: nowrap; }
-/* The camera preview (Chrome/Android — ADR-0003), revealed by Scan. */
-.food-scanner { display: flex; flex-direction: column; gap: .4rem; align-items: center; }
-/* display:flex above outweighs the UA [hidden]{display:none}; make hidden win, the
- * same gotcha the .food-quick-form[hidden] rule guards against. */
-.food-scanner[hidden] { display: none; }
-.scan-video { width: 100%; max-width: 22rem; aspect-ratio: 4 / 3; background: #000; border-radius: 8px; object-fit: cover; }
-.food-results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .3rem; max-height: 14rem; overflow-y: auto; }
-.food-result { display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .5rem; }
-.food-result-pick { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; text-align: left; background: var(--control); border: 1px solid var(--border); border-radius: 6px; padding: .35rem .5rem; font: inherit; cursor: pointer; }
-.food-result-pick:hover { border-color: var(--workout); }
-.food-result-name { font-weight: 600; font-size: .85rem; color: var(--text); }
-.food-result-meta { font-size: .72rem; color: var(--muted); }
-.food-result-empty { color: var(--muted); font-size: .8rem; }
-.food-grams-form { display: flex; align-items: center; gap: .35rem; flex-basis: 100%; }
-.food-grams-form[hidden] { display: none; }
-.food-grams-form input[name="grams"] { width: 4.5rem; text-align: center; }
-.food-grams-unit { font-size: .8rem; color: var(--muted); }
-.food-quick { margin-top: .1rem; }
-.food-quick-form { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
-/* display:flex above outweighs the UA [hidden]{display:none} (equal specificity,
- * author wins), so make hidden authoritative — else the add form shows unprompted.
- * Same gotcha the .picker-form[hidden] rule guards against. */
-.food-quick-form[hidden] { display: none; }
-.food-quick-form input[name="name"] { flex: 1 1 8rem; }
-.food-quick-form input[type="number"] { flex: 1 1 4rem; min-width: 0; text-align: center; -moz-appearance: textfield; }
-/* Hide the number spinner so the macro inputs stay narrow (matches the old grid). */
-.food-quick-form input[type="number"]::-webkit-outer-spin-button,
-.food-quick-form input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.food-quick-form .form-actions { flex-basis: 100%; }
-/* In-place row editors (grams / quick) + the Food details author-or-correct form. The row
- * editors sit inside the flex-wrap .food-item, so flex-basis:100% drops them onto their own
- * line; like the other finder forms, make [hidden] win over their display:flex. */
-.food-macros { color: var(--muted); font-variant-numeric: tabular-nums; }
-.food-edit-btn { font-size: .72rem; white-space: nowrap; }
-.food-grams-edit-form { display: flex; align-items: center; gap: .35rem; flex-basis: 100%; margin-top: .25rem; }
-.food-grams-edit-form input[name="grams"] { width: 4.5rem; text-align: center; }
-.food-quick-edit-form,
-.food-detail-form { display: flex; flex-wrap: wrap; gap: .4rem; flex-basis: 100%; margin-top: .3rem; }
-.food-grams-edit-form[hidden],
-.food-quick-edit-form[hidden],
-.food-detail-form[hidden] { display: none; }
-.food-detail-head { flex-basis: 100%; margin: 0; }
-.food-detail-form input[name="name"] { flex: 1 1 8rem; }
-.food-detail-form input[name="brand"] { flex: 1 1 6rem; }
-.food-quick-edit-form input[name="name"] { flex: 1 1 8rem; }
-.food-quick-edit-form input[type="number"],
-.food-detail-form input[type="number"] { flex: 1 1 4rem; min-width: 0; text-align: center; -moz-appearance: textfield; }
-.food-quick-edit-form input[type="number"]::-webkit-outer-spin-button,
-.food-quick-edit-form input[type="number"]::-webkit-inner-spin-button,
-.food-detail-form input[type="number"]::-webkit-outer-spin-button,
-.food-detail-form input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.food-quick-edit-form .form-actions,
-.food-detail-form .form-actions { flex-basis: 100%; }
-.nut-totals { margin-top: 1rem; padding-top: .6rem; border-top: 1px dashed var(--border); display: flex; flex-direction: column; gap: .2rem; }
-.nut-total-line { font-size: .82rem; font-variant-numeric: tabular-nums; }
-.nut-total-label { font-weight: 600; display: inline-block; min-width: 3rem; color: var(--text); }
-.nut-avg { margin-top: .55rem; font-variant-numeric: tabular-nums; }
-.nut-publish { margin-top: .8rem; }
 
 footer { margin-top: 2rem; }
 .utils { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
