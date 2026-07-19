@@ -114,12 +114,18 @@ separate and deliberately not redefined here.
   Logs actual minutes + the level; progression is the resistance **ghost** (last session's level
   + minutes). _ADRs_: 0019. _Avoid_: cardio (the activity); interval (a multi-round **circuit**).
 - **Class** — the one **routine** that is not a **session**: an external attended group session
-  (Box-Fit, Pilates) you *log* rather than compose — done, actual minutes, a **note**, and the
-  **calorie burn** read from your wearable. Deliberately never modelled as an **item** or a
-  degenerate exercise — that fold is the failure every other tracker makes. Holds one **class
-  type** (a name, matched case-insensitively so "box-fit" reuses "Box-Fit") + a planned
-  **duration**. _ADRs_: 0014, 0019. _Avoid_: degenerate exercise; the retired "extra class on any
-  day" add-on.
+  (Box-Fit, Pilates) you *log* rather than compose. Deliberately never modelled as an **item** or a
+  degenerate exercise — that fold is the failure every other tracker makes. A class **routine** holds
+  only the *plan*: a reference to a **class type** + a planned **duration**. _ADRs_: 0014, 0019, 0030.
+  _Avoid_: degenerate exercise; the retired "extra class on any day" add-on.
+- **Class type** — a **first-class entity** (a name, matched case-insensitively so "box-fit" reuses
+  "Box-Fit") that **owns its attendance history**, exactly as an **exercise** owns its
+  **performances** (ADR-0020) — the class sibling of the **Library**. Kept in the `classes`
+  catalogue; a **block**'s class routine references it, so deleting a block keeps every attendance.
+  _ADRs_: 0030. _Avoid_: "a class type is just a name" (the pre-v6 derived-only stance).
+- **Attendance** — one logged occurrence of a **class**: a date, actual **minutes**, the wearable's
+  **calorie burn** (ADR-0014), and a **note**. The atomic unit of a **class type**'s history — the
+  class analogue of a **Performance**. _ADRs_: 0030.
 - **Wind-down** — a **daily mobility habit**: an evening stretch done most nights (a weekly target
   of ~6 of 7, typically skipping Sunday), *winged* by feel rather than a fixed plan. Tracked
   *outside* the **block** as weekly adherence (like body **measurements**); any stretches logged are
@@ -140,8 +146,10 @@ separate and deliberately not redefined here.
 
 ## Store & log
 
-- **Store** — the single mutable `state` object (blocks, library, log, ui, …),
-  persisted whole to localStorage. Reassigned only through `setState`.
+- **Store** — the single mutable `state` object (blocks, library, classes, log, ui, …),
+  persisted whole to localStorage. Reassigned only through `setState`. Exercise **performance**
+  history lives on `library` records and class **attendance** history on `classes` records
+  (ADR-0020/0030); a **block** is a plan **container** and owns no logged history.
 - **Drive backup** — the whole **Store** as a single blob in the app's *hidden*
   Google Drive folder, in the same form a file **export** produces (so the two are
   interchangeable). The cloud twin of the Store, moved by hand: *Back up to Drive*
@@ -156,14 +164,16 @@ separate and deliberately not redefined here.
   (file or Drive), which overwrites the whole Store wholesale (ADR-0006). A flawed block is
   rejected whole with an error list rather than half-applied (ADR-0009). _Avoid_: restore (the
   wholesale replace), upload, sync.
-- **Log** — the flat `state.log` map. Keys are built through the key-grammar helpers
-  (`cellKey`, `setKey`, `bandKey`, `classesKey`, …) and nowhere else.
-- **Cell** — a `block/week/routine` coordinate (`cellKey`); the prefix every routine-scoped
-  log key is hung off. The coordinate's wire format keeps its historical `.d{routineNumber}`
-  segment — frozen so existing logs aren't orphaned by the day→routine rename (ADR-0005),
-  even though the value is the routine number, not a weekday. The `block.id` prefix is
-  load-bearing: `purgeBlockLog(blockId)` deletes a block's whole log in one prefix sweep
-  (the rule, made executable).
+- **Log** — the flat `state.log` map, now **slim**: the exercise-effort key grammar re-homed to the
+  exercise timelines at v6 (ADR-0020), so the log carries only per-occurrence data no entity owns —
+  **Session RPE** (ADR-0012), the done flag — plus weekly body **measurements**. Keys are built
+  through the surviving key-grammar helpers (`cellKey`, `cellScalarKey`, `measureKey`) and nowhere else.
+- **Cell** — a `block/week/position` coordinate (`cellKey`), the prefix an occurrence-scalar key
+  hangs off; `.d{position}` is the routine's 0-based slot in the weekly template. The `block.id`
+  prefix is load-bearing: deleting a block sweeps its occurrence + measurement keys in one prefix
+  pass (`deleteBlock`) — never touching **performances** / **attendances**, which live on their
+  entities (ADR-0020/0030), so the delete is safe. Supersedes the pre-v6 `purgeBlockLog` (which
+  deleted logged history keyed to the wrong owner).
 
 ## Conventions
 

@@ -10,7 +10,10 @@ import { GOOGLE_CLIENT_ID } from "../constants.js";
  * message. The service-worker same-origin guard isn't covered here — the harness blocks
  * the SW outright, and it's offline-only progressive enhancement. */
 verify(async ({ page, ck, reset, ls }) => {
-  const wKey = "b1.w1.d1.ex.goblet-squats.s0.w";
+  // The notes field is the mutable value we back up / restore through the shared applyBackup path
+  // (the old weight inputs are gone this slice — the Drive transport itself is untouched infra).
+  const setNotes = (v) => page.fill("#notes-field", v);
+  const notesOf = async () => (await ls()).notes;
 
   // --- the fake Drive: one blob in appDataFolder (null until first backup) ---
   let file = null;
@@ -81,42 +84,42 @@ verify(async ({ page, ck, reset, ls }) => {
     });
   }
 
-  // ---- 2) Back up: a logged value pushes the whole Store to the Drive blob ----
-  await page.fill('[data-cell="b1.w1.d1"] .w', "42");
+  // ---- 2) Back up: a local change pushes the whole Store to the Drive blob ----
+  await setNotes("backed up notes");
   await page.waitForTimeout(40);
   await page.click('[data-action="drive-push"]');
   await page.waitForFunction(() => document.getElementById("drive-status").textContent.includes("Backed up"));
   ck("backup created a Drive blob", !!file);
-  ck("backup pushed the whole Store (logged value present)",
-    JSON.parse(file.content).log[wKey] === "42");
+  ck("backup pushed the whole Store (notes present)",
+    JSON.parse(file.content).notes === "backed up notes");
 
   // ---- 3) Restore: a local change is replaced wholesale by the Drive blob ----
-  await page.fill('[data-cell="b1.w1.d1"] .w', "99");
+  await setNotes("local change");
   await page.waitForTimeout(40);
-  ck("local value changed before restore", (await ls()).log[wKey] === "99");
+  ck("local value changed before restore", (await notesOf()) === "local change");
   await page.click('[data-action="drive-pull"]');
   await page.waitForFunction(() => document.getElementById("drive-status").textContent.includes("Restored"));
-  ck("restore replaced local Store from the Drive blob", (await ls()).log[wKey] === "42");
-  ck("restore re-rendered the field", (await page.inputValue('[data-cell="b1.w1.d1"] .w')) === "42");
+  ck("restore replaced local Store from the Drive blob", (await notesOf()) === "backed up notes");
+  ck("restore re-rendered the field", (await page.inputValue("#notes-field")) === "backed up notes");
 
   // ---- 4) Empty restore: no blob yet → a plain message, nothing destroyed ----
   file = null;
-  await page.fill('[data-cell="b1.w1.d1"] .w', "77");
+  await setNotes("kept local");
   await page.waitForTimeout(40);
   await page.click('[data-action="drive-pull"]');
   await page.waitForTimeout(80);
   ck("empty restore shows the no-backup message",
     dialogs.some((m) => m.includes("No Drive backup found yet")));
-  ck("empty restore left local data untouched", (await ls()).log[wKey] === "77");
+  ck("empty restore left local data untouched", (await notesOf()) === "kept local");
 
   // ---- 5) Incompatible blob: the shared version gate rejects it via the Drive path, ----
   //         and the local Store survives — restore's all-or-nothing safety claim.
   file = { id: "fX", content: JSON.stringify({ version: 1, blocks: [{ id: "bX" }] }), modifiedTime: stamp() };
-  await page.fill('[data-cell="b1.w1.d1"] .w', "55");
+  await setNotes("still here");
   await page.waitForTimeout(40);
   await page.click('[data-action="drive-pull"]');
   await page.waitForTimeout(80);
   ck("incompatible Drive blob is rejected by the version gate",
     dialogs.some((m) => m.includes("incompatible version")));
-  ck("rejected restore left local data untouched", (await ls()).log[wKey] === "55");
+  ck("rejected restore left local data untouched", (await notesOf()) === "still here");
 });
