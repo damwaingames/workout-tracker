@@ -8,7 +8,7 @@
  * code like any other verify-*.mjs — it just never launches Playwright. */
 
 import { normalise, setState, state, deleteBlock, performancesOf, prsOf, newBlockTemplate } from "../state.js";
-import { zoneOf, e1rm } from "../helpers.js";
+import { zoneOf, e1rm, bandKg } from "../helpers.js";
 
 let pass = 0, fail = 0;
 const ck = (label, cond) => { (cond ? pass++ : fail++); console.log((cond ? "ok  " : "FAIL") + "  " + label); };
@@ -27,15 +27,21 @@ function v5store() {
       "high-knees": { id: "high-knees", name: "High Knees", contexts: ["recovery"] },
       "banded-hip-abductions": { id: "banded-hip-abductions", name: "Banded Hip Abductions", contexts: ["recovery"], banded: true, defaultBand: "medium", targetReps: "10–15" },
       "seated-elliptical": { id: "seated-elliptical", name: "Seated Elliptical", contexts: ["steady"], levels: 10 },
+      // a full-size anchored band → long-band family (not mini-loop) — the family the old data never recorded
+      "band-face-pulls": { id: "band-face-pulls", name: "Band Face Pulls", contexts: ["strength"], banded: true, defaultBand: "light", targetReps: "15", setup: "Full-size band anchored at face height. Pull toward your face." },
+      // a timed hold: strength context but NO rep range → must migrate as time/none, not reps/kg
+      "wall-posture-holds": { id: "wall-posture-holds", name: "Wall Posture Holds", contexts: ["strength", "recovery"], setup: "Back to the wall, hold." },
     },
     blocks: [{
       id: "b1", name: "Block 1", createdAt: "2026-06-01", startDate: "2026-06-01", // a Monday
       routines: [
-        { routine: 1, kind: "strength", title: "Workout A", focus: "Squat & Row", exercises: [{ id: "goblet-squats", sets: 2 }, { id: "bent-over-rows", sets: 2 }, { id: "banded-clamshells", sets: 1 }] },
+        { routine: 1, kind: "strength", title: "Workout A", focus: "Squat & Row", exercises: [{ id: "goblet-squats", sets: 2 }, { id: "bent-over-rows", sets: 2 }, { id: "banded-clamshells", sets: 1 }, { id: "band-face-pulls", sets: 1 }] },
         { routine: 2, kind: "recovery", title: "Recovery A", focus: "Flush", exercises: [{ id: "high-knees" }, { id: "banded-hip-abductions" }], rounds: 2, workSec: 60, restSec: 15, roundRestSec: 0 },
         { routine: 3, kind: "steady", title: "Cardio", focus: "Zone 2", exercises: [{ id: "seated-elliptical" }], durationMin: 30 },
         { routine: 4, kind: "class", title: "Class", focus: "", classType: "Box-Fit", durationMin: 45 },
         { routine: 5, kind: "rest", title: "Rest", focus: "", exercises: [] },
+        // an empty steady routine (names no activity) that still logged a session — must not be lost
+        { routine: 6, kind: "steady", title: "Cardio 2", focus: "", exercises: [], durationMin: 30 },
       ],
     }],
     log: {
@@ -45,12 +51,15 @@ function v5store() {
       [D(1) + ".ex.bent-over-rows.s0.w"]: "20", [D(1) + ".ex.bent-over-rows.s0.r"]: "12",
       // banded strength move: a per-cell band tier + a reps field (no weight)
       [D(1) + ".ex.banded-clamshells.band"]: "heavy", [D(1) + ".ex.banded-clamshells.s0.r"]: "15",
+      // a long-band set, no per-cell band tier → falls back to the exercise default (light)
+      [D(1) + ".ex.band-face-pulls.s0.r"]: "15",
       // circuit: two done rounds (timed station) + a banded move logging reps per round
       [D(2) + ".ex.high-knees.r0"]: true, [D(2) + ".ex.high-knees.r1"]: true,
       [D(2) + ".ex.banded-hip-abductions.band"]: "light",
       [D(2) + ".ex.banded-hip-abductions.rr0"]: "12", [D(2) + ".ex.banded-hip-abductions.rr1"]: "10",
-      // steady: actual minutes + machine level
+      // steady: actual minutes + machine level (routine 3 names the elliptical; routine 6 doesn't)
       [D(3) + ".mins"]: "32", [D(3) + ".resist"]: "6",
+      [D(6) + ".mins"]: "25", [D(6) + ".resist"]: "7",
       // class: actual minutes + wearable burn + note
       [D(4) + ".mins"]: "45", [D(4) + ".kcal"]: "400", [D(4) + ".note"]: "great session",
       // occurrence scalars + a measurement + a schedule
@@ -75,6 +84,10 @@ ck("zoneOf: 15 reps → endurance", zoneOf(15) === "endurance");
 ck("zoneOf: 0 reps → null", zoneOf(0) === null);
 ck("e1rm: Epley 40kg×10 = 53.33", Math.abs(e1rm(40, 10) - 40 * (1 + 10 / 30)) < 1e-9);
 ck("e1rm: bodyweight (0kg) → null", e1rm(0, 10) === null);
+// band tier→kg is per family (ADR-0029): a mini-loop "heavy" ≠ a long-band "heavy"
+ck("bandKg: mini-loop heavy = 19", bandKg("mini-loop", "heavy") === 19);
+ck("bandKg: long-band light = 20", bandKg("long-band", "light") === 20);
+ck("bandKg: families differ at the same tier", bandKg("mini-loop", "medium") !== bandKg("long-band", "medium"));
 
 // --- run the migration ---
 setState(normalise(v5store()));
@@ -116,8 +129,22 @@ ck("banded circuit reps → 2 rep performances", ha.length === 2 && ha[0].volume
 ck("banded circuit uses its cell band tier (light)", ha[0].load.metric === "mini-loop" && ha[0].load.mag === "light");
 
 const se = performancesOf("seated-elliptical");
-ck("steady session → 1 performance", se.length === 1);
+ck("steady sessions → 2 performances (named routine + recovered empty one)", se.length === 2);
 ck("steady performance = level 6, 32 min (1920s)", se[0].load.metric === "machine-level" && se[0].load.mag === 6 && se[0].volume.val === 32 * 60);
+// an empty steady routine (no named activity) that logged a session is recovered onto the sole
+// machine-level exercise, so no logged steady session is lost.
+ck("empty steady routine recovered onto the sole machine activity (25 min, L7)",
+  se.some((p) => p.volume.val === 25 * 60 && p.load.mag === 7));
+
+// A full-size anchored band migrates to the long-band family, keying kg off the right table.
+const fp = performancesOf("band-face-pulls");
+ck("full-size anchored band → long-band family", state.library["band-face-pulls"].loadMetric === "long-band");
+ck("long-band performance created (default tier light)", fp.length === 1 && fp[0].load.metric === "long-band" && fp[0].load.mag === "light");
+ck("long-band e1RM uses the long-band table (light=20kg × 15)", (() => { const pr = prsOf("band-face-pulls"); return pr.topE1rm && Math.abs(pr.topE1rm.value - e1rm(20, 15)) < 1e-9; })());
+
+// A timed hold (strength context, but no rep range) migrates as time/none, not reps/kg.
+ck("timed hold (no rep range) → time volume, no load",
+  state.library["wall-posture-holds"].volume === "time" && state.library["wall-posture-holds"].loadMetric === "none");
 
 // Class occurrences became Attendances on a first-class ClassType (ADR-0030).
 ck("class type catalogue exists", state.classes && state.classes["box-fit"]);
@@ -130,7 +157,7 @@ ck("attendance dated (Wed... routine 4 = 4 Jun)", att[0].date === "2026-06-04");
 const t = state.blocks[0].template;
 ck("block has a 7-day template", Array.isArray(t) && t.length === 7);
 ck("strength routine → Session", t[0].kind === "session");
-ck("strength → one lone-item Group per exercise (straight sets)", t[0].groups.length === 3 && t[0].groups[0].items.length === 1 && t[0].groups[0].rounds === 2);
+ck("strength → one lone-item Group per exercise (straight sets)", t[0].groups.length === 4 && t[0].groups[0].items.length === 1 && t[0].groups[0].rounds === 2);
 ck("recovery routine → Session with one circuit Group", t[1].kind === "session" && t[1].groups.length === 1 && t[1].groups[0].items.length === 2 && t[1].groups[0].restWithin === 15);
 ck("steady routine → Session with a one-round Group", t[2].kind === "session" && t[2].groups[0].rounds === 1);
 ck("class routine → Class", t[3].kind === "class" && t[3].classType === "box-fit" && t[3].durationMin === 45);
@@ -158,7 +185,7 @@ const pr = prsOf("goblet-squats");
 ck("PR: top e1RM derived from history", pr && pr.kind === "reps" && pr.topE1rm && Math.abs(pr.topE1rm.value - e1rm(40, 10)) < 1e-9);
 ck("PR: per-zone best present", pr.byZone && pr.byZone.hypertrophy);
 const spr = prsOf("seated-elliptical");
-ck("PR (time exercise): longest + top level", spr.kind === "time" && spr.longest.volume.val === 1920 && Number(spr.topLevel.load.mag) === 6);
+ck("PR (time exercise): longest effort (32 min) + top level (7)", spr.kind === "time" && spr.longest.volume.val === 1920 && Number(spr.topLevel.load.mag) === 7);
 
 // Deleting a block removes only the plan — performances + attendances survive (ADR-0020/0030).
 state.blocks.push(newBlockTemplate("b2", "Block 2"));

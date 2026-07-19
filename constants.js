@@ -47,12 +47,13 @@ export const BAND_TIERS = [
   { id: "heavy", label: "Heavy" },
   { id: "x-heavy", label: "X-Heavy" },
 ];
-// The two band families, each with its own approximate tier→kg equivalent. A band has no true
-// fixed weight (resistance climbs as it stretches), so these are rough proxies used only to feed
-// the volume-load readout and e1RM (which needs a real kg) — never a progression metric (ADR-0029).
+// The two band families, each with its own tier→kg equivalent (the user's real measured
+// resistances). A band has no true fixed weight (resistance climbs as it stretches), so these are
+// approximations used only to feed the volume-load readout and e1RM (which needs a real kg) — never
+// a progression metric (ADR-0029). A mini-loop "heavy" (19 kg) is not a long-band "heavy" (41 kg).
 export const BAND_FAMILIES = {
-  "mini-loop": { label: "Mini-loop", kg: { "x-light": 3, light: 5, medium: 8, heavy: 10, "x-heavy": 12 } },
-  "long-band": { label: "Long resistance-band", kg: { "x-light": 5, light: 9, medium: 16, heavy: 23, "x-heavy": 32 } },
+  "mini-loop": { label: "Mini-loop", kg: { "x-light": 4.5, light: 8, medium: 13.5, heavy: 19, "x-heavy": 25 } },
+  "long-band": { label: "Long resistance-band", kg: { "x-light": 11, light: 20, medium: 32, heavy: 41, "x-heavy": 54 } },
 };
 // The neutral starting tier when a banded move is first placed — the middle of the ladder.
 export const DEFAULT_BAND_TIER = BAND_TIERS[Math.floor(BAND_TIERS.length / 2)].id;

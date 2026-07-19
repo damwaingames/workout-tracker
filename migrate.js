@@ -28,12 +28,14 @@ function oldContexts(ex) {
 }
 
 // Which band family an old banded move belongs to (the old model had one shared tier ladder and
-// didn't record the family). The seeded banded moves are all loop-style (thighs / knees / ankles),
-// and the old tier→kg table used mini-loop midpoints, so mini-loop is the faithful default; only a
-// door-anchored / long-band cue tips it the other way. Refine per-exercise in the Library (#50).
+// never recorded the family). Loop-style moves cue the band around a body part (thighs / knees /
+// ankles) or call it a "mini-band"; long resistance-band moves cue a "full-size" band that is
+// "anchored" (to a door / low point). Keying on those long-band phrases classifies the real library
+// exactly (13 mini-loops vs 4 anchored long-bands); anything unrecognised defaults to the more
+// common mini-loop. Reclassify per-exercise in the Library later (#50) if any slips through.
 function bandFamilyOf(ex) {
   const t = ((ex.setup || "") + " " + (ex.name || "")).toLowerCase();
-  return /door|anchor|handle|long[- ]band/.test(t) ? "long-band" : "mini-loop";
+  return /full[- ]size|anchor|door|handle|long[- ]band/.test(t) ? "long-band" : "mini-loop";
 }
 
 // Best-effort equipment tags from the inferred load metric (the old model had no equipment). Only
@@ -50,16 +52,21 @@ function migrateExercise(ex) {
   const contexts = oldContexts(ex);
   const banded = !!ex.banded;
   const hasLevels = Number(ex.levels) > 0;
-  // Load metric: a band family for a banded move, a machine level for a levelled activity, kg for
-  // free-weight strength (bodyweight is just 0 kg), else none (a timed skill / stretch).
-  let loadMetric;
-  if (banded) loadMetric = bandFamilyOf(ex);
-  else if (hasLevels) loadMetric = "machine-level";
-  else if (contexts.includes("strength")) loadMetric = "kg";
-  else loadMetric = "none";
-  // Volume type: reps for anything loaded on kg or a band (they log a rep count); time for a
-  // machine level (a steady ride) or a resistance-free move (a timed station / stretch).
-  const volume = (loadMetric === "machine-level" || loadMetric === "none") ? "time" : "reps";
+  const rail = parseRail(ex.targetReps); // a parseable rep range ("8–12 each leg" → [8,12]) marks a rep move
+  // Volume + load metric, in priority order — the old model didn't store either, so both are
+  // inferred from the intrinsic signals it did carry:
+  //   banded            → reps against a band family (banded moves log a rep count);
+  //   levelled machine  → a timed effort against a machine level (steady cardio);
+  //   a mobility-only move → a timed, resistance-free move (held / flowed by feel);
+  //   has a rep range   → reps against kg (bodyweight is just 0 kg);
+  //   otherwise         → time, no load — a timed hold / conditioning station with no rep range
+  //                        (this is what rescues holds like hollow-body-holds from being read as reps).
+  let loadMetric, volume;
+  if (banded) { loadMetric = bandFamilyOf(ex); volume = "reps"; }
+  else if (hasLevels) { loadMetric = "machine-level"; volume = "time"; }
+  else if (contexts.includes("mobility") && !contexts.includes("strength")) { loadMetric = "none"; volume = "time"; }
+  else if (rail) { loadMetric = "kg"; volume = "reps"; }
+  else { loadMetric = "none"; volume = "time"; }
 
   const out = { id: ex.id, name: ex.name, volume, loadMetric, equipment: equipmentFor(loadMetric, contexts) };
   if (ex.setup) out.setup = ex.setup;
@@ -67,9 +74,8 @@ function migrateExercise(ex) {
   // Loading mode survives only for its narrowed job (tonnage honesty — ADR-0029); standard is the
   // default, so it is omitted rather than stored.
   if (ex.loadMode && ex.loadMode !== "standard") out.loadMode = ex.loadMode;
-  // A rep exercise carries a default rail, parsed from the old free-text `targetReps` ("8–12 each
-  // leg" → [8,12]); an unparseable target falls back to the default range.
-  if (volume === "reps") out.defaultRail = parseRail(ex.targetReps) || DEFAULT_RAIL.slice();
+  // A rep exercise carries a default rail — its parsed old target, else the default range.
+  if (volume === "reps") out.defaultRail = rail || DEFAULT_RAIL.slice();
   out.performances = [];
   return out;
 }
@@ -249,6 +255,12 @@ function walkLog(store, lib, classes, classIdOf) {
     return fmtYMD(scheduledDate(b.startDate, wk, posOf[blockId](wk, rt)));
   };
   const push = (exId, perf) => { if (lib[exId]) lib[exId].performances.push(perf); };
+  // A steady routine logged its minutes/level on the CELL, not on an exercise, so an old steady
+  // routine that never named its activity (an empty exercises list) would strand that session with
+  // no owner. Recover it to the library's sole machine-level activity when there's exactly one
+  // (there is — the seated elliptical), so no logged steady session is lost.
+  const machineIds = Object.keys(lib).filter((id) => lib[id].loadMetric === "machine-level");
+  const soleMachineId = machineIds.length === 1 ? machineIds[0] : null;
 
   // Pass 2a — strength sets. A banded strength move logs reps against a band tier; a free-weight
   // move logs weight × reps (weight absent = bodyweight, 0 kg). Either way a Performance needs a
@@ -296,7 +308,7 @@ function walkLog(store, lib, classes, classIdOf) {
     if (r.kind === "steady") {
       const mins = Number(sc.mins);
       if (mins > 0) {
-        const exId = r.exercises[0] && r.exercises[0].id;
+        const exId = (r.exercises[0] && r.exercises[0].id) || soleMachineId;
         const level = sc.resist != null && sc.resist !== "" ? Number(sc.resist) : null;
         push(exId, performance(date, { metric: "machine-level", mag: level }, { type: "time", val: mins * 60 }, { block: blockId, week: wk, routine: rt }));
       }
