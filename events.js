@@ -9,7 +9,7 @@ import {
   nonNegSec, slugify, uniqueId, today, mondayOf, cellKey, setsKey, roundsKey, bandKey, scheduleKey, parseRoutine,
 } from "./helpers.js";
 import {
-  state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
+  state, editing, setState, setEditing, save, setLog, purgeBlockLog,
   currentBlock, routineDef, placeMove, currentCell, effectiveSets, effectiveRounds, weekSchedule, nextBlockNumber, defaultState, M, findClassType,
 } from "./state.js";
 import {

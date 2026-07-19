@@ -6,13 +6,13 @@
 import { WEEKS, ALL_WEEKS, MIN_SETS, MAX_SETS, DEFAULT_SETS, LOAD_MODES, BANDS } from "./constants.js";
 import {
   cellKey, setKey, roundKey, roundRepKey, bandKey, measureKey, cellScalarKey,
-  circuitOf, circuitSummary, circuitTimeLabel, steadyOf, steadySummary, classOf, loadMode, repsLabel, bandFor, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
+  circuitOf, circuitSummary, circuitTimeLabel, steadyOf, classOf, loadMode, repsLabel, bandFor, parseRoutine, scheduledDate, fmtWeekday, esc, fmt,
 } from "./helpers.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, routineDef, weekSchedule,
   previousSets, effectiveSets, effectiveRounds, routineLoad, holidaySwap, previousRoutineTotal, previousSteady, previousMeasure, bmiFor,
-  classTotals, classTypeNames, logList,
+  classTotals, classTypeNames,
 } from "./state.js";
 
 export function render() { renderHeader(); renderWeek(); renderProgress(); renderVolumes(); renderMeasurements(); renderClassTotal(); }

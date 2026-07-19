@@ -6,6 +6,10 @@ export const WEEKS = 4;
 // Read-only by every consumer (forEach / map), so a single shared array is safe.
 export const ALL_WEEKS = Array.from({ length: WEEKS }, (_, i) => i + 1);
 export const STORAGE_KEY = "workout-tracker-v2";
+// The store-schema versions this build can load, restore, and import. The gate lives here
+// once so normalise / applyBackup / validateBlockImport can't drift apart — the drift that
+// (pre-v5) silently made a new backup un-restorable. Bump by appending the new version.
+export const SUPPORTED_VERSIONS = [2, 3, 4, 5];
 export const MIN_SETS = 1, MAX_SETS = 6, DEFAULT_SETS = 2;
 export const MIN_ROUNDS = 1, MAX_ROUNDS = 6;
 // A recovery routine's circuit timing (all seconds, except rounds). These defaults

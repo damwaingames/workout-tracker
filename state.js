@@ -9,7 +9,7 @@
  * for the importer). Property mutation (state.log[k] = …) works from anywhere. */
 
 import {
-  WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
+  WEEKS, STORAGE_KEY, SUPPORTED_VERSIONS, DEFAULT_SETS, CIRCUIT_DEFAULTS, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
 } from "./constants.js";
 import {
   today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, cellScalarKey, scheduleKey,
@@ -247,7 +247,7 @@ function backfillFromSeed(cur, seed) {
 }
 
 function normalise(s) {
-  if (!s || (s.version !== 2 && s.version !== 3 && s.version !== 4 && s.version !== 5) || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
+  if (!s || !SUPPORTED_VERSIONS.includes(s.version) || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
   if (!s.log) s.log = {};
   if (!s.library) s.library = seedLibrary();
   // Body stats are additive — older v2 saves predate them, so backfill the
@@ -501,8 +501,8 @@ const importParts = (data) => ({
 // runs only once errors is empty. Errors are structural/semantic and reject the whole import;
 // coercions are cosmetic fixes the merge applies + reports.
 export function validateBlockImport(data) {
-  if (!data || typeof data !== "object" || (data.version !== 2 && data.version !== 3 && data.version !== 4 && data.version !== 5)) {
-    return { errors: ["This isn't a workout-tracker export at version 2, 3, 4 or 5."], coercions: [] };
+  if (!data || typeof data !== "object" || !SUPPORTED_VERSIONS.includes(data.version)) {
+    return { errors: ["This isn't a workout-tracker export at a supported version (" + SUPPORTED_VERSIONS.join(", ") + ")."], coercions: [] };
   }
   const { importLib, blocks } = importParts(data);
   if (!blocks.length) return { errors: ["The file has no blocks to import."], coercions: [] };
