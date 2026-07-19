@@ -11,7 +11,7 @@ import {
   DEFAULT_STEADY_MIN, STRAIGHT_SET_REST, DEFAULT_RAIL, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, measureKey, slugify, uniqueId, bandKg, e1rm, zoneOf,
+  today, mondayOf, cellKey, measureKey, slugify, uniqueId, bandKg, isBandMetric, e1rm, zoneOf,
 } from "./helpers.js";
 import { migrateToV6 } from "./migrate.js";
 
@@ -205,9 +205,9 @@ export function setLog(k, v) {
 
 // Delete a block — the *plan* only. Its exercises' performances and its classes' attendances live
 // on those entities (ADR-0020/0030), not in the block or the log, so they survive untouched; this
-// removes the block object and sweeps its block-prefixed occurrence + measurement log keys. (This
-// is the safe successor to the old purgeBlockLog, which deleted logged history keyed to the wrong
-// owner.) No save() — the caller saves after confirming.
+// removes the block object and sweeps its block-prefixed occurrence + measurement log keys. (The
+// pre-v6 block-log purge deleted logged history keyed to the wrong owner — ADR-0020 re-homed it, so
+// this delete is safe.) No save() — the caller saves after confirming.
 export function deleteBlock(blockId) {
   if (state.blocks.length <= 1) return false;
   Object.keys(state.log).forEach((k) => { if (k.indexOf(blockId + ".") === 0) delete state.log[k]; });
@@ -242,7 +242,7 @@ export function performancesOf(exId) {
 export function loadKg(load) {
   if (!load) return 0;
   if (load.metric === "kg") return Number(load.mag) || 0;
-  if (load.metric === "mini-loop" || load.metric === "long-band") return bandKg(load.metric, load.mag);
+  if (isBandMetric(load.metric)) return bandKg(load.metric, load.mag);
   return 0;
 }
 

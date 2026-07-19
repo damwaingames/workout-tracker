@@ -57,16 +57,17 @@ Push to `main`; GitHub Pages redeploys automatically. Each release carries a sem
 
 The app is plain ES modules (no build step), loaded from `index.html` via `<script type="module" src="./main.js">`:
 
-- `constants.js` — shared constants (`APP_VERSION`, bounds, `CIRCUIT_DEFAULTS`).
-- `helpers.js` — pure helpers: log-key grammar, clamps, formatting, circuit maths.
-- `state.js` — seed data, the mutable store (`state`/`editing` + setters), schema migrations, persistence, and the queries that read over the store.
+- `constants.js` — shared constants (`APP_VERSION`, `SUPPORTED_VERSIONS`, zones, the two band families + tier→kg tables, equipment, loading modes).
+- `helpers.js` — pure helpers: log-key grammar, date maths, progression maths (rail/zone/Epley e1RM/band kg), and formatting.
+- `migrate.js` — the pure v5→v6 forward migration (ADRs 0019–0030): old cell-keyed logs → per-exercise `performances` + per-class-type `attendances`, and old blocks/routines → the new weekly template. Imports only `constants`+`helpers`; run by `state.js`'s `normalise`.
+- `state.js` — seed data, the mutable store (`state`/`editing` + setters), schema normalisation (delegating the v5→v6 transform to `migrate.js`), persistence, and the queries that read over the store.
 - `render.js` — turns the store into DOM (plus the focus-preserving live patchers).
 - `events.js` — click / submit / field handlers and the block, backup & Drive operations.
-- `io.js` — data I/O: file export / import, the block-import merge, and the Drive backup transport, lifted out of `events.js`.
+- `io.js` — data I/O: file export / import (wholesale restore) and the Drive backup transport, lifted out of `events.js`.
 - `drive.js` — the Google Drive backup transport. Imports only constants and is imported by `events.js` / `io.js`.
 - `main.js` — entry point: load, wire listeners, first render, register the service worker.
 
-Imports flow one way (`constants ← helpers ← state ← render ← events ← main`, with `drive`/`io` as leaves into `events`), so there are no circular dependencies.
+Imports flow one way (`constants ← helpers ← migrate ← state ← render ← events ← main`, with `drive`/`io` as leaves into `events`), so there are no circular dependencies.
 
 ## Tests
 

@@ -11,11 +11,7 @@ import {
   DEFAULT_WEEKS, DEFAULT_ROUNDS, DEFAULT_STATION_SEC, DEFAULT_STEADY_MIN,
   STRAIGHT_SET_REST, DEFAULT_RAIL, DEFAULT_BAND_TIER, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
-import { mondayOf, scheduledDate, fmtYMD, parseRail, zoneOf, slugify, today, cellKey, cellScalarKey } from "./helpers.js";
-
-// The two band families are the "is this a banded move?" test for the log walk — a loadMetric in
-// this set means the load is a band tier, not a kg / level / none magnitude.
-const BAND_METRICS = ["mini-loop", "long-band"];
+import { mondayOf, scheduledDate, fmtYMD, parseRail, zoneOf, slugify, today, cellKey, cellScalarKey, isBandMetric } from "./helpers.js";
 
 /* ---------------------------------------------------------------------- *
  * Exercise: old library record → v6 Exercise (definition + empty history)*
@@ -274,7 +270,7 @@ function walkLog(store, lib, classes, classIdOf) {
     if (!(reps > 0)) return;
     const ctx = { block: g.blockId, week: g.wk, routine: g.rt };
     const date = dateFor(g.blockId, g.wk, g.rt);
-    if (BAND_METRICS.includes(ex.loadMetric)) {
+    if (isBandMetric(ex.loadMetric)) {
       push(g.exId, performance(date, { metric: ex.loadMetric, mag: tierFor(g.blockId, g.wk, g.rt, g.exId) }, { type: "reps", val: reps }, ctx));
     } else {
       const w = Number(g.w);
@@ -289,7 +285,7 @@ function walkLog(store, lib, classes, classIdOf) {
     if (!ex) return;
     const ctx = { block: rd.blockId, week: rd.wk, routine: rd.rt };
     const date = dateFor(rd.blockId, rd.wk, rd.rt);
-    if (rd.reps != null && BAND_METRICS.includes(ex.loadMetric)) {
+    if (rd.reps != null && isBandMetric(ex.loadMetric)) {
       push(rd.exId, performance(date, { metric: ex.loadMetric, mag: tierFor(rd.blockId, rd.wk, rd.rt, rd.exId) }, { type: "reps", val: rd.reps }, ctx));
     } else if (rd.reps == null) {
       const workSec = Number((routineOf[rd.blockId][rd.rt] || {}).workSec) || DEFAULT_STATION_SEC;

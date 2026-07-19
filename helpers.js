@@ -101,6 +101,9 @@ export function bandKg(family, tier) {
   const fam = BAND_FAMILIES[family];
   return (fam && fam.kg[tier]) || 0;
 }
+// True when a load metric is one of the band families — the single "is this banded?" test, derived
+// from BAND_FAMILIES so it can't drift from the family table. Used by fmtLoad, loadKg, and migrate.
+export const isBandMetric = (metric) => Object.prototype.hasOwnProperty.call(BAND_FAMILIES, metric);
 
 const LOAD_MODE_BY_ID = Object.fromEntries(LOAD_MODES.map((m) => [m.id, m]));
 // The loading-mode record for an exercise (default standard). Pure — both the renderer (input
@@ -138,10 +141,9 @@ export function fmtVolume(vol) {
 export function fmtLoad(load) {
   if (!load) return "";
   const mag = load.mag;
+  if (isBandMetric(load.metric)) return bandTierLabel(mag) + " band";
   switch (load.metric) {
     case "kg": return Number(mag) > 0 ? mag + " kg" : "bodyweight";
-    case "mini-loop":
-    case "long-band": return bandTierLabel(mag) + " band";
     case "machine-level": return mag != null && mag !== "" ? "Level " + mag : "";
     default: return "";
   }

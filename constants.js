@@ -4,10 +4,10 @@
 // this is only the length a freshly-seeded / migrated block starts at, not a hard cap.
 export const DEFAULT_WEEKS = 4;
 export const STORAGE_KEY = "workout-tracker-v2";
-// The store-schema versions this build can load, restore, and import. The gate lives here
-// once so normalise / applyBackup / validateBlockImport can't drift apart. Bump by appending
-// the new version. v6 is the training-model rework (Sessions of Groups of Items; the exercise
-// owns its performance history; a Block is a container — ADRs 0019–0029).
+// The store-schema versions this build can load and restore. The gate lives here once so
+// normalise / applyBackup can't drift apart. Bump by appending the new version. v6 is the
+// training-model rework (Sessions of Groups of Items; the exercise owns its performance history;
+// a Block is a container — ADRs 0019–0030).
 export const SUPPORTED_VERSIONS = [2, 3, 4, 5, 6];
 export const STORE_VERSION = 6;
 
