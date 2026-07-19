@@ -101,15 +101,20 @@ function renderRoutine(block, r, wk, position) {
 
 const classNameOf = (id) => (state.classes[id] && state.classes[id].name) || id || "Class";
 
+// A steady effort: one timed Item worked against a machine level (ADR-0019). The single definition
+// of "steady" — both the Group's kind and the Item's axis label read through it, so they can't drift.
+function isSteadyItem(it) {
+  const ex = it && state.library[it.exId];
+  return !!(it && it.time != null && ex && ex.loadMetric === "machine-level");
+}
+
 // Which config of the one Group primitive this is (ADR-0019), for styling + the meta line. A
 // multi-item Group is a superset (no rest-within) or a circuit (timed stations with rest between);
-// a lone timed item against a machine level is a steady effort; anything else is straight sets.
+// a lone steady Item is a steady effort; anything else is straight sets.
 function groupKind(g) {
   const items = g.items || [];
   if (items.length > 1) return g.restWithin > 0 ? "circuit" : "superset";
-  const it = items[0], ex = it && state.library[it.exId];
-  if (it && it.time != null && ex && ex.loadMetric === "machine-level") return "steady";
-  return "straight";
+  return isSteadyItem(items[0]) ? "steady" : "straight";
 }
 
 // A Group as a read-only card: its items, then a meta line stating the rotation (rounds + the rest
@@ -120,7 +125,7 @@ function renderGroup(g) {
   const bits = [g.rounds + " round" + (g.rounds === 1 ? "" : "s")];
   if (kind === "steady") bits.push("steady");
   if (g.restWithin > 0) bits.push(fmt(g.restWithin) + "s within");
-  else if ((g.items || []).length > 1) bits.push("no rest (superset)");
+  else if (kind === "superset") bits.push("no rest (superset)");
   if (g.restAfter > 0) bits.push(fmt(g.restAfter) + "s after");
   return '<div class="group ' + kind + '"><div class="group-items">' + items + "</div>" +
     '<div class="group-meta muted small">' + bits.join(" · ") + "</div></div>";
@@ -135,7 +140,7 @@ function renderItem(it) {
     target = fmtVolume({ type: "time", val: it.time });
     // A steady effort works against a machine level; the magnitude is a per-session progression
     // target (logged, not planned), so the plan just names the axis it's tracked on (ADR-0019).
-    if (ex && ex.loadMetric === "machine-level") target += " · machine level";
+    if (isSteadyItem(it)) target += " · machine level";
   }
   return '<div class="item"><span class="item-name">' + name + "</span>" +
     (target ? '<span class="item-target">' + esc(target) + "</span>" : "") + "</div>";
