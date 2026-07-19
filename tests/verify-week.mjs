@@ -1,10 +1,10 @@
 import { verify } from "./harness.mjs";
 
-/* The read-only week grid (#43), driven through the real app in the browser. A block renders as a
+/* The week grid (#43), driven through the real app in the browser. A block renders as a
  * real-calendar week: seven weekdays anchored to the block's start date, every day shown, an empty
  * day as Rest. A Session renders its Groups of Items (straight sets, superset, circuit, steady); a
  * Class its type + planned duration. Switching weeks advances the dates; the block's length drives
- * how many weeks exist. Read-only — no logging or editing controls in the grid yet.
+ * how many weeks exist. (Logging those Items is covered by verify-logging.)
  *
  * A fixed-startDate v6 store is injected so the weekday dates are deterministic (the seed block's
  * start is today's Monday, which would vary). normalise backfills the seed Library + class types, so
@@ -74,9 +74,6 @@ verify(async ({ page, ck, ls, reset, key }) => {
   const cls = page.locator(".week-grid .routine.class").first();
   ck("a Class renders its type", (await cls.textContent()).includes("Box-Fit"));
   ck("a Class renders its planned duration", (await cls.textContent()).includes("45 min"));
-
-  // --- read-only: no logging / editing controls in the grid ---
-  ck("the grid is read-only (no inputs)", (await page.$$(".week-grid input")).length === 0);
 
   // --- switching weeks advances the dates ---
   await page.click('[data-action="week"][data-week="2"]');

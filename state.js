@@ -238,6 +238,38 @@ export function performancesOf(exId) {
   return ex && Array.isArray(ex.performances) ? ex.performances : [];
 }
 
+// A Performance's ctx back-references the exact plan slot it was logged in (ADR-0020): the block,
+// week, routine position, group, item, and round. Two ctxs identify the same slot when all six
+// agree — so a migrated Performance (coarser ctx, no group/item/round) never collides with a slot.
+function sameSlot(a, b) {
+  return !!a && !!b && a.block === b.block && a.week === b.week && a.routine === b.routine &&
+    a.group === b.group && a.item === b.item && a.round === b.round;
+}
+
+// The Performance logged at a plan slot (or null) — what a logging input pre-fills from on render.
+export function performanceAt(exId, ctx) {
+  const ex = state.library[exId];
+  return (ex && Array.isArray(ex.performances) && ex.performances.find((p) => sameSlot(p.ctx, ctx))) || null;
+}
+
+// Log (or clear) a Session Item's effort at one slot: replace any Performance already at that slot
+// with the freshly built one, dated today (ADR-0020 — the effort lives on the exercise, not the
+// log). `data` null clears the slot (an un-done / cleared round leaves no Performance — honest
+// under-completion, ADR-0026). Zone is derived from the reps for a rep effort, null for a timed one.
+export function logPerformance(exId, ctx, data) {
+  const ex = state.library[exId];
+  if (!ex) return;
+  if (!Array.isArray(ex.performances)) ex.performances = [];
+  ex.performances = ex.performances.filter((p) => !sameSlot(p.ctx, ctx));
+  if (data) {
+    ex.performances.push({
+      date: today(), load: data.load, volume: data.volume,
+      zone: data.volume.type === "reps" ? zoneOf(data.volume.val) : null, ctx,
+    });
+  }
+  save();
+}
+
 // The kg-equivalent of a Load, for e1RM + volume-load: a kg magnitude direct, a band tier via its
 // family's table (ADR-0029), and 0 for a machine level or a resistance-free move (no real kg).
 export function loadKg(load) {

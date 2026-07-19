@@ -4,7 +4,7 @@
  * (performancesOf, prsOf, …) live in state.js. */
 
 import {
-  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES,
+  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES, DEFAULT_BAND_TIER,
 } from "./constants.js";
 
 export function today() { return fmtYMD(new Date()); }
@@ -110,6 +110,56 @@ const LOAD_MODE_BY_ID = Object.fromEntries(LOAD_MODES.map((m) => [m.id, m]));
 // labels) and the tonnage maths read through this, so they can't disagree on what a mode means.
 export function loadMode(ex) { return (ex && LOAD_MODE_BY_ID[ex.loadMode]) || LOAD_MODES[0]; }
 export const repsLabel = (m) => "reps" + (m.rUnit || "");
+
+/* ---------------------------------------------------------------------- *
+ * Logging an Item (#44) — how a planned Item is logged, and the effort a  *
+ * filled slot records. Pure: both the renderer (which inputs to draw) and *
+ * the input handler (the Performance to build) read through these, so the *
+ * two can't disagree on what an Item logs.                                *
+ * ---------------------------------------------------------------------- */
+// The input mode an Item logs on, from its volume axis (rail = reps, time) crossed with its
+// exercise's load metric (ADR-0019): a rep set is weight×reps (`load-reps`), a band tier×reps
+// (`band-reps`), or bare reps (`reps`); a timed effort is a steady minutes+level (`steady`) or a
+// done-tick station (`station`). null when the Item carries no loggable axis.
+export function itemLogMode(it, ex) {
+  if (!it || !ex) return null;
+  if (Array.isArray(it.rail)) {
+    if (isBandMetric(ex.loadMetric)) return "band-reps";
+    return ex.loadMetric === "kg" ? "load-reps" : "reps";
+  }
+  if (it.time != null) return ex.loadMetric === "machine-level" ? "steady" : "station";
+  return null;
+}
+
+// The {load, volume} a filled slot records, from its mode + the raw input strings — or null when the
+// slot is empty (an unlogged round: honest under-completion, ADR-0026). A rep effort needs reps > 0
+// to exist (reps is its volume axis; zone/e1RM are undefined without it); a station needs its tick.
+export function buildPerformance(mode, ex, raw) {
+  const reps = Number(raw.r);
+  switch (mode) {
+    case "load-reps": {
+      if (!(reps > 0)) return null;
+      const w = Number(raw.w);
+      return { load: { metric: "kg", mag: w > 0 ? w : 0 }, volume: { type: "reps", val: reps } };
+    }
+    case "band-reps":
+      if (!(reps > 0)) return null;
+      return { load: { metric: ex.loadMetric, mag: raw.tier || DEFAULT_BAND_TIER }, volume: { type: "reps", val: reps } };
+    case "reps":
+      if (!(reps > 0)) return null;
+      return { load: { metric: "none", mag: null }, volume: { type: "reps", val: reps } };
+    case "steady": {
+      const mins = Number(raw.mins);
+      if (!(mins > 0)) return null;
+      const level = raw.level !== "" && raw.level != null ? Number(raw.level) : null;
+      return { load: { metric: "machine-level", mag: level }, volume: { type: "time", val: Math.round(mins * 60) } };
+    }
+    case "station":
+      if (!raw.done) return null;
+      return { load: { metric: "none", mag: null }, volume: { type: "time", val: Number(raw.time) || 0 } };
+    default: return null;
+  }
+}
 
 /* ---------------------------------------------------------------------- *
  * Formatting                                                             *
