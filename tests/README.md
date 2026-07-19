@@ -12,7 +12,7 @@ and the pass/fail exit — so each script is just its own assertions:
 import { verify } from "./harness.mjs";
 verify(async ({ page, ck, ls, reset }) => {
   await reset();                                  // fresh load (wipes storage, reloads)
-  ck("nutrition card present", await page.isVisible("#nutrition-card"));
+  ck("Library card present", await page.isVisible("#library-card"));
   // …only the assertions that make this script different…
 });
 ```
@@ -47,7 +47,7 @@ script you need a server up yourself:
 # from the repo root, in another terminal:
 python3 -m http.server 8765
 # then, in tests/:
-node verify-nutrition.mjs
+node verify-library.mjs
 ```
 
 Or point the whole suite at the **live deploy** to smoke-test it:
@@ -63,14 +63,14 @@ WT_URL=https://damwaingames.github.io/workout-tracker/ node verify-version.mjs
 
 | Script | Covers |
 | --- | --- |
+| `verify-migration` | **Pure-Node** (no browser): inject a v5 store → assert the v6 shape + no data loss — every logged set/round/steady → a Performance, class → Attendance, blocks → template, PRs/zone/e1RM, block-delete keeps history. Also the progression maths (zone, Epley e1RM) and nutrition purge |
+| `verify-library` | v6 Library / exercise-history view (in-browser): fresh-install seed, migration-by-reload, the migrated plan overview, an exercise's performance timeline + PRs on expand, and block-delete keeping performances |
 | `verify-version` | Footer version tag matches `APP_VERSION` (read from `../constants.js`, so no manual bump here on release) |
 | `verify-rename` | Inline block rename in Edit mode: live picker-label patch, focus retention, persistence |
 | `verify-bodystats` | Measurements card: log/track/create/remove, BMI, previous-value ghost, additive migration, key purge |
-| `verify-pickers` | Shared picker chrome: open/search/add/create/cancel/remove for exercises and measurements |
-| `verify-crosstype` | Routine-kind ↔ exercise-type rule: pickers and create forms respect strength vs recovery |
-| `verify-circuit` | Recovery circuit timing: defaults, rounds stepper, live work/rest patch, clone, migration |
-| `verify-backups` | Export/import/reset paths (the cross-module `setState`/`setEditing` reassignments) |
-| `verify-nutrition` | Daily nutrition grid: `.nut.` persistence, live week/block totals, avg kcal/day, week isolation, clear-deletes-key |
+| `verify-darkmode` | Dark-mode re-skin: body/card surfaces follow `prefers-color-scheme`, every palette token resolves in both schemes |
+| `verify-drive` | Drive backup (ADR-0006): dormant-until-configured gate, create→restore round-trip, empty + incompatible-blob handling |
+| `verify-backups` | Export/import/reset paths (the cross-module `setState`/`setEditing` reassignments), incl. a v2→v6 import migration |
 | `verify-dropdown` | Block chooser sizes to its widest option, not the current selection |
 
 ## Maintaining these

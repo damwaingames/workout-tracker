@@ -5,7 +5,7 @@
  * never owns event routing, and nothing imports back into events — the module graph stays acyclic. */
 
 import { SUPPORTED_VERSIONS } from "./constants.js";
-import { state, setState, setEditing, save, normalise, validateBlockImport, mergeBlockImport } from "./state.js";
+import { state, setState, setEditing, save, normalise } from "./state.js";
 import { render, hydrateNotes } from "./render.js";
 import { today } from "./helpers.js";
 import { authorize, findBackup, readBackup, writeBackup } from "./drive.js";
@@ -50,34 +50,6 @@ export function importBackup(file) {
     try { data = JSON.parse(r.result); }
     catch (err) { window.alert("Could not read that backup file."); return; }
     applyBackup(data);
-  };
-  r.readAsText(file);
-}
-
-// Import a block design by MERGING (never the wholesale replace applyBackup does — ADR-0009):
-// validate against the live library, reject the whole import on any structural/semantic fault
-// (state untouched), else merge the new exercises + block(s) and report any cosmetic coercions.
-// The validate + merge domain logic lives in state.js; this just wires file → reject-or-merge.
-function applyBlockImport(data) {
-  const { errors, coercions } = validateBlockImport(data);
-  if (errors.length) {
-    window.alert("Import rejected — fix these and try again:\n\n• " + errors.join("\n• ") + "\n\nYour data is unchanged.");
-    return false;
-  }
-  const n = data.blocks.length;
-  mergeBlockImport(data);
-  render(); hydrateNotes();
-  window.alert("Imported " + n + " block" + (n === 1 ? "" : "s") + " ✓" +
-    (coercions.length ? "\n\nAdjusted:\n• " + coercions.join("\n• ") : ""));
-  return true;
-}
-
-export function importBlockFile(file) {
-  const r = new FileReader();
-  r.onload = function () {
-    let data;
-    try { data = JSON.parse(r.result); } catch (err) { window.alert("Could not read that file."); return; }
-    applyBlockImport(data);
   };
   r.readAsText(file);
 }

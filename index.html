@@ -23,17 +23,16 @@
       <h1>Workout Tracker</h1>
       <div class="block-controls">
         <select id="block-select" aria-label="Select training block"></select>
-        <button data-action="new-block" class="ghost" title="Start a new 4-week block">＋ Block</button>
+        <button data-action="new-block" class="ghost" title="Start a new block">＋ Block</button>
         <button data-action="edit-block" id="edit-toggle" class="ghost">Edit</button>
       </div>
     </div>
-    <div class="progress" id="progress"></div>
-    <div class="volume" id="volume"></div>
-    <div class="class-total" id="class-total"></div>
     <nav class="weeks" id="week-nav"></nav>
   </header>
 
   <main id="week-view"></main>
+
+  <section class="library-card" id="library-card"></section>
 
   <section class="measurements-card" id="measurements-card"></section>
 
@@ -46,7 +45,6 @@
     <div class="utils">
       <button data-action="export" class="ghost">Export backup</button>
       <label class="import-label ghost">Import backup<input type="file" id="import-input" accept="application/json" hidden></label>
-      <label class="import-label ghost">Import block<input type="file" id="import-block-input" accept="application/json" hidden></label>
       <button data-action="drive-push" id="drive-backup" class="ghost" hidden>Back up to Drive</button>
       <button data-action="drive-pull" id="drive-restore" class="ghost" hidden>Restore from Drive</button>
       <button data-action="reset" class="ghost danger">Reset all</button>

@@ -1,33 +1,31 @@
-/* Pure helpers — key grammar, clamps, formatting, and circuit maths. Every
- * function here is a pure function of its arguments (no `state` access), which
- * is what keeps the module graph acyclic: state.js imports these, never the
- * reverse. State-dependent queries (readSets, previousSets, …) live in state.js. */
+/* Pure helpers — key grammar, date maths, progression maths, and formatting. Every function
+ * here is a pure function of its arguments (no `state` access), which is what keeps the module
+ * graph acyclic: state.js / migrate.js import these, never the reverse. State-dependent queries
+ * (performancesOf, prsOf, …) live in state.js. */
 
 import {
-  MIN_SETS, MAX_SETS, DEFAULT_SETS,
-  MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS, STEADY_DEFAULTS, LOAD_MODES, BANDS,
+  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES,
 } from "./constants.js";
 
 export function today() { return fmtYMD(new Date()); }
 
-// Local-time YYYY-MM-DD ⇄ Date. Parsing via components (not `new Date(str)`, which
-// reads the string as UTC and can shift the day across a timezone) keeps weekday
-// derivation correct in every locale.
+// Local-time YYYY-MM-DD ⇄ Date. Parsing via components (not `new Date(str)`, which reads the
+// string as UTC and can shift the day across a timezone) keeps weekday derivation correct in
+// every locale.
 export function fmtYMD(d) {
   return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
 }
 function parseYMD(s) { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1); }
-// True when `s` is a real YYYY-MM-DD date — used to reject a garbage import startDate, which
-// would otherwise sail through as a "snap" and leave mondayOf producing "NaN-NaN-NaN".
+// True when `s` is a real YYYY-MM-DD date — used to reject a garbage import startDate, which would
+// otherwise sail through as a "snap" and leave mondayOf producing "NaN-NaN-NaN".
 export function validYMD(s) {
   return typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(parseYMD(s).getTime());
 }
 
-// Feature 2 date derivation (ADR-0005). A block's start date anchors a contiguous run
-// of weeks; a routine's weekday is the start plus whole weeks plus its position in that
-// week's schedule. `mondayOf` snaps a date back to its week's Monday (the default block
-// start); `scheduledDate` is the calendar date (a `Date`, fed straight to fmtWeekday) a
-// routine sits on; `fmtWeekday` is the "Mon 16 Jun" header label. Fixed name arrays (not
+// A block's start date anchors a contiguous run of real calendar weeks (ADR-0024); a routine's
+// weekday is the start plus whole weeks plus its position in the weekly template. `mondayOf` snaps
+// a date back to its week's Monday (the default block start); `scheduledDate` is the calendar date
+// a routine sits on; `fmtWeekday` is the "Mon 16 Jun" header label. Fixed name arrays (not
 // toLocale*) keep it locale-stable.
 export function mondayOf(dateStr) {
   const d = parseYMD(dateStr);
@@ -45,147 +43,110 @@ export function fmtWeekday(date) {
   return WEEKDAY_NAMES[date.getDay()] + " " + date.getDate() + " " + MONTH_NAMES[date.getMonth()];
 }
 
-// The log-key grammar lives here and nowhere else — renderers (data-k) and
-// readers must build keys through these so the format stays authoritative.
-export const cellKey = (blockId, wk, routine) => blockId + ".w" + wk + ".d" + routine;
-export const setKey = (cell, exId, i, f) => cell + ".ex." + exId + ".s" + i + "." + f; // f: "w" | "r"
-export const roundKey = (cell, exId, r) => cell + ".ex." + exId + ".r" + r;
-// Banded moves: the chosen band tier for one exercise on one routine cell (".band",
-// distinct from ".sN"/".rN"), plus per-round reps for a banded circuit move
-// (".rr" + r — separate from the ".r" + r round checkbox of a normal circuit).
-export const bandKey = (cell, exId) => cell + ".ex." + exId + ".band";
-export const roundRepKey = (cell, exId, r) => cell + ".ex." + exId + ".rr" + r;
-// Per-week count overrides (ADR-0008): a single week's set count for one strength exercise,
-// or one recovery routine's round count, when it differs from the block-wide template. Absent
-// → the template. `.sets` can't collide with setKey's `.s{i}.{w|r}`, nor `.rounds` with
-// roundKey's `.r{n}`. Both hang off the block-prefixed cell, so purgeBlockLog still sweeps them.
-export const setsKey = (cell, exId) => cell + ".ex." + exId + ".sets";
-export const roundsKey = (cell) => cell + ".rounds";
-// Weekly body measurement (one value per block/week/measurement). Shares
-// state.log — the ".m." segment can't collide with a routine's ".dN" cells, and
-// the block.id prefix means deleteBlock's purge sweeps these up for free.
-export const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mId;
-// A cell's per-session flat scalar key — one home for the `cell + "." + field` shape shared by
-// every kind that logs loose values on its cell: steady (`mins`/`resist`), class (`mins`/`kcal`/
-// `note`), and a rest day's `joints`. A cell belongs to one routine of one kind, so these field
-// names never collide across kinds. The block.id prefix (via cell) is swept by purgeBlockLog.
+/* ---------------------------------------------------------------------- *
+ * Log-key grammar — the SLIM occurrence log.                             *
+ * Exercise performance history no longer lives in the log (it re-homed   *
+ * onto the exercises — ADR-0020), so the effort key builders (setKey /   *
+ * roundKey / bandKey / scheduleKey …) are gone. What remains are the     *
+ * per-occurrence scalars no persistent entity owns (Session RPE, done)   *
+ * and the weekly body measurements (untouched infra).                    *
+ * ---------------------------------------------------------------------- */
+// A `block/week/routine` coordinate — the prefix every occurrence-scalar key hangs off. The `.d`
+// segment carries the routine's template position (0-based); the block.id prefix is load-bearing so
+// deleteBlock can sweep a block's occurrence keys in one prefix pass.
+export const cellKey = (blockId, wk, position) => blockId + ".w" + wk + ".d" + position;
+// A cell's per-session flat scalar — Session RPE, the done flag, a rest-day note — keyed by field.
 export const cellScalarKey = (cell, field) => cell + "." + field;
-// A week's routine schedule — the ordered routine numbers for one block/week, stored as
-// a single key (like measureKey, not hung off a cell). Absent → weekSchedule derives the
-// order. The block.id prefix means purgeBlockLog sweeps it on block delete (ADR-0005).
-export const scheduleKey = (blockId, wk) => blockId + ".w" + wk + ".sched";
+// Weekly body measurement (one value per block/week/measurement). The block.id prefix means
+// deleteBlock's sweep collects these too.
+export const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mId;
 
-// Round and clamp an int into [min, max]; non-numeric (missing) → fallback.
-// NB: 0 must clamp to min, so we can't use `|| fallback` (0 is falsy).
-function clampInt(n, min, max, fallback) {
-  n = Math.round(n);
-  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+/* ---------------------------------------------------------------------- *
+ * Progression maths (ADRs 0021, 0022) — pure and deterministic.          *
+ * ---------------------------------------------------------------------- */
+// Parse a rep range like "8–12" / "10-15" / "8 – 12" into [floor, ceiling]. A bare "12" → [12, 12];
+// anything unparseable (a hold like "30s each side") → null, so the caller falls back to a default.
+export function parseRail(s) {
+  const range = /(\d+)\s*[–—-]\s*(\d+)/.exec(String(s == null ? "" : s));
+  if (range) return [Number(range[1]), Number(range[2])];
+  const single = /(\d+)/.exec(String(s == null ? "" : s));
+  return single ? [Number(single[1]), Number(single[1])] : null;
 }
-export const clampSets = (n) => clampInt(n, MIN_SETS, MAX_SETS, DEFAULT_SETS);
-export const clampRounds = (n) => clampInt(n, MIN_ROUNDS, MAX_ROUNDS, CIRCUIT_DEFAULTS.rounds);
-// Steady duration has no real upper bound, so the max is a generous sanity cap, not a UI limit.
-export const clampDuration = (n) => clampInt(n, 1, 999, STEADY_DEFAULTS.durationMin);
-export const nonNegSec = (n) => { n = Math.round(+n); return Number.isFinite(n) && n > 0 ? n : 0; };
-
-// The single place that knows a placement's shape, keyed by the *routine's kind* (not the
-// exercise): a strength routine's placement owns a (clamped) set count; every other kind
-// carries none (timing/duration live on the routine). Behaviour follows the routine — an
-// exercise's own contexts only gate which routines will accept it (ADR-0007).
-export function placement(kind, id, sets) {
-  return kind === "strength" ? { id, sets: clampSets(sets) } : { id };
+// The rep-zone a set falls in, from its rep count (ADR-0021). Only rep-volume efforts have one —
+// a time-volume effort (a plank, a steady ride) returns null. reps ≤ 0 / non-finite → null.
+export function zoneOf(reps) {
+  const r = Number(reps);
+  if (!Number.isFinite(r) || r <= 0) return null;
+  return (ZONES.find((z) => r <= z.max) || ZONES[ZONES.length - 1]).id;
 }
-// A routine reference from a data-routine attribute: a number for a real routine, or a string
-// sentinel for a shared app-level segment — "holiday" (the Holiday Workout) or "winddown" (the
-// Wind-down), which routineDef resolves to state.holiday / state.winddown. Kept here so every
-// parse site (clicks, submit, the picker) coerces identically and Number("holiday")=NaN can't leak.
-export const parseRoutine = (v) => (v === "holiday" || v === "winddown" ? v : Number(v));
+export const zoneLabel = (id) => { const z = ZONES.find((x) => x.id === id); return z ? z.label : ""; };
 
-// The loading-mode record for an exercise (default standard). An absent/unknown
-// `ex.loadMode` resolves to the first LOAD_MODES entry. Pure — both the renderer
-// (input labels) and routineLoad (the tonnage multipliers) read through this, so
-// they can't disagree on what a mode means.
+// Estimated one-rep max by the Epley formula, `w × (1 + reps/30)` (ADR-0022 pins Epley so the
+// advisory readout and guide-ghost load are deterministic). Needs load > 0 and reps > 0 — a
+// bodyweight set yields none. Returns a Number (kg) or null.
+export function e1rm(kg, reps) {
+  const w = Number(kg), r = Number(reps);
+  if (!(w > 0) || !(r > 0)) return null;
+  return w * (1 + r / 30);
+}
+
+/* ---------------------------------------------------------------------- *
+ * Bands & loading mode (ADR-0029)                                        *
+ * ---------------------------------------------------------------------- */
+const BAND_TIER_LABEL = Object.fromEntries(BAND_TIERS.map((t) => [t.id, t.label]));
+export const bandTierLabel = (tier) => BAND_TIER_LABEL[tier] || tier || "";
+// A band family's approximate kg for a tier — feeds the volume-load readout + e1RM, not
+// progression (ADR-0029). 0 when the family/tier is unknown, so it contributes no load.
+export function bandKg(family, tier) {
+  const fam = BAND_FAMILIES[family];
+  return (fam && fam.kg[tier]) || 0;
+}
+// True when a load metric is one of the band families — the single "is this banded?" test, derived
+// from BAND_FAMILIES so it can't drift from the family table. Used by fmtLoad, loadKg, and migrate.
+export const isBandMetric = (metric) => Object.prototype.hasOwnProperty.call(BAND_FAMILIES, metric);
+
 const LOAD_MODE_BY_ID = Object.fromEntries(LOAD_MODES.map((m) => [m.id, m]));
-export function loadMode(ex) {
-  return (ex && LOAD_MODE_BY_ID[ex.loadMode]) || LOAD_MODES[0];
-}
-// The reps-axis annotation for a mode: "reps", or "reps/side" when a side is
-// logged but both are worked (per-side). One source so the strength set unit and
-// the circuit round placeholder can't drift. rUnit is a fixed LOAD_MODES constant
-// (only ever "/side" or undefined), so it needs no escaping.
+// The loading-mode record for an exercise (default standard). Pure — both the renderer (input
+// labels) and the tonnage maths read through this, so they can't disagree on what a mode means.
+export function loadMode(ex) { return (ex && LOAD_MODE_BY_ID[ex.loadMode]) || LOAD_MODES[0]; }
 export const repsLabel = (m) => "reps" + (m.rUnit || "");
 
-// Band helpers — pure, so the renderer (picker + labels) and routineLoad (the kg
-// that feeds tonnage) read bands the same way. The chosen tier for a session is
-// the logged value, falling back to the exercise's default; bandKg turns a tier
-// id into its approximate kg (0 when unset/unknown, so it contributes no load).
-const BAND_BY_ID = Object.fromEntries(BANDS.map((b) => [b.id, b]));
-export function bandFor(ex, logged) { return logged || (ex && ex.defaultBand) || ""; }
-export function bandKg(id) { const b = BAND_BY_ID[id]; return b ? b.kg : 0; }
+/* ---------------------------------------------------------------------- *
+ * Formatting                                                             *
+ * ---------------------------------------------------------------------- */
+export function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+export function fmt(n) { return Math.round(n).toLocaleString(); }
 
-// A recovery routine's circuit settings, normalised (defaults applied, types coerced).
-// The single read-side accessor so the renderer and the time maths agree.
-export function circuitOf(d) {
-  return {
-    rounds: clampRounds(d.rounds),
-    workSec: nonNegSec(d.workSec),
-    restSec: nonNegSec(d.restSec),
-    roundRestSec: nonNegSec(d.roundRestSec),
-  };
+// A rail [lo, hi] as "8–12" (a bare "12" when lo === hi).
+export function fmtRail(rail) {
+  if (!Array.isArray(rail) || !rail.length) return "";
+  return rail[0] === rail[1] ? String(rail[0]) : rail[0] + "–" + rail[1];
 }
-// Estimated total seconds for a circuit. Rest sits strictly between stations
-// within a round ((stations − 1) gaps) and between rounds ((rounds − 1) gaps),
-// so the workout ends on a work interval — nothing trailing.
-function circuitTime(stations, rounds, c) {
-  if (stations <= 0) return 0;
-  return rounds * stations * c.workSec +
-    rounds * (stations - 1) * c.restSec +
-    (rounds - 1) * c.roundRestSec;
-}
-// "90 sec" / "1 min" / "12 min 30 sec".
-function fmtSecs(sec) {
-  sec = Math.round(sec);
-  if (sec < 60) return sec + " sec";
+
+// A performance's Volume as human text: "12 reps" for a count, a friendly duration for time
+// (stored canonically in seconds — "45 s", "3 min", "3 min 30 s").
+export function fmtVolume(vol) {
+  if (!vol) return "";
+  if (vol.type === "reps") return vol.val + " rep" + (Number(vol.val) === 1 ? "" : "s");
+  const sec = Math.round(Number(vol.val) || 0);
+  if (sec < 60) return sec + " s";
   const m = Math.floor(sec / 60), s = sec % 60;
-  return s ? m + " min " + s + " sec" : m + " min";
+  return s ? m + " min " + s + " s" : m + " min";
 }
-// The circuit's estimated total time, formatted ("≈ 12 min 30 sec"). The headline
-// figure from circuitSummary, exposed on its own for the collapsed routine summary —
-// where only the total matters, not the round / work / rest breakdown.
-// `rounds` overrides the template count for the displayed week (per-week rounds — ADR-0008);
-// absent, the routine's own template is used. So the estimate tracks the week's actual rounds.
-export function circuitTimeLabel(d, rounds) {
-  const c = circuitOf(d);
-  return "≈ " + fmtSecs(circuitTime(d.exercises.length, rounds != null ? rounds : c.rounds, c));
-}
-// The one-line circuit summary shown under a recovery routine: structure + estimate. Takes the
-// week's effective `rounds` so a per-week override reflects in both the count and the time.
-export function circuitSummary(d, rounds) {
-  const c = circuitOf(d);
-  const r = rounds != null ? rounds : c.rounds;
-  const parts = [
-    r + " round" + (r === 1 ? "" : "s"),
-    fmtSecs(c.workSec) + " work",
-    fmtSecs(c.restSec) + " rest",
-  ];
-  if (c.roundRestSec > 0) parts.push(fmtSecs(c.roundRestSec) + " between rounds");
-  return parts.join(" · ") + " · " + circuitTimeLabel(d, r);
-}
-// A steady routine's duration, defaulted like circuitOf — one planned figure (minutes). The
-// resistance/level and actual minutes are logged per cell (the session), not on the template.
-export function steadyOf(d) {
-  return { durationMin: clampDuration(d.durationMin) };
-}
-// The one-line steady summary: the planned duration. The effort target lives in the routine's
-// focus and the resistance is logged per session, so neither belongs in this headline.
-export function steadySummary(d) {
-  return steadyOf(d).durationMin + " min steady";
-}
-// A class routine's plan: one class type (a bare name, canonicalised case-insensitively
-// against classTypeNames) + a planned duration, defaulted like steadyOf. Actual minutes, the
-// wearable's calorie burn, and the note are logged per cell (the session), not on the
-// template. A class carries no exercises and no tonnage (ADR-0010).
-export function classOf(d) {
-  return { classType: typeof d.classType === "string" ? d.classType : "", durationMin: clampDuration(d.durationMin) };
+
+// A performance's Load as human text: "40 kg" (0 kg → "bodyweight"), a band tier ("Medium band"),
+// a machine level ("Level 6"), or "" for a resistance-free (none-metric) move.
+export function fmtLoad(load) {
+  if (!load) return "";
+  const mag = load.mag;
+  if (isBandMetric(load.metric)) return bandTierLabel(mag) + " band";
+  switch (load.metric) {
+    case "kg": return Number(mag) > 0 ? mag + " kg" : "bodyweight";
+    case "machine-level": return mag != null && mag !== "" ? "Level " + mag : "";
+    default: return "";
+  }
 }
 
 export function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
@@ -195,9 +156,3 @@ export function uniqueId(base, has) {
   while (has(id)) id = base + "-" + n++;
   return id;
 }
-
-export function esc(s) {
-  return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-}
-
-export function fmt(n) { return Math.round(n).toLocaleString(); }

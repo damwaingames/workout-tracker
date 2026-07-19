@@ -531,7 +531,75 @@ footer { margin-top: 2rem; }
 footer .muted { margin-top: .85rem; line-height: 1.5; }
 .version-tag { margin-top: .5rem; opacity: .7; font-variant-numeric: tabular-nums; }
 
+/* ---- v6 read-only plan overview + Library (ticket #42) ---- */
+.routine.session { border-left-color: var(--workout); }
+.routine.class { border-left-color: var(--recovery); }
+.readonly-note { margin: -.2rem 0 1rem; }
+.routine-title { font-weight: 600; }
+.routine .routine-body { margin-top: .5rem; }
+
+/* A Group card inside a Session: its items, then a meta line (rounds + rests). */
+.group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: .55rem .7rem;
+  margin-top: .5rem;
+  background: var(--sunken);
+}
+.group.superset { border-left: 3px solid var(--workout); }
+.group.circuit { border-left: 3px solid var(--recovery); }
+.group-items { display: flex; flex-direction: column; gap: .25rem; }
+.item { display: flex; justify-content: space-between; gap: .6rem; }
+.item-name { font-weight: 500; }
+.item-target { color: var(--muted); font-size: .82rem; white-space: nowrap; }
+.group-meta { margin-top: .4rem; }
+
+/* The Library: each exercise / class as a native disclosure with its history + PRs. */
+.library-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  margin-top: 1.5rem;
+  box-shadow: var(--shadow);
+}
+.library-card h2 { margin: 0 0 .4rem; font-size: 1rem; }
+.library-card h2 + p { margin-top: 0; }
+.lib-list { margin-bottom: 1.2rem; }
+.lib-ex { border-top: 1px solid var(--border); }
+.lib-ex summary {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .55rem 0; cursor: pointer; list-style: none;
+}
+.lib-ex summary::-webkit-details-marker { display: none; }
+.lib-ex summary::before { content: "▸"; color: var(--muted); font-size: .8rem; transition: transform .15s ease; }
+.lib-ex[open] summary::before { transform: rotate(90deg); }
+.lib-ex-name { font-weight: 600; }
+.lib-ex-count { margin-left: auto; color: var(--muted); font-size: .8rem; white-space: nowrap; }
+.lib-ex-body { padding: 0 0 .7rem 1rem; }
+.lib-meta { margin-bottom: .4rem; }
+.tag { color: var(--muted); font-size: .7rem; background: var(--chip); padding: .05rem .35rem; border-radius: 5px; }
+
+.pr-badges { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; font-size: .8rem; color: var(--muted); margin-bottom: .5rem; }
+.pr-badge {
+  background: var(--chip); color: var(--text);
+  padding: .1rem .45rem; border-radius: 6px;
+  font-size: .78rem; font-variant-numeric: tabular-nums;
+}
+.perf-timeline { display: flex; flex-direction: column; gap: .2rem; }
+.perf {
+  display: flex; gap: .6rem; flex-wrap: wrap; align-items: baseline;
+  font-size: .82rem; font-variant-numeric: tabular-nums;
+  padding: .15rem 0; border-top: 1px dashed var(--border);
+}
+.perf:first-child { border-top: none; }
+.perf-date { color: var(--muted); min-width: 6.5rem; }
+.perf-load { font-weight: 600; }
+.perf-zone { color: var(--muted); font-size: .74rem; text-transform: lowercase; }
+.perf-note { color: var(--muted); font-style: italic; }
+
 @media (max-width: 520px) {
   h1 { font-size: 1.05rem; }
   .routine-focus, .routine-summary { margin-left: 1.7rem; }
+  .perf-date { min-width: 5.5rem; }
 }
