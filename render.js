@@ -19,23 +19,23 @@ import {
 export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); applyView(); }
 
 // Top-level view switch (Plan | Library). The Library grew large enough to want its own tab rather
-// than hanging below the plan; the choice persists in state.ui.view. This is the nav scaffold the
-// interactive week grid (#43) and later views slot into.
-const VIEW = () => (state.ui.view === "library" ? "library" : "plan");
+// than hanging below the plan; the choice persists in state.ui.view (normalise owns the invariant
+// that it's always "plan" | "library", so readers here just trust it). This is the nav scaffold the
+// interactive week grid (#43) and later views slot into — each is a sibling container toggled below.
 function renderTabs() {
   const el = document.getElementById("view-tabs");
   if (!el) return;
-  const v = VIEW();
+  const v = state.ui.view;
   const tab = (id, label) => '<button class="view-tab' + (v === id ? " active" : "") + '" data-action="view" data-view="' + id + '" aria-pressed="' + (v === id) + '">' + label + "</button>";
   el.innerHTML = tab("plan", "Plan") + tab("library", "Library");
 }
-// Show only the active view's sections. Plan carries the block controls, week nav, plan overview,
-// measurements, and notes; Library carries just the catalogue. The footer (backups) stays on both.
+// Show only the active view's container. Membership is structural — Plan-scoped sections live inside
+// #plan-view (block controls, week nav, plan overview, measurements, notes), the Library is its own
+// section, and the footer (backups) sits outside both, so it stays on every view.
 function applyView() {
-  const lib = VIEW() === "library";
-  const set = (id, hidden) => { const e = document.getElementById(id); if (e) e.hidden = hidden; };
-  ["block-controls", "week-nav", "week-view", "measurements-card", "notes-card"].forEach((id) => set(id, lib));
-  set("library-card", !lib);
+  const lib = state.ui.view === "library";
+  document.getElementById("plan-view").hidden = lib;
+  document.getElementById("library-card").hidden = !lib;
 }
 
 function renderHeader() {
