@@ -16,7 +16,27 @@ import {
   previousMeasure, bmiFor,
 } from "./state.js";
 
-export function render() { renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); }
+export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); applyView(); }
+
+// Top-level view switch (Plan | Library). The Library grew large enough to want its own tab rather
+// than hanging below the plan; the choice persists in state.ui.view. This is the nav scaffold the
+// interactive week grid (#43) and later views slot into.
+const VIEW = () => (state.ui.view === "library" ? "library" : "plan");
+function renderTabs() {
+  const el = document.getElementById("view-tabs");
+  if (!el) return;
+  const v = VIEW();
+  const tab = (id, label) => '<button class="view-tab' + (v === id ? " active" : "") + '" data-action="view" data-view="' + id + '" aria-pressed="' + (v === id) + '">' + label + "</button>";
+  el.innerHTML = tab("plan", "Plan") + tab("library", "Library");
+}
+// Show only the active view's sections. Plan carries the block controls, week nav, plan overview,
+// measurements, and notes; Library carries just the catalogue. The footer (backups) stays on both.
+function applyView() {
+  const lib = VIEW() === "library";
+  const set = (id, hidden) => { const e = document.getElementById(id); if (e) e.hidden = hidden; };
+  ["block-controls", "week-nav", "week-view", "measurements-card", "notes-card"].forEach((id) => set(id, lib));
+  set("library-card", !lib);
+}
 
 function renderHeader() {
   const sel = document.getElementById("block-select");

@@ -124,7 +124,7 @@ function seedMeasurements() {
 export function defaultState() {
   return {
     version: STORE_VERSION, library: seedLibrary(), classes: seedClasses(),
-    blocks: [seedBlock("b1", "Block 1")], log: {}, ui: { block: "b1", week: 1 }, notes: "",
+    blocks: [seedBlock("b1", "Block 1")], log: {}, ui: { block: "b1", week: 1, view: "plan" }, notes: "",
     measurements: seedMeasurements(), tracked: ["bodyweight"], profile: {},
     holiday: seedHoliday(), winddown: seedWinddown(),
   };
@@ -178,6 +178,7 @@ function normalise(s) {
     b.template.forEach((r, i) => { if (!r || !r.kind) b.template[i] = { kind: "rest" }; });
   });
   if (!s.ui || typeof s.ui !== "object" || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
+  if (s.ui.view !== "library") s.ui.view = "plan"; // the top-level tab; anything unknown → plan
   if (typeof s.notes !== "string") s.notes = "";
   s.version = STORE_VERSION;
   return s;

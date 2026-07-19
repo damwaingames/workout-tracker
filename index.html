@@ -18,10 +18,11 @@
 </head>
 <body>
 <div id="app">
+  <nav class="view-tabs" id="view-tabs"></nav>
   <header>
     <div class="topbar">
       <h1>Workout Tracker</h1>
-      <div class="block-controls">
+      <div class="block-controls" id="block-controls">
         <select id="block-select" aria-label="Select training block"></select>
         <button data-action="new-block" class="ghost" title="Start a new block">＋ Block</button>
         <button data-action="edit-block" id="edit-toggle" class="ghost">Edit</button>
@@ -36,7 +37,7 @@
 
   <section class="measurements-card" id="measurements-card"></section>
 
-  <section class="notes-card">
+  <section class="notes-card" id="notes-card">
     <h2>Progress / mood notes</h2>
     <textarea id="notes-field" rows="5" placeholder="How the program's going — mood, energy, anything worth remembering."></textarea>
   </section>
