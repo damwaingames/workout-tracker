@@ -2,10 +2,10 @@
  * the pure helpers; never mutates the store. The exported entry points (render + the measurement
  * live-patchers) are what events.js calls after a mutation.
  *
- * This slice (v6 store rework — #42) is read-only for training: it renders the migrated plan as a
- * plain overview and the Library as each exercise's performance timeline + PRs (ADR-0020). The
- * interactive week grid (#43) and logging (#44) rebuild on top of this. The measurements card,
- * notes, and footer are untouched infra. */
+ * Training is still read-only here: the block renders as a real-calendar week grid (#43) and the
+ * Library as each exercise's performance timeline + PRs (ADR-0020). Composing (#45) and logging
+ * (#44) add their controls on top of this. The measurements card, notes, and footer are untouched
+ * infra. */
 
 import {
   esc, fmt, fmtVolume, fmtLoad, fmtRail, zoneLabel, scheduledDate, fmtWeekday, measureKey,
@@ -21,7 +21,7 @@ export function render() { renderTabs(); renderHeader(); renderWeek(); renderLib
 // Top-level view switch (Plan | Library). The Library grew large enough to want its own tab rather
 // than hanging below the plan; the choice persists in state.ui.view (normalise owns the invariant
 // that it's always "plan" | "library", so readers here just trust it). This is the nav scaffold the
-// interactive week grid (#43) and later views slot into — each is a sibling container toggled below.
+// week grid and later views slot into — each is a sibling container toggled below.
 function renderTabs() {
   const el = document.getElementById("view-tabs");
   if (!el) return;
@@ -60,8 +60,12 @@ function renderHeader() {
 }
 
 /* ---------------------------------------------------------------------- *
- * The read-only plan overview (the interactive grid is #43).             *
+ * The read-only week grid (#43).                                         *
  * ---------------------------------------------------------------------- */
+// The viewed block week renders as a real calendar week (ADR-0024): its seven weekdays anchored to
+// the block's start date, every day drawn, an empty day shown as Rest so the week reads true. Each
+// Routine renders its content — a Session as its ordered Groups of Items, a Class as its type +
+// planned duration. Read-only; composing (#45) and logging (#44) add their controls on top.
 function renderWeek() {
   const block = currentBlock();
   const wk = Math.min(state.ui.week, block.weeks);
@@ -70,10 +74,11 @@ function renderWeek() {
     : esc(block.name);
   document.getElementById("week-view").innerHTML =
     '<p class="week-heading">' + nameHtml + " · Week " + wk + " of " + block.weeks + "</p>" +
-    '<p class="muted small readonly-note">Read-only overview — logging and the interactive week grid arrive in the next releases.</p>' +
-    block.template.map((r, i) => renderRoutine(block, r, wk, i)).join("");
+    '<p class="muted small readonly-note">A read-only view of the week — composing and logging arrive next.</p>' +
+    '<div class="week-grid">' + block.template.map((r, i) => renderRoutine(block, r, wk, i)).join("") + "</div>";
 }
 
+// One weekday's Routine as a grid card, headed by its real calendar Weekday date (ADR-0024).
 function renderRoutine(block, r, wk, position) {
   const when = fmtWeekday(scheduledDate(block.startDate, wk, position));
   let title, body;
@@ -89,22 +94,39 @@ function renderRoutine(block, r, wk, position) {
     body = '<p class="rest-note">Rest day.</p>';
   }
   return '<div class="routine ' + r.kind + '">' +
-    '<div class="routine-head"><span class="routine-title">' + when + " · " + title + "</span></div>" +
+    '<div class="routine-head"><span class="routine-when">' + when + "</span>" +
+      '<span class="routine-title">' + title + "</span></div>" +
     body + "</div>";
 }
 
 const classNameOf = (id) => (state.classes[id] && state.classes[id].name) || id || "Class";
 
+// A steady effort: one timed Item worked against a machine level (ADR-0019). The single definition
+// of "steady" — both the Group's kind and the Item's axis label read through it, so they can't drift.
+function isSteadyItem(it) {
+  const ex = it && state.library[it.exId];
+  return !!(it && it.time != null && ex && ex.loadMetric === "machine-level");
+}
+
+// Which config of the one Group primitive this is (ADR-0019), for styling + the meta line. A
+// multi-item Group is a superset (no rest-within) or a circuit (timed stations with rest between);
+// a lone steady Item is a steady effort; anything else is straight sets.
+function groupKind(g) {
+  const items = g.items || [];
+  if (items.length > 1) return g.restWithin > 0 ? "circuit" : "superset";
+  return isSteadyItem(items[0]) ? "steady" : "straight";
+}
+
 // A Group as a read-only card: its items, then a meta line stating the rotation (rounds + the rest
-// within / after that make it a superset, a circuit, or straight sets — ADR-0019).
+// within / after that make it a superset, a circuit, steady, or straight sets — ADR-0019).
 function renderGroup(g) {
+  const kind = groupKind(g);
   const items = (g.items || []).map(renderItem).join("");
-  const rounds = g.rounds + " round" + (g.rounds === 1 ? "" : "s");
-  const bits = [rounds];
+  const bits = [g.rounds + " round" + (g.rounds === 1 ? "" : "s")];
+  if (kind === "steady") bits.push("steady");
   if (g.restWithin > 0) bits.push(fmt(g.restWithin) + "s within");
-  else if ((g.items || []).length > 1) bits.push("no rest (superset)");
+  else if (kind === "superset") bits.push("no rest (superset)");
   if (g.restAfter > 0) bits.push(fmt(g.restAfter) + "s after");
-  const kind = (g.items || []).length > 1 ? (g.restWithin === 0 ? "superset" : "circuit") : "straight";
   return '<div class="group ' + kind + '"><div class="group-items">' + items + "</div>" +
     '<div class="group-meta muted small">' + bits.join(" · ") + "</div></div>";
 }
@@ -114,7 +136,12 @@ function renderItem(it) {
   const name = ex ? esc(ex.name) : esc(it.exId);
   let target = "";
   if (Array.isArray(it.rail)) target = fmtRail(it.rail) + " reps";
-  else if (it.time != null) target = fmtVolume({ type: "time", val: it.time });
+  else if (it.time != null) {
+    target = fmtVolume({ type: "time", val: it.time });
+    // A steady effort works against a machine level; the magnitude is a per-session progression
+    // target (logged, not planned), so the plan just names the axis it's tracked on (ADR-0019).
+    if (isSteadyItem(it)) target += " · machine level";
+  }
   return '<div class="item"><span class="item-name">' + name + "</span>" +
     (target ? '<span class="item-target">' + esc(target) + "</span>" : "") + "</div>";
 }

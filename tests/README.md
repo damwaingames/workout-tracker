@@ -65,6 +65,7 @@ WT_URL=https://damwaingames.github.io/workout-tracker/ node verify-version.mjs
 | --- | --- |
 | `verify-migration` | **Pure-Node** (no browser): inject a v5 store → assert the v6 shape + no data loss — every logged set/round/steady → a Performance, class → Attendance, blocks → template, PRs/zone/e1RM, block-delete keeps history. Also the progression maths (zone, Epley e1RM) and nutrition purge |
 | `verify-library` | v6 Library / exercise-history view (in-browser): fresh-install seed, migration-by-reload, the migrated plan overview, an exercise's performance timeline + PRs on expand, and block-delete keeping performances |
+| `verify-week` | Read-only week grid (#43): a block renders as seven real-calendar days (empty → Rest), Sessions render their Groups/Items (straight, superset, circuit, steady), a Class its type + duration, switching weeks advances the dates, and the grid stays read-only |
 | `verify-version` | Footer version tag matches `APP_VERSION` (read from `../constants.js`, so no manual bump here on release) |
 | `verify-rename` | Inline block rename in Edit mode: live picker-label patch, focus retention, persistence |
 | `verify-bodystats` | Measurements card: log/track/create/remove, BMI, previous-value ghost, additive migration, key purge |

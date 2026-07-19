@@ -547,12 +547,22 @@ footer .muted { margin-top: .85rem; line-height: 1.5; }
 .view-tab:hover { border-color: var(--border-strong); }
 .view-tab.active { background: var(--workout); border-color: var(--workout); color: var(--on-accent); }
 
-/* ---- v6 read-only plan overview + Library (ticket #42) ---- */
+/* ---- v6 read-only week grid + Library (tickets #42–#43) ---- */
 .routine.session { border-left-color: var(--workout); }
 .routine.class { border-left-color: var(--recovery); }
 .readonly-note { margin: -.2rem 0 1rem; }
 .routine-title { font-weight: 600; }
 .routine .routine-body { margin-top: .5rem; }
+
+/* The week as its seven real-calendar days (ADR-0024): a stack of Routine cards, each headed by its
+   Weekday date, laid out top-to-bottom so it reads true on a phone. */
+.week-grid { display: flex; flex-direction: column; gap: .9rem; }
+.week-grid .routine { margin-bottom: 0; }
+.week-grid .routine-head { justify-content: flex-start; align-items: baseline; gap: .5rem; }
+.routine-when {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--muted); font-weight: 600; white-space: nowrap;
+}
 
 /* A Group card inside a Session: its items, then a meta line (rounds + rests). */
 .group {
@@ -564,6 +574,7 @@ footer .muted { margin-top: .85rem; line-height: 1.5; }
 }
 .group.superset { border-left: 3px solid var(--workout); }
 .group.circuit { border-left: 3px solid var(--recovery); }
+.group.steady { border-left: 3px solid var(--recovery); }
 .group-items { display: flex; flex-direction: column; gap: .25rem; }
 .item { display: flex; justify-content: space-between; gap: .6rem; }
 .item-name { font-weight: 500; }
