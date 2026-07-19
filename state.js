@@ -456,20 +456,6 @@ export function setLog(k, v) {
   save();
 }
 
-// The log is a flat {key: value} map, so the *shape* a key holds lives with these
-// readers, not at each call site. logList owns the one structured shape — a class
-// list stored under a cell — returning the stored array or an empty one.
-export function logList(k) { return Array.isArray(state.log[k]) ? state.log[k] : []; }
-// The three mutators of that shape, paired with logList so the "a key holds a list, and
-// it's deleted when its last item goes" rule lives beside the reader rather than
-// copy-pasted at each call site. logPush appends; logRemoveAt drops index i off a copy
-// (so the stored array isn't touched before setLog decides whether to keep or delete it);
-// logReplaceAt swaps the item at i in place — an edit, so length is unchanged (a no-op
-// for an out-of-range index, and it never empties the key).
-export function logPush(k, item) { const l = logList(k); l.push(item); setLog(k, l); }
-export function logRemoveAt(k, i) { const l = logList(k).slice(); l.splice(i, 1); setLog(k, l.length ? l : ""); }
-export function logReplaceAt(k, i, item) { const l = logList(k).slice(); if (i >= 0 && i < l.length) l[i] = item; setLog(k, l); }
-
 // Purge every log key belonging to a block. The cell-key grammar guarantees every
 // routine / measure / class / band key is hung off a `block.id`-prefixed
 // cell, so one prefix sweep collects them all — the invariant the key-grammar

@@ -138,11 +138,7 @@ separate and deliberately not redefined here.
   segment — frozen so existing logs aren't orphaned by the day→routine rename (ADR-0005),
   even though the value is the routine number, not a weekday. The `block.id` prefix is
   load-bearing: `purgeBlockLog(blockId)` deletes a block's whole log in one prefix sweep
-  (the rule, made executable). `logList(k)` owns
-  the one structured shape a key can hold (a list under a cell) and `logPush`/`logRemoveAt`/`logReplaceAt`
-  are its only mutators (append / remove-at / replace-at, deleting the key once its last item goes), so
-  that empty-delete invariant lives in one place rather than at each call site. Scalar reads stay
-  at the call site — they hide no invariant, so wrapping them would only add shallow seams.
+  (the rule, made executable).
 
 ## Conventions
 
