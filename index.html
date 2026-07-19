@@ -18,28 +18,35 @@
 </head>
 <body>
 <div id="app">
-  <header>
-    <div class="topbar">
-      <h1>Workout Tracker</h1>
-      <div class="block-controls">
-        <select id="block-select" aria-label="Select training block"></select>
-        <button data-action="new-block" class="ghost" title="Start a new block">＋ Block</button>
-        <button data-action="edit-block" id="edit-toggle" class="ghost">Edit</button>
-      </div>
-    </div>
-    <nav class="weeks" id="week-nav"></nav>
-  </header>
+  <nav class="view-tabs" id="view-tabs"></nav>
 
-  <main id="week-view"></main>
+  <!-- The Plan view: one container so the tab toggle points at membership structurally (a section
+       is Plan-scoped by living here), instead of enumerating ids. New views (#43+) add their own
+       sibling container + one toggle line. -->
+  <div id="plan-view">
+    <header>
+      <div class="topbar">
+        <h1>Workout Tracker</h1>
+        <div class="block-controls">
+          <select id="block-select" aria-label="Select training block"></select>
+          <button data-action="new-block" class="ghost" title="Start a new block">＋ Block</button>
+          <button data-action="edit-block" id="edit-toggle" class="ghost">Edit</button>
+        </div>
+      </div>
+      <nav class="weeks" id="week-nav"></nav>
+    </header>
+
+    <main id="week-view"></main>
+
+    <section class="measurements-card" id="measurements-card"></section>
+
+    <section class="notes-card">
+      <h2>Progress / mood notes</h2>
+      <textarea id="notes-field" rows="5" placeholder="How the program's going — mood, energy, anything worth remembering."></textarea>
+    </section>
+  </div>
 
   <section class="library-card" id="library-card"></section>
-
-  <section class="measurements-card" id="measurements-card"></section>
-
-  <section class="notes-card">
-    <h2>Progress / mood notes</h2>
-    <textarea id="notes-field" rows="5" placeholder="How the program's going — mood, energy, anything worth remembering."></textarea>
-  </section>
 
   <footer>
     <div class="utils">

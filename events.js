@@ -21,6 +21,7 @@ export function handleClick(e) {
   const el = e.target.closest("[data-action]");
   if (!el) return;
   switch (el.dataset.action) {
+    case "view": state.ui.view = el.dataset.view; save(); render(); break;
     case "week": state.ui.week = Number(el.dataset.week); save(); render(); break;
     case "new-block": newBlock(); break;
     case "delete-block": removeCurrentBlock(); break;

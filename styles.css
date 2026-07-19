@@ -531,6 +531,22 @@ footer { margin-top: 2rem; }
 footer .muted { margin-top: .85rem; line-height: 1.5; }
 .version-tag { margin-top: .5rem; opacity: .7; font-variant-numeric: tabular-nums; }
 
+/* ---- Top-level view tabs (Plan | Library) ---- */
+.view-tabs { display: flex; gap: .4rem; margin-bottom: 1rem; }
+.view-tab {
+  flex: 1 1 0;
+  padding: .5rem .8rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit; font-weight: 600; font-size: .9rem;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.view-tab:hover { border-color: var(--border-strong); }
+.view-tab.active { background: var(--workout); border-color: var(--workout); color: var(--on-accent); }
+
 /* ---- v6 read-only plan overview + Library (ticket #42) ---- */
 .routine.session { border-left-color: var(--workout); }
 .routine.class { border-left-color: var(--recovery); }

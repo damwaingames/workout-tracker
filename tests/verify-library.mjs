@@ -1,21 +1,32 @@
 import { verify } from "./harness.mjs";
 
 /* The v6 Library / exercise-history view (#42), driven through the real app in the browser:
- *   1. a fresh install seeds a v6 store and renders the Library;
- *   2. loading a v5 store migrates it forward (inject-a-v5-store-then-reload, like
- *      verify-nutrition-purge) — the migrated performances render as an exercise's timeline + PRs;
+ *   1. a fresh install seeds a v6 store; the Library lives behind its own top-level tab (v5.0.1);
+ *   2. loading a v5 store migrates it forward (inject-a-v5-store-then-reload) — the migrated
+ *      performances render as an exercise's timeline + PRs;
  *   3. deleting a block removes only the plan — the exercise's performances survive (ADR-0020). */
 verify(async ({ page, ck, ls, reset, key }) => {
   page.on("dialog", (d) => d.accept()); // accept the delete-block confirm
+  const showLibrary = () => page.click('[data-action="view"][data-view="library"]');
+  const showPlan = () => page.click('[data-action="view"][data-view="plan"]');
 
-  // --- 1. fresh install: v6 store, Library rendered ---
+  // --- 1. fresh install: v6 store; Plan is the default tab, Library behind its own ---
   await reset();
   await page.click('[data-action="week"][data-week="1"]'); // no-op → save() materialises the seed store
   await page.waitForTimeout(60);
   let s = await ls();
   ck("fresh install seeds schema v6", s.version === 6);
-  ck("Library card renders", (await page.$("#library-card")) !== null);
+  ck("view tabs present", (await page.$('[data-action="view"][data-view="library"]')) !== null);
+  ck("Plan is the default view (week view visible, library hidden)",
+    (await page.isVisible("#week-view")) && !(await page.isVisible("#library-card")));
+  await showLibrary();
+  await page.waitForTimeout(40);
+  ck("Library tab reveals the Library, hides the plan", (await page.isVisible("#library-card")) && !(await page.isVisible("#week-view")));
   ck("seeded exercises listed in the Library", (await page.$('.lib-ex[data-ex="goblet-squats"]')) !== null);
+  // The tab choice persists across a reload.
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(80);
+  ck("Library tab persists across reload", await page.isVisible("#library-card"));
 
   // --- 2. inject a v5 store with logged history, reload → migrate forward ---
   await page.evaluate((k) => {
@@ -46,11 +57,13 @@ verify(async ({ page, ck, ls, reset, key }) => {
     return p.load.metric === "kg" && p.volume.type === "reps" && p.zone === "hypertrophy";
   })());
 
-  // The migrated plan renders as a read-only Session of Groups of Items.
+  // The migrated plan renders as a read-only Session of Groups of Items (Plan tab, the default).
   ck("migrated plan renders a Session with a Group + Item",
     (await page.$('.routine.session .group .item')) !== null);
 
-  // The exercise's timeline + PRs render, and expand on click.
+  // The exercise's timeline + PRs render on the Library tab, and expand on click.
+  await showLibrary();
+  await page.waitForTimeout(40);
   const ex = page.locator('.lib-ex[data-ex="goblet-squats"]');
   ck("migrated exercise shows its logged count", (await ex.locator(".lib-ex-count").textContent()).includes("2 logged"));
   ck("timeline is collapsed until opened", !(await ex.locator(".perf").first().isVisible()));
@@ -60,7 +73,9 @@ verify(async ({ page, ck, ls, reset, key }) => {
   ck("timeline lists both performances", (await ex.locator(".perf").count()) === 2);
   ck("derived PRs shown (e1RM headline)", (await ex.locator(".pr-badges").textContent()).includes("e1RM"));
 
-  // --- 3. deleting a block keeps the exercise's performances (ADR-0020) ---
+  // --- 3. deleting a block keeps the exercise's performances (ADR-0020) — Plan tab holds the controls ---
+  await showPlan();
+  await page.waitForTimeout(40);
   await page.click('[data-action="new-block"]'); // adds a 2nd block, enters Edit mode
   await page.waitForTimeout(60);
   await page.selectOption("#block-select", "b1"); // back to the block that carries the history
