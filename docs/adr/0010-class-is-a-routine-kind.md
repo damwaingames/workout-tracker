@@ -1,5 +1,9 @@
 # A class is a routine kind, not an add-on
 
+> **Status: Superseded by [ADR-0019](0019-training-is-sessions-of-groups-of-items.md).** The
+> routine-kind taxonomy collapsed; ADR-0019 keeps the essential holding — a class is first-class,
+> never a degenerate exercise — by making Class the deliberate exception to the Session model.
+
 A **class** used to be an ad-hoc session (`{type, desc, mins}`) logged on top of any
 routine's cell — you anchored a Box-Fit onto whatever workout that weekday happened to
 hold. That encouraged stacking a hard class on top of a training day, which was

@@ -1,5 +1,9 @@
 # Per-week counts are a template plus per-cell overrides, not lazy-lookback
 
+> **Status: Superseded by [ADR-0026](0026-weekly-template-is-a-fixed-target-no-per-week-variation.md).**
+> The weekly template is now a fixed target with no per-week count variation; under-completion is
+> logged honestly rather than re-planned.
+
 A strength placement's **set count** and a recovery routine's **round count** were block-wide.
 To let them vary by week (2 sets in week 1 then 3, or rounds climbing across a cardio block),
 each gains an optional per-cell **override**; absent, the week inherits the block-wide

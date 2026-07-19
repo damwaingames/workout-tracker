@@ -1,5 +1,9 @@
 # 1. Keep previousSets and previousMeasure as separate temporal scans
 
+> **Status: Superseded by [ADR-0020](0020-exercise-owns-its-history-block-is-a-container.md).**
+> Progression stopped being a routine-keyed scan over the block log: an exercise owns its own
+> date-ordered performance timeline, so the separate-scans concern no longer applies.
+
 Date: 2026-06-07
 
 ## Status

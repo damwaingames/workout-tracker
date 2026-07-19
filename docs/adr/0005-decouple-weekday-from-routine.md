@@ -1,5 +1,9 @@
 # 5. Decouple weekday from routine; derive dates from a per-week schedule
 
+> **Status: Superseded by [ADR-0024](0024-block-is-a-weekly-template-over-n-real-weeks.md).** The
+> schedule dissolved into a weekday-keyed weekly template on real dates; the progression-ordering
+> this ADR also carried had already been replaced by the per-exercise timeline (ADR-0020).
+
 Date: 2026-06-17
 
 ## Status
