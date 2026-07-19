@@ -1,5 +1,9 @@
 # Nutrition is published to Health Connect one-way, via a stateless companion
 
+> **Status: Superseded by [ADR-0018](0018-nutrition-domain-removed.md).** The nutrition projection
+> and its Health Connect publish pipeline were removed with the whole nutrition domain; the
+> companion app is orphaned. Kept as history.
+
 The app records nutrition; Google's charts live in **Health Connect**, which is a native
 Android SDK with **no cloud REST** — a PWA cannot reach it. So the app **publishes** a
 **nutrition projection** (CONTEXT) — a per-day, derived, lossy view of the Store, one

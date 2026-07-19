@@ -53,9 +53,9 @@ verify(async ({ page, ck, ls, reset, key }) => {
   ck("class day still rendered after a volume recompute", !!(await page.$(cs)));
   ck("strength volume line rendered with a class present", (await page.$('[data-vol-cell="b1.w1.d3"]')) !== null);
 
-  // ---- classTypes is derived, not a persisted field (review #2); schema stamped v4 ----
+  // ---- classTypes is derived, not a persisted field (review #2); schema stamped v5 ----
   ck("no persisted classTypes field (derived on demand)", (await ls()).classTypes === undefined);
-  ck("fresh seed is schema v4", (await ls()).version === 4);
+  ck("fresh seed is schema v5", (await ls()).version === 5);
 
   // ---- Pre-v4 `.classes` add-on key left inert (non-destructive migration) ----
   ck("pre-v4 .classes key untouched", Array.isArray(s.log[`${D1}.classes`]) && s.log[`${D1}.classes`][0].type === "Yoga");
@@ -85,13 +85,13 @@ verify(async ({ page, ck, ls, reset, key }) => {
   await page.click("#edit-toggle"); // leave edit mode before the migration step
   await page.waitForTimeout(40);
 
-  // ---- v3 → v4 migration: an old save upgrades; its `.classes` key survives inert ----
+  // ---- v3 → v5 migration: an old save upgrades; its `.classes` key survives inert ----
   await page.evaluate((k) => { const st = JSON.parse(localStorage.getItem(k)); st.version = 3; localStorage.setItem(k, JSON.stringify(st)); }, key);
   await page.reload({ waitUntil: "load" });
   await page.waitForTimeout(120);
   await page.click('[data-action="week"][data-week="1"]'); // no-op → save() persists the stamp
   await page.waitForTimeout(60);
   s = await ls();
-  ck("v3 save migrates to v4", s.version === 4);
+  ck("v3 save migrates to v5", s.version === 5);
   ck("legacy .classes key still present but inert after migration", Array.isArray(s.log[`${D1}.classes`]));
 });

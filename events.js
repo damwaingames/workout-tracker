@@ -3,23 +3,19 @@
  * The store reassignments (setState/setEditing) all funnel through state.js —
  * an importer can read `state`/`editing` but can't reassign the binding here. */
 
-import { ALL_WEEKS, DEFAULT_SETS, DEFAULT_BAND, NUTRIENTS } from "./constants.js";
+import { ALL_WEEKS, DEFAULT_SETS, DEFAULT_BAND } from "./constants.js";
 import {
   placement, clampSets, clampRounds, clampDuration, circuitOf,
-  nonNegSec, slugify, uniqueId, today, mondayOf, cellKey, setsKey, roundsKey, bandKey, foodKey, defaultMeal, scheduleKey, parseRoutine,
+  nonNegSec, slugify, uniqueId, today, mondayOf, cellKey, setsKey, roundsKey, bandKey, scheduleKey, parseRoutine,
 } from "./helpers.js";
 import {
-  state, editing, setState, setEditing, save, setLog, logList, logPush, logRemoveAt, logReplaceAt, purgeBlockLog,
-  currentBlock, routineDef, placeMove, currentCell, effectiveSets, effectiveRounds, weekSchedule, nextBlockNumber, defaultState, M, findClassType, pantryList,
+  state, editing, setState, setEditing, save, setLog, purgeBlockLog,
+  currentBlock, routineDef, placeMove, currentCell, effectiveSets, effectiveRounds, weekSchedule, nextBlockNumber, defaultState, M, findClassType,
 } from "./state.js";
 import {
   render, renderProgress, renderBmi, renderVolumes, renderClassTotal, patchCircuitTime, patchSteadyTime, patchClass, hydrate, repopulate, hydrateNotes,
 } from "./render.js";
-import { foodResultsHTML } from "./render-nutrition.js";
-import { lookupBarcode, searchFoods } from "./off.js";
-import { scanBarcode } from "./scan.js";
 import { exportBackup, importBackup, importBlockFile, drivePush, drivePull } from "./io.js";
-import { shareNutrition } from "./health.js";
 
 /* ---------------------------------------------------------------------- *
  * Events                                                                  *
@@ -140,24 +136,10 @@ export function handleClick(e) {
       state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
       save(); render(); break;
     }
-    case "food-remove": removeFood(el.dataset.cell, Number(el.dataset.i)); break;
-    case "food-open": foodOpen(el); break;
-    case "food-close": foodClose(el); break;
-    case "food-find": foodFind(el); break;
-    case "food-scan": foodScan(el); break;
-    case "food-scan-cancel": foodScanCancel(); break;
-    case "food-pick": foodPick(el); break;
-    case "food-add-local": foodAddLocal(el); break;
-    case "food-edit": foodEdit(el); break;
-    case "food-grams-edit": revealRowEdit(el, ".food-grams-edit-form"); break;
-    case "food-quick-edit": revealRowEdit(el, ".food-quick-edit-form"); break;
-    case "food-edit-cancel": { const f = el.closest("form"); f.hidden = true; f.reset(); break; }
     case "toggle-routine": toggleRoutine(el); break;
-    case "routine-tab": routineTab(el); break;
     case "export": exportBackup(); break;
     case "drive-push": drivePush(); break;
     case "drive-pull": drivePull(); break;
-    case "publish-nutrition": shareNutrition(); break;
     case "reset": resetAll(); break;
   }
 }
@@ -189,333 +171,13 @@ function reorderRoutine(routineNum, dir) {
   render();
 }
 
-// Switch a routine's Workout / Nutrition tab in place — a CSS class flip plus the persisted
-// .tab flag, no full render (both panels are already in the DOM, so it's instant and an
-// open finder survives). setLog deletes on "", so Workout = absent (the default).
-function routineTab(el) {
-  const routineEl = el.closest(".routine");
-  const nutrition = el.dataset.tab === "nutrition";
-  routineEl.classList.toggle("tab-nutrition", nutrition);
-  setLog(routineEl.dataset.cell + ".tab", nutrition ? "nutrition" : "");
-  routineEl.querySelectorAll(".routine-tab").forEach((b) => b.setAttribute("aria-selected", String(b === el)));
-}
-
 export function handleSubmit(e) {
-  const foodForm = e.target.closest(".food-quick-form");
-  if (foodForm) { e.preventDefault(); return addQuickEntry(foodForm); }
-  const gramsForm = e.target.closest(".food-grams-form");
-  if (gramsForm) { e.preventDefault(); return addFoodEntry(gramsForm); }
-  const gramsEditForm = e.target.closest(".food-grams-edit-form");
-  if (gramsEditForm) { e.preventDefault(); return saveGramsEdit(gramsEditForm); }
-  const quickEditForm = e.target.closest(".food-quick-edit-form");
-  if (quickEditForm) { e.preventDefault(); return saveQuickEdit(quickEditForm); }
-  const detailForm = e.target.closest(".food-detail-form");
-  if (detailForm) { e.preventDefault(); return saveFoodDetail(detailForm); }
   const form = e.target.closest(".picker-form");
   if (!form) return;
   e.preventDefault();
   const zone = form.closest(".add-zone");
   if (zone && zone.dataset.picker === "measure") return addNewMeasurement(form);
   addNewExercise(form, zone ? parseRoutine(zone.dataset.routine) : NaN);
-}
-
-// Read the NUTRIENTS fields off a form as { values, any } — `any` flags whether any nutrient
-// is > 0, so callers can reject an all-zero set ("a blank set adds nothing", in one place).
-// Shared by the quick-entry forms and the Food-details form.
-function readNutrients(fd) {
-  const values = {}; let any = false;
-  NUTRIENTS.forEach((n) => { const v = parseFloat(fd.get(n.id)); values[n.id] = v > 0 ? v : 0; if (v > 0) any = true; });
-  return { values, any };
-}
-
-// Read a quick entry { name, kcal, carb, fat, protein } from a form, or null when every
-// nutrient is zero (a blank row would add nothing and shift no total). A name is optional.
-// Shared by the add form and the in-place edit form, so they can't drift apart.
-function readQuickEntry(form) {
-  const fd = new FormData(form);
-  const { values, any } = readNutrients(fd);
-  return any ? { name: String(fd.get("name") || "").trim(), ...values } : null;
-}
-
-// The meal a finder's next add joins: the checked radio, or the current-hour default if none is
-// checked (belt-and-braces — foodOpen checks one on reveal). One reader for every add path.
-function selectedMeal(finder) {
-  const r = finder && finder.querySelector(".food-meal-select input:checked");
-  return r ? r.value : defaultMeal();
-}
-
-// Log an ad-hoc quick entry on a routine cell — un-barcoded food (loose fruit, meals out) that
-// carries its own kcal + macros, the snapshot exception to the pantry-reference model
-// (ADR-0004). Food entries are an array under one cell key, exactly like classes; each carries
-// the `meal` it was logged under (the finder's selected meal).
-function addQuickEntry(form) {
-  const entry = readQuickEntry(form);
-  if (!entry) return;
-  const meal = selectedMeal(form.closest(".food-finder"));
-  logPush(foodKey(form.closest(".food").dataset.cell), { ...entry, meal });
-  render();
-}
-
-function removeFood(cell, i) {
-  logRemoveAt(foodKey(cell), i);
-  render();
-}
-
-// Reveal a hidden form and focus/select its first input. Shared by the row editors, the
-// Food-details author tail, and foodPick's grams reveal.
-function reveal(form) {
-  form.hidden = false;
-  const first = form.querySelector("input");
-  if (first) { first.focus(); first.select(); }
-}
-
-// Reveal a logged row's in-place edit form (grams for a pantry row, name + nutrients for a
-// quick row). Shared by both row editors.
-function revealRowEdit(el, cls) {
-  reveal(el.closest(".food-item").querySelector(cls));
-}
-
-// Save an in-place grams edit: replace the entry at its index, preserving the barcode and its
-// meal (both read from the stored entry, not the DOM — the edit row only carries grams). Re-
-// renders so the row + subtotals + day total re-derive.
-function saveGramsEdit(form) {
-  const cell = form.dataset.cell;
-  const i = Number(form.dataset.i);
-  const grams = parseFloat(new FormData(form).get("grams"));
-  const entry = logList(foodKey(cell))[i];
-  if (!entry || !entry.barcode || !(grams > 0)) return;
-  logReplaceAt(foodKey(cell), i, { barcode: entry.barcode, grams, meal: entry.meal });
-  render();
-}
-
-// Save an in-place quick-entry edit: same shape + all-zero guard as the add form (shared
-// readQuickEntry), but replacing the entry at its index rather than appending. The meal is
-// carried over from the stored entry (the edit form doesn't re-pick it).
-function saveQuickEdit(form) {
-  const entry = readQuickEntry(form);
-  if (!entry) return;
-  const cell = form.dataset.cell;
-  const i = Number(form.dataset.i);
-  const meal = (logList(foodKey(cell))[i] || {}).meal;
-  logReplaceAt(foodKey(cell), i, { ...entry, meal });
-  render();
-}
-
-/* --- Food finder: search / barcode / pick foods from Open Food Facts into the Pantry,
- * then log a portion. The finder is patched in place (no full render) so it stays open
- * across a search; only confirming a portion renders. --- */
-// The most recent Find's hits, by barcode, so foodPick can cache the chosen one (its
-// fresh OFF data) into the Pantry. Cleared whenever the local Pantry view is shown.
-let foundFoods = {};
-
-// Is a barcode a *trusted* Pantry record — numbers hand-vouched, not OFF's (ADR-0004
-// amendment)? The single predicate, read by the re-lookup short-circuit and freshestFood.
-const isTrusted = (barcode) => !!(state.pantry[barcode] && state.pantry[barcode].trusted);
-
-// The record to use for a barcode, with the trusted-vs-OFF precedence in one place: a trusted
-// Pantry record wins over any OFF hit (ADR-0004 amendment), else the just-found OFF data, else
-// whatever's cached. Used by foodPick (what to log) and foodEdit (what to prefill).
-function freshestFood(barcode) {
-  return isTrusted(barcode) ? state.pantry[barcode] : (foundFoods[barcode] || state.pantry[barcode]);
-}
-
-// Hide a finder and restore its "＋ Add food" trigger — the close half, shared by the
-// Close button and the one-finder-at-a-time sweep in foodOpen.
-function closeFinder(finder) {
-  finder.hidden = true;
-  const btn = finder.parentNode.querySelector(".food-add-btn");
-  if (btn) btn.hidden = false;
-}
-
-// Reveal the finder, seeding its results with the whole Pantry — the offline quick-pick.
-function foodOpen(el) {
-  // One finder open at a time: stop any scan and close a finder left open on another routine
-  // card first, so the module-global foundFoods only ever holds THIS finder's hits. A
-  // stale finder's OFF results are cleared here and were never cached to the Pantry, so
-  // without this a pick on one would silently no-op — this makes that invariant real.
-  if (activeScan) activeScan.cancel();
-  document.querySelectorAll(".food-finder:not([hidden])").forEach(closeFinder);
-  const finder = el.closest(".food-add").querySelector(".food-finder");
-  el.hidden = true;
-  finder.hidden = false;
-  // Pre-select the meal that fits the current hour, so logging breakfast at 8am is one tap.
-  const meal = finder.querySelector('.food-meal-select input[value="' + defaultMeal() + '"]');
-  if (meal) meal.checked = true;
-  foundFoods = {};
-  const input = finder.querySelector(".food-search");
-  input.value = "";
-  finder.querySelector(".food-results").innerHTML = foodResultsHTML(pantryList(""));
-  input.focus();
-}
-
-function foodClose(el) {
-  if (activeScan) activeScan.cancel(); // stop the camera if a scan is mid-flight
-  closeFinder(el.closest(".food-finder"));
-}
-
-// Typing filters the Pantry locally (instant, offline) and returns to that view, so a
-// stale Open Food Facts result list can't linger under a changed query.
-function foodSearch(el) {
-  foundFoods = {};
-  el.closest(".food-finder").querySelector(".food-results").innerHTML = foodResultsHTML(pantryList(el.value));
-}
-
-// Find on Open Food Facts from the typed query.
-async function foodFind(el) {
-  const finder = el.closest(".food-finder");
-  const q = finder.querySelector(".food-search").value.trim();
-  if (q) await runFinderQuery(finder, q);
-}
-
-// Run an Open Food Facts lookup for `q` and paint the results in place (no full render,
-// so the finder stays open across it). An all-digits query of ≥ 8 chars is a barcode
-// lookup, anything else a name search. A network failure (offline) falls back to the
-// Pantry / a quick entry. Shared by the Find button and a successful camera scan — a
-// scanned barcode is just an all-digits query routed through the same path.
-async function runFinderQuery(finder, q) {
-  const results = finder.querySelector(".food-results");
-  const digits = q.replace(/\D/g, "");
-  const isBarcode = digits.length >= 8 && digits === q;
-  // A trusted barcode resolves from the Pantry — OFF is never consulted, so a hand-vouched
-  // record can't be clobbered by a re-lookup, and it works offline (ADR-0004 amendment).
-  if (isBarcode && isTrusted(digits)) {
-    foundFoods = {};
-    results.innerHTML = foodResultsHTML([state.pantry[digits]]);
-    return;
-  }
-  results.innerHTML = '<li class="food-result-empty muted small">Searching Open Food Facts…</li>';
-  try {
-    const foods = isBarcode ? [await lookupBarcode(digits)].filter(Boolean) : await searchFoods(q);
-    foundFoods = {};
-    foods.forEach((f) => { foundFoods[f.barcode] = f; });
-    if (foods.length) { results.innerHTML = foodResultsHTML(foods); return; }
-    // A barcode miss can be authored locally (it has a barcode to hang a Food on); a name
-    // miss can't, so it still routes to a quick entry (ADR-0004: no barcode ⇒ quick entry).
-    results.innerHTML = isBarcode
-      ? '<li class="food-result-empty muted small">Not on Open Food Facts — ' +
-        '<button type="button" class="link" data-action="food-add-local" data-barcode="' + digits + '">add it to your foods</button>.</li>'
-      : '<li class="food-result-empty muted small">No Open Food Facts match — add a quick entry instead.</li>';
-  } catch (err) {
-    results.innerHTML = '<li class="food-result-empty muted small">Can’t reach Open Food Facts (offline?) — pick from your foods or add a quick entry.</li>';
-  }
-}
-
-/* --- Camera scan (ADR-0003): scan.js owns the stream + BarcodeDetector loop; here we
- * just reveal the preview and route a decoded barcode through the same lookup the Find
- * button uses. The Scan button is feature-detected away off Chrome/Android (render.js),
- * so this only runs where the API exists. --- */
-// The in-flight scan (one finder open at a time), so Cancel / closing the finder can
-// stop the camera.
-let activeScan = null;
-
-async function foodScan(el) {
-  const finder = el.closest(".food-finder");
-  const scanner = finder.querySelector(".food-scanner");
-  const results = finder.querySelector(".food-results");
-  scanner.hidden = false;
-  // Bring the camera into view — the finder can sit low on a long card, so even under the search
-  // row the preview may open below the fold. Centre it so you see what the camera's pointed at.
-  scanner.scrollIntoView({ block: "center", behavior: "smooth" });
-  activeScan = scanBarcode(scanner.querySelector(".scan-video"));
-  try {
-    const barcode = await activeScan.done;
-    scanner.hidden = true;
-    finder.querySelector(".food-search").value = barcode; // show what was scanned
-    await runFinderQuery(finder, barcode);
-  } catch (err) {
-    scanner.hidden = true;
-    // A real failure (no camera / permission denied) gets a note; a user Cancel is silent.
-    if (!err || err.name !== "AbortError") {
-      results.innerHTML = '<li class="food-result-empty muted small">Couldn’t start the camera — check the permission, or type the barcode in.</li>';
-    }
-  } finally {
-    activeScan = null;
-  }
-}
-
-function foodScanCancel() { if (activeScan) activeScan.cancel(); }
-
-// Pick a found / pantry food: cache the chosen record into the Pantry (freshestFood applies
-// the trusted-vs-OFF precedence — re-finding an untrusted one refreshes it from OFF, a
-// trusted one is never overwritten; ADR-0004), then reveal its grams form to confirm the
-// portion. A plain Pantry pick reuses the cached record, no network.
-function foodPick(el) {
-  const barcode = el.dataset.barcode;
-  const food = freshestFood(barcode);
-  if (!food) return;
-  state.pantry[barcode] = food;
-  save();
-  const form = el.closest(".food-result").querySelector(".food-grams-form");
-  el.closest(".food-finder").querySelectorAll(".food-grams-form").forEach((f) => { if (f !== form) f.hidden = true; });
-  reveal(form);
-}
-
-// Confirm the portion: push a pantry entry { barcode, grams, meal } onto the routine, then
-// render (which closes the finder). The food is already in the Pantry from foodPick; the meal
-// is the finder's selected one (the grams form lives inside the finder, author path included).
-function addFoodEntry(form) {
-  const cell = form.closest(".food").dataset.cell;
-  const barcode = form.dataset.barcode;
-  const grams = parseFloat(new FormData(form).get("grams"));
-  if (!state.pantry[barcode] || !(grams > 0)) return;
-  const meal = selectedMeal(form.closest(".food-finder"));
-  logPush(foodKey(cell), { barcode, grams, meal });
-  render();
-}
-
-/* --- Trusted Foods (ADR-0004 amendment): author a Food locally when OFF has no record of a
- * barcode, or hand-correct one's numbers. Either way the Food is marked `trusted`, so a later
- * re-lookup won't clobber it. One "Food details" form serves both, revealed + prefilled by
- * openFoodDetail; dataset.mode tells saveFoodDetail what to do once it's written. --- */
-
-// Reveal + prefill the Food details form. `food` is null when authoring (blank fields) or
-// the record being corrected (prefilled). mode is "author" | "correct".
-function openFoodDetail(form, barcode, mode, food) {
-  form.hidden = false;
-  form.dataset.barcode = barcode;
-  form.dataset.mode = mode;
-  form.querySelector('input[name="name"]').value = (food && food.name) || "";
-  form.querySelector('input[name="brand"]').value = (food && food.brand) || "";
-  const per = (food && food.per100g) || {};
-  NUTRIENTS.forEach((n) => { form.querySelector('input[name="' + n.id + '"]').value = parseFloat(per[n.id]) || ""; });
-  form.querySelector('input[name="name"]').focus();
-}
-
-// Author a not-found barcode: open the form blank, the barcode preserved from the message.
-function foodAddLocal(el) {
-  openFoodDetail(el.closest(".food").querySelector(".food-detail-form"), el.dataset.barcode, "author", null);
-}
-
-// Correct a food's details (from a finder result row or a logged routine row): open the Food
-// details form prefilled in correct mode, with the freshest record for the barcode (a trusted
-// Pantry record beats a possibly-stale same-barcode OFF hit — see freshestFood).
-function foodEdit(el) {
-  const barcode = el.dataset.barcode;
-  openFoodDetail(el.closest(".food").querySelector(".food-detail-form"), barcode, "correct", freshestFood(barcode));
-}
-
-// Save the Food details form: write a trusted Food to the Pantry (the user vouches for these
-// numbers from the label). Authoring then drops into logging a portion (the new food, grams
-// open); correcting just re-renders, so the corrected numbers propagate to every routine (ADR-0004).
-function saveFoodDetail(form) {
-  const barcode = form.dataset.barcode;
-  if (!barcode) return;
-  const fd = new FormData(form);
-  const { values: per100g, any } = readNutrients(fd);
-  const name = String(fd.get("name") || "").trim();
-  if (!any && !name) return; // nothing worth storing
-  state.pantry[barcode] = { barcode, name, brand: String(fd.get("brand") || "").trim(), per100g, trusted: true };
-  save();
-  if (form.dataset.mode === "author") {
-    // Drop straight into logging a portion: show the new food as a pickable row, grams open.
-    const results = form.closest(".food").querySelector(".food-results");
-    results.innerHTML = foodResultsHTML([state.pantry[barcode]]);
-    form.hidden = true;
-    const grams = results.querySelector(".food-grams-form");
-    if (grams) reveal(grams);
-  } else {
-    render(); // correction: reflect the new numbers everywhere (ADR-0004 propagation)
-  }
 }
 
 function addNewExercise(form, routine) {
@@ -663,7 +325,6 @@ function winddownField(el) {
 }
 const fieldByName = {
   "picker-search": pickerSearch,
-  "food-search": foodSearch,
   "circuit-field": circuitField,
   "steady-field": steadyField,
   "class-field": classField,

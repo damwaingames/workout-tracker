@@ -2,7 +2,7 @@
  * CACHE carries the app's semver (see APP_VERSION in constants.js) — keep the two
  * in lockstep. Bumping it on each release busts the old cache on the next activate,
  * so phones pick up the new index.html / styles.css / JS modules on next launch. */
-const CACHE = "workout-tracker-v3.5.0";
+const CACHE = "workout-tracker-v4.0.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -13,14 +13,10 @@ const ASSETS = [
   "./events.js",
   "./io.js",
   "./render.js",
-  "./render-nutrition.js",
   "./state.js",
   "./helpers.js",
   "./constants.js",
-  "./off.js",
-  "./scan.js",
   "./drive.js",
-  "./health.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -41,11 +37,10 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
-  // Cache the app shell only — let every cross-origin request (Google Drive auth + API,
-  // Open Food Facts) pass straight to the network untouched. Without this guard the
-  // cache-first path below would both pollute the cache with API responses and, worse,
-  // serve a stale OFF product back to an ADR-0004 re-lookup; and a failed Drive call
-  // would fall back to index.html instead of erroring. (ADR-0006.)
+  // Cache the app shell only — let every cross-origin request (Google Drive auth + API)
+  // pass straight to the network untouched. Without this guard the cache-first path below
+  // would pollute the cache with API responses, and a failed Drive call would fall back to
+  // index.html instead of erroring. (ADR-0006.)
   if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     caches.match(e.request).then((hit) =>

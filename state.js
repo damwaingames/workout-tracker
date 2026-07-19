@@ -9,10 +9,10 @@
  * for the importer). Property mutation (state.log[k] = …) works from anywhere. */
 
 import {
-  WEEKS, ALL_WEEKS, STORAGE_KEY, DEFAULT_SETS, CIRCUIT_DEFAULTS, WINDDOWN_DEFAULTS, NUTRIENTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
+  WEEKS, STORAGE_KEY, SUPPORTED_VERSIONS, DEFAULT_SETS, CIRCUIT_DEFAULTS, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES, LOAD_MODES, ROUTINE_KINDS,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, nutKey, foodKey, mealOf, cellScalarKey, scheduleKey,
+  today, mondayOf, cellKey, setKey, roundRepKey, setsKey, roundsKey, bandKey, measureKey, cellScalarKey, scheduleKey,
   placement, loadMode, circuitOf, clampSets, clampRounds, uniqueId, validYMD, bandFor, bandKg,
 } from "./helpers.js";
 
@@ -212,7 +212,7 @@ function seedBlock(id, name) {
 
 export function defaultState() {
   return {
-    version: 4, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")],
+    version: 5, library: seedLibrary(), blocks: [seedBlock("b1", "Block 1")],
     log: {}, ui: { block: "b1", week: 1 }, notes: "",
     // Body stats: the measurement catalogue, the user's tracked subset, and a
     // one-time profile (height → BMI). Weekly values live in `log` (measureKey).
@@ -221,10 +221,6 @@ export function defaultState() {
     holiday: seedHoliday(),
     // The shared wind-down cool-down segment, shown under every non-rest routine (ADR-0013).
     winddown: seedWinddown(),
-    // The Pantry: { barcode → Food } catalogue of foods looked up from Open Food
-    // Facts — the offline cache and quick-pick in one, append-only. Empty until a
-    // lookup populates it; food entries reference it by barcode (see foodKey).
-    pantry: {},
   };
 }
 
@@ -251,7 +247,7 @@ function backfillFromSeed(cur, seed) {
 }
 
 function normalise(s) {
-  if (!s || (s.version !== 2 && s.version !== 3 && s.version !== 4) || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
+  if (!s || !SUPPORTED_VERSIONS.includes(s.version) || !Array.isArray(s.blocks) || !s.blocks.length) return defaultState();
   if (!s.log) s.log = {};
   if (!s.library) s.library = seedLibrary();
   // Body stats are additive — older v2 saves predate them, so backfill the
@@ -259,9 +255,6 @@ function normalise(s) {
   if (!s.measurements) s.measurements = seedMeasurements();
   if (!Array.isArray(s.tracked)) s.tracked = ["bodyweight"];
   if (!s.profile || typeof s.profile !== "object") s.profile = {};
-  // The Pantry is additive (older v2 saves predate it) — backfill the empty
-  // catalogue rather than bumping the schema version, so old backups stay importable.
-  if (!s.pantry || typeof s.pantry !== "object") s.pantry = {};
   migrateRoutines(s);
   // Per-block start date (the Monday weekdays derive from) is additive — older saves
   // predate it. Backfill to the Monday of createdAt's week (ADR-0005), today's week if
@@ -271,7 +264,7 @@ function normalise(s) {
   migrateCircuit(s);
   migrateContexts(s);
   migrateLibrary(s);
-  migrateNutrition(s);
+  purgeNutrition(s);
   // The Holiday Workout and Wind-down are shared app-level segments, both additive (pre-v4 saves
   // predate them) — backfill a missing one whole, or any wrong-shaped field, from its seed. Both
   // run after migrateLibrary so their moves are guaranteed in the library. Per-cell `.holiday` /
@@ -280,11 +273,11 @@ function normalise(s) {
   s.winddown = backfillFromSeed(s.winddown, seedWinddown());
   if (!s.ui || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (typeof s.notes !== "string") s.notes = "";
-  // Schema is now v4 (class routine kind — ADR-0010). A migrated v2/v3 save is well-formed by
-  // here; stamp it so the next save persists the bump. The migration is non-destructive: old
-  // blocks keep working and any pre-v4 `.classes` add-on log keys are left inert (never read).
+  // Schema is now v5 (nutrition domain removed — ADR-0018). A migrated v2/v3/v4 save is well-formed
+  // by here; stamp it so the next save persists the bump. purgeNutrition above dropped the Pantry
+  // and every food/legacy-nutrition log key, so the bump marks a store that carries no food data.
   // STORAGE_KEY stays "…-v2" (a storage slot name, not the schema number) so data isn't orphaned.
-  s.version = 4;
+  s.version = 5;
   return s;
 }
 export { normalise };
@@ -345,33 +338,15 @@ function migrateCircuit(s) {
   });
 }
 
-// Fold the legacy manual nutrition grid into the food-entry model. Any routine that
-// carried .nut.* scalars (kcal + the three macros) becomes a single quick entry
-// holding those totals; the scalars are then deleted (which also clears lingering
-// zeros). Idempotent — once a routine's scalars are gone it's a no-op — and additive,
-// so old backups migrate on import. Scans every cell, like nutritionTotals.
-function migrateNutrition(s) {
-  s.blocks.forEach((b) => {
-    ALL_WEEKS.forEach((wk) => {
-      (b.routines || []).forEach((d) => {
-        const cell = cellKey(b.id, wk, d.routine);
-        const vals = {};
-        let any = false;
-        NUTRIENTS.forEach((n) => {
-          const v = parseFloat(s.log[nutKey(cell, n.id)]);
-          if (v > 0) { vals[n.id] = v; any = true; }
-          delete s.log[nutKey(cell, n.id)];
-        });
-        // Seed the quick entry only when there was real data and the routine has no food
-        // list yet — never double-migrate a routine already on the new model.
-        if (any && !Array.isArray(s.log[foodKey(cell)])) {
-          s.log[foodKey(cell)] = [{
-            name: "Logged total",
-            ...Object.fromEntries(NUTRIENTS.map((n) => [n.id, vals[n.id] || 0])),
-          }];
-        }
-      });
-    });
+// v4→v5: the nutrition domain was removed (ADR-0018), so purge every trace of it from a
+// loaded store — the Pantry catalogue plus every food-entry (`.food`) and legacy nutrition-
+// scalar (`.nut.`) log key. A flat log sweep (not a block×week×routine walk) so orphaned keys
+// from deleted blocks go too. Idempotent — a no-op once swept — and destructive by design:
+// this is the one-way removal the schema bump records, not a reversible migration.
+function purgeNutrition(s) {
+  delete s.pantry;
+  Object.keys(s.log).forEach((k) => {
+    if (k.endsWith(".food") || k.includes(".nut.")) delete s.log[k];
   });
 }
 
@@ -481,22 +456,8 @@ export function setLog(k, v) {
   save();
 }
 
-// The log is a flat {key: value} map, so the *shape* a key holds lives with these
-// readers, not at each call site. logList owns the one structured shape — a class
-// list stored under a cell — returning the stored array or an empty one.
-export function logList(k) { return Array.isArray(state.log[k]) ? state.log[k] : []; }
-// The three mutators of that shape, paired with logList so the "a key holds a list, and
-// it's deleted when its last item goes" rule lives beside the reader rather than
-// copy-pasted at each call site. logPush appends; logRemoveAt drops index i off a copy
-// (so the stored array isn't touched before setLog decides whether to keep or delete it);
-// logReplaceAt swaps the item at i in place — an edit, so length is unchanged (a no-op
-// for an out-of-range index, and it never empties the key).
-export function logPush(k, item) { const l = logList(k); l.push(item); setLog(k, l); }
-export function logRemoveAt(k, i) { const l = logList(k).slice(); l.splice(i, 1); setLog(k, l.length ? l : ""); }
-export function logReplaceAt(k, i, item) { const l = logList(k).slice(); if (i >= 0 && i < l.length) l[i] = item; setLog(k, l); }
-
 // Purge every log key belonging to a block. The cell-key grammar guarantees every
-// routine / measure / food / class / band key is hung off a `block.id`-prefixed
+// routine / measure / class / band key is hung off a `block.id`-prefixed
 // cell, so one prefix sweep collects them all — the invariant the key-grammar
 // comments promise, made executable in one named place. No save(): unlike setLog
 // (a per-field edit), this is a sub-step of deleteBlock, which saves once at the end.
@@ -526,8 +487,8 @@ const importParts = (data) => ({
 // runs only once errors is empty. Errors are structural/semantic and reject the whole import;
 // coercions are cosmetic fixes the merge applies + reports.
 export function validateBlockImport(data) {
-  if (!data || typeof data !== "object" || (data.version !== 2 && data.version !== 3 && data.version !== 4)) {
-    return { errors: ["This isn't a workout-tracker export at version 2, 3 or 4."], coercions: [] };
+  if (!data || typeof data !== "object" || !SUPPORTED_VERSIONS.includes(data.version)) {
+    return { errors: ["This isn't a workout-tracker export at a supported version (" + SUPPORTED_VERSIONS.join(", ") + ")."], coercions: [] };
   }
   const { importLib, blocks } = importParts(data);
   if (!blocks.length) return { errors: ["The file has no blocks to import."], coercions: [] };
@@ -778,79 +739,6 @@ export function bmiFor(block, wk) {
   return w / (m * m);
 }
 
-// The kcal + macros a single food entry contributes. A quick entry carries its own
-// numbers; a pantry entry scales its Food's per-100g values by grams (per100g × g/100),
-// reading the Food *live* from the Pantry — so an Open Food Facts correction reaches
-// the routines that logged it (ADR-0004), and an unknown barcode (e.g. a half-restored
-// backup) contributes zero rather than throwing. Keyed off NUTRIENTS so the nutrient
-// set stays single-sourced.
-export function entryNutrition(entry) {
-  const out = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
-  if (!entry || typeof entry !== "object") return out;
-  if (entry.barcode) {
-    const food = state.pantry[entry.barcode];
-    const per = (food && food.per100g) || {};
-    const factor = (parseFloat(entry.grams) || 0) / 100;
-    NUTRIENTS.forEach((n) => { out[n.id] = (parseFloat(per[n.id]) || 0) * factor; });
-  } else {
-    NUTRIENTS.forEach((n) => { out[n.id] = parseFloat(entry[n.id]) || 0; });
-  }
-  return out;
-}
-
-// The derived nutrition of a set of food entries, as { kcal, carb, fat, protein } — the shared
-// accumulator behind the routine total (all entries) and every per-meal subtotal (one bucket),
-// so the two can never drift in *how* they sum: the meal totals are the day total, just partitioned.
-// Keyed off NUTRIENTS so the nutrient set has one home.
-export function sumNutrition(entries) {
-  const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
-  entries.forEach((e) => {
-    const n = entryNutrition(e);
-    NUTRIENTS.forEach((x) => { sum[x.id] += n[x.id]; });
-  });
-  return sum;
-}
-
-// A routine's nutrition: the derived sum of *all* its food entries. The single place a routine
-// total is computed — render and nutritionTotals both read through here.
-export const routineNutrition = (cell) => sumNutrition(logList(foodKey(cell)));
-
-// One meal's nutrition on a routine: the same sum narrowed to the entries bucketed under `meal`
-// (via mealOf, so a mealless/legacy entry counts under the default meal exactly as it renders).
-// Drives the per-meal subtotal and the per-meal Health Connect record. Because mealOf is total,
-// Σ mealNutrition over MEALS === routineNutrition exactly — the two cannot drift.
-export const mealNutrition = (cell, meal) =>
-  sumNutrition(logList(foodKey(cell)).filter((e) => mealOf(e) === meal));
-
-// The Pantry as a name-sorted array, optionally narrowed to foods whose name / brand /
-// barcode contains `query` (case-insensitive). Drives the finder's offline quick-pick —
-// reads only state.pantry, so it works with no network.
-export function pantryList(query) {
-  const q = String(query || "").trim().toLowerCase();
-  return Object.values(state.pantry)
-    .filter((f) => f && (!q || (f.name + " " + (f.brand || "") + " " + f.barcode).toLowerCase().includes(q)))
-    .sort((a, b) => String(a.name || a.barcode).localeCompare(String(b.name || b.barcode)));
-}
-
-// Summed nutrition over a set of weeks (one week for the week total, all of them
-// for the block total) — every routine's derived total, accumulated. `kcalDays` counts
-// routines that logged calories, so the headline avg kcal/routine divides by routines the user
-// actually recorded rather than the full 7×N (parallels routineLoad's scan).
-export function nutritionTotals(block, weeks) {
-  // Derive the accumulator from NUTRIENTS so the nutrient set has one source of
-  // truth — adding a field there can't silently skip it here.
-  const sum = Object.fromEntries(NUTRIENTS.map((n) => [n.id, 0]));
-  let kcalDays = 0;
-  weeks.forEach((wk) => {
-    block.routines.forEach((d) => {
-      const routine = routineNutrition(cellKey(block.id, wk, d.routine));
-      NUTRIENTS.forEach((n) => { sum[n.id] += routine[n.id]; });
-      if (routine.kcal > 0) kcalDays++;
-    });
-  });
-  return { ...sum, kcalDays };
-}
-
 // The class-type names in play: the seeds unioned with every class routine's type across all
 // blocks. The single source for BOTH the Edit-mode autocomplete (the datalist) and case
 // canonicalisation, so what's offered and what a typed spelling resolves to can never disagree.
@@ -871,7 +759,7 @@ export function findClassType(name) {
 // Class minutes + logged calorie burn over a set of weeks (one week / all weeks). Sums the
 // per-session actuals on class-kind cells — minutes and the wearable's logged kcal (ADR-0014)
 // — the figures the header Classes line shows. Each is counted on its own (a class with only
-// kcal, or only minutes, still contributes). Mirrors nutritionTotals' scan.
+// kcal, or only minutes, still contributes).
 export function classTotals(block, weeks) {
   let mins = 0, kcal = 0;
   weeks.forEach((wk) => {

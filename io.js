@@ -4,6 +4,7 @@
  * entry points to the footer's data-action / file-input handlers. Reads the Store and drive.js;
  * never owns event routing, and nothing imports back into events — the module graph stays acyclic. */
 
+import { SUPPORTED_VERSIONS } from "./constants.js";
 import { state, setState, setEditing, save, normalise, validateBlockImport, mergeBlockImport } from "./state.js";
 import { render, hydrateNotes } from "./render.js";
 import { today } from "./helpers.js";
@@ -30,9 +31,9 @@ function applyBackup(data) {
     window.alert("Could not read that backup.");
     return false;
   }
-  // Gate on version explicitly: normalise() resets unknown input to defaults,
-  // so without this an incompatible backup would silently wipe current data.
-  if (data.version !== 2 && data.version !== 3 && data.version !== 4) {
+  // Gate on version explicitly (the shared SUPPORTED_VERSIONS list): normalise() resets unknown
+  // input to defaults, so without this an incompatible backup would silently wipe current data.
+  if (!SUPPORTED_VERSIONS.includes(data.version)) {
     window.alert("That backup is from an incompatible version — not importing. Your current data is unchanged.");
     return false;
   }

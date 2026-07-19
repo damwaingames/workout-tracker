@@ -1,5 +1,8 @@
 # The nutrition publish is one record per logged meal, keyed by cell + meal
 
+> **Status: Superseded by [ADR-0018](0018-nutrition-domain-removed.md).** Meals, and the
+> per-meal nutrition publish, were removed with the whole nutrition domain. Kept as history.
+
 ADR-0016 made the **nutrition projection** one record per day, keyed by the **cell**, and argued
 against per-**food-entry** records (entries are index-addressed, so they have no stable upsert
 id, and Health Connect "charts the day's total whatever feeds it"). That held for *charting* but

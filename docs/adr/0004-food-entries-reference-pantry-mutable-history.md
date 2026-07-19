@@ -1,5 +1,8 @@
 # 4. Food entries reference the Pantry; an OFF edit rewrites past days by design
 
+> **Status: Superseded by [ADR-0018](0018-nutrition-domain-removed.md).** The Pantry, Food
+> entries, and Trusted Foods were removed with the whole nutrition domain. Kept as history.
+
 Date: 2026-06-08
 
 ## Status

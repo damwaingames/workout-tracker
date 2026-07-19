@@ -1,5 +1,8 @@
 # The nutrition publish is an idempotent per-day upsert, keyed by cell
 
+> **Status: Superseded by [ADR-0018](0018-nutrition-domain-removed.md).** The nutrition publish
+> was removed with the whole nutrition domain. Kept as history.
+
 Re-publishing must **update** a day's Health Connect record, never **duplicate** it: the same
 day published twice is one record, not two. Health Connect upserts on a caller-supplied
 `clientRecordId` (it overwrites when the id already exists *and* the incoming

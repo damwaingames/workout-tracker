@@ -1,5 +1,8 @@
 # 3. Scan barcodes with the native BarcodeDetector, no decoder library
 
+> **Status: Superseded by [ADR-0018](0018-nutrition-domain-removed.md).** The nutrition domain,
+> barcode scanning included, was removed whole. Kept as history.
+
 Date: 2026-06-08
 
 ## Status
