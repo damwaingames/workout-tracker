@@ -114,5 +114,5 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 
 // Human-facing release version (semver), surfaced in the footer. Bump on each deploy and keep
 // CACHE in sw.js in lockstep. v5.0.0 landed the v6 store rework; v5.0.1 moves the Library behind
-// its own top-level tab.
-export const APP_VERSION = "5.0.1";
+// its own top-level tab; v5.1.0 renders the block as a read-only real-calendar week grid.
+export const APP_VERSION = "5.1.0";
