@@ -6,10 +6,11 @@
  * exercise. The measurements card + footer backups are untouched infra. Composing the plan (#45)
  * brings its authoring handlers on top. */
 
-import { slugify, uniqueId, buildPerformance } from "./helpers.js";
+import { slugify, uniqueId, buildPerformance, validYMD } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logPerformance,
   currentBlock, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
+  blankRoutine, blankGroup, newItem, swapDays,
 } from "./state.js";
 import { render, renderBmi, repopulate, hydrateNotes } from "./render.js";
 import { exportBackup, importBackup, drivePush, drivePull } from "./io.js";
@@ -20,6 +21,13 @@ import { exportBackup, importBackup, drivePush, drivePull } from "./io.js";
 export function handleClick(e) {
   const el = e.target.closest("[data-action]");
   if (!el) return;
+  // Plan-authoring clicks (#45) all mutate the current block's template, then save + re-render — one
+  // delegation instead of a case each, so handleClick stays about the app-level actions below.
+  if (Object.prototype.hasOwnProperty.call(composeActions, el.dataset.action)) {
+    composeActions[el.dataset.action](el);
+    save(); render();
+    return;
+  }
   switch (el.dataset.action) {
     case "view": state.ui.view = el.dataset.view; save(); render(); break;
     case "week": state.ui.week = Number(el.dataset.week); save(); render(); break;
@@ -108,6 +116,9 @@ const fieldById = {
     state.profile.heightCm = Number.isFinite(v) && v > 0 ? v : null;
     save(); renderBmi();
   },
+  // The block start date (Edit mode) — a valid YYYY-MM-DD re-anchors the weekday labels (ADR-0024),
+  // so it re-renders; garbage from a half-cleared field is ignored rather than corrupting the date.
+  "block-start-input"(el) { const b = currentBlock(); if (validYMD(el.value)) { b.startDate = el.value; save(); render(); } },
 };
 
 // Live-patch refreshers keyed by an input's data-refresh tag — the data-*→map dispatch the CONTEXT
@@ -121,6 +132,14 @@ const refreshBy = { bmi: renderBmi };
 const fieldByName = {
   "picker-search"(el) { const zone = el.closest(".add-zone"); if (zone) repopulate(zone, el.value); },
   log: logField,
+  // Scalar plan edits (title/focus/rounds/rests/rail/duration) mutate + save but DON'T re-render, so
+  // the field keeps focus mid-type — like the block-name input and the measurement values.
+  compose: composeField,
+  // Adding an exercise to a Group IS structural (a new Item row), so it re-renders.
+  "item-add"(el) {
+    const g = groupAt(el);
+    if (g && el.value) { g.items.push(newItem(el.value)); save(); render(); }
+  },
 };
 
 // Log a Session Item's effort at one slot: gather the slot's raw inputs, build the Performance its
@@ -153,6 +172,56 @@ export function handleField(e) {
   setLog(k, el.value);
   const r = el.dataset.refresh; // which running total this field feeds (if any)
   if (r && Object.prototype.hasOwnProperty.call(refreshBy, r)) refreshBy[r]();
+}
+
+/* ---------------------------------------------------------------------- *
+ * Plan authoring (#45) — compose the current block's weekly template.     *
+ * ---------------------------------------------------------------------- */
+// Locate the routine / group / item a compose control points at, from its data-pos/g/i.
+const routineAt = (el) => currentBlock().template[Number(el.dataset.pos)];
+const groupAt = (el) => { const r = routineAt(el); return r && r.groups && r.groups[Number(el.dataset.g)]; };
+const itemAt = (el) => { const g = groupAt(el); return g && g.items && g.items[Number(el.dataset.i)]; };
+// Swap array element i with its neighbour in `dir` (±1), if that neighbour exists.
+function swapBy(arr, i, dir) { const j = i + dir; if (arr && arr[i] && arr[j] !== undefined) { const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } }
+// A non-negative integer field value clamped to a floor (blank / garbage → the floor).
+const clampNum = (v, min) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(min, n) : min; };
+
+// Structural authoring clicks — each mutates the current block's template; handleClick saves + renders.
+const composeActions = {
+  "add-group"(el) { const r = routineAt(el); if (r && r.groups) r.groups.push(blankGroup()); },
+  "remove-group"(el) { const r = routineAt(el); if (r && r.groups) r.groups.splice(Number(el.dataset.g), 1); },
+  "group-up"(el) { const r = routineAt(el); if (r) swapBy(r.groups, Number(el.dataset.g), -1); },
+  "group-down"(el) { const r = routineAt(el); if (r) swapBy(r.groups, Number(el.dataset.g), 1); },
+  "remove-item"(el) { const g = groupAt(el); if (g) g.items.splice(Number(el.dataset.i), 1); },
+  // Switch a day's kind — a fresh Routine of that kind (only when it actually changes, so an accidental
+  // re-click of the active kind doesn't wipe the day's content).
+  kind(el) { const b = currentBlock(); const pos = Number(el.dataset.pos); if (b.template[pos] && b.template[pos].kind !== el.dataset.kind) b.template[pos] = blankRoutine(el.dataset.kind); },
+  "day-up"(el) { const b = currentBlock(); const p = Number(el.dataset.pos); swapDays(b, p, p - 1); },
+  "day-down"(el) { const b = currentBlock(); const p = Number(el.dataset.pos); swapDays(b, p, p + 1); },
+  "weeks-inc"() { currentBlock().weeks += 1; },
+  "weeks-dec"() { const b = currentBlock(); b.weeks = Math.max(1, b.weeks - 1); if (state.ui.week > b.weeks) state.ui.week = b.weeks; },
+};
+
+// Scalar plan edits keyed by data-target — the CONTEXT data-*→map dispatch (like fieldByName). Each
+// handler locates its own level (routine / group / item) off the input's data-pos/g/i and sets one
+// field from the value, so all ten read the same way.
+const composeTargets = {
+  title: (el, v) => { const r = routineAt(el); if (r) r.title = v; },
+  focus: (el, v) => { const r = routineAt(el); if (r) r.focus = v; },
+  "class-type": (el, v) => { const r = routineAt(el); if (r) r.classType = v; },
+  "class-dur": (el, v) => { const r = routineAt(el); if (r) r.durationMin = clampNum(v, 0); },
+  rounds: (el, v) => { const g = groupAt(el); if (g) g.rounds = clampNum(v, 1); },
+  rw: (el, v) => { const g = groupAt(el); if (g) g.restWithin = clampNum(v, 0); },
+  ra: (el, v) => { const g = groupAt(el); if (g) g.restAfter = clampNum(v, 0); },
+  "rail-floor": (el, v) => { const it = itemAt(el); if (it && it.rail) it.rail[0] = clampNum(v, 1); },
+  "rail-ceiling": (el, v) => { const it = itemAt(el); if (it && it.rail) it.rail[1] = clampNum(v, 1); },
+  "item-time": (el, v) => { const it = itemAt(el); if (it) it.time = clampNum(v, 0) * (el.dataset.unit === "min" ? 60 : 1); },
+};
+// Set the field a compose input names, then save — no render, so the edited input keeps focus mid-type
+// (like the block-name + measurement inputs). An unknown target is ignored, as the field dispatch does.
+function composeField(el) {
+  const set = composeTargets[el.dataset.target];
+  if (set) { set(el, el.value); save(); }
 }
 
 /* ---------------------------------------------------------------------- *

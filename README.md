@@ -61,8 +61,9 @@ The app is plain ES modules (no build step), loaded from `index.html` via `<scri
 - `helpers.js` — pure helpers: log-key grammar, date maths, progression maths (rail/zone/Epley e1RM/band kg), and formatting.
 - `migrate.js` — the pure v5→v6 forward migration (ADRs 0019–0030): old cell-keyed logs → per-exercise `performances` + per-class-type `attendances`, and old blocks/routines → the new weekly template. Imports only `constants`+`helpers`; run by `state.js`'s `normalise`.
 - `state.js` — seed data, the mutable store (`state`/`editing` + setters), schema normalisation (delegating the v5→v6 transform to `migrate.js`), persistence, and the queries that read over the store.
-- `render.js` — turns the store into DOM (plus the focus-preserving live patchers).
-- `events.js` — click / submit / field handlers and the block, backup & Drive operations.
+- `render.js` — turns the store into DOM (the read/log week grid, Library, measurements) plus the focus-preserving live patchers; delegates each routine card to `compose.js` in Edit mode.
+- `compose.js` — the Edit-mode authoring UI (compose a block in the UI, no JSON): the Session/Class/Rest kind switch, Group/Item editors, rails, rounds/rests, day reorder, and the block config. Pure rendering, imported by `render.js`.
+- `events.js` — click / submit / field handlers, the plan-authoring mutators (#45), and the block, backup & Drive operations.
 - `io.js` — data I/O: file export / import (wholesale restore) and the Drive backup transport, lifted out of `events.js`.
 - `drive.js` — the Google Drive backup transport. Imports only constants and is imported by `events.js` / `io.js`.
 - `main.js` — entry point: load, wire listeners, first render, register the service worker.

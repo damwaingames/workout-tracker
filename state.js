@@ -129,8 +129,52 @@ export function defaultState() {
     holiday: seedHoliday(), winddown: seedWinddown(),
   };
 }
-// A brand-new block for the ＋ Block button — a fresh seed template (authoring is a later slice).
-export function newBlockTemplate(id, name) { return seedBlock(id, name); }
+// A brand-new block for the ＋ Block button — a BLANK weekly template (seven Rest days), composed up
+// from nothing in Edit mode (#45), never a forced clone of the last block (the original flaw — #40).
+export function newBlockTemplate(id, name) {
+  const template = [];
+  for (let i = 0; i < 7; i++) template.push({ kind: "rest" });
+  return { id, name, startDate: mondayOf(today()), weeks: DEFAULT_WEEKS, template };
+}
+
+/* ---------------------------------------------------------------------- *
+ * Plan-authoring builders (#45) — the fresh pieces the composer inserts.  *
+ * ---------------------------------------------------------------------- */
+// A fresh Routine of a given kind, for the Session/Class/Rest kind switch. A Session starts empty
+// (compose its Groups); a Class references the first known class type; Rest is bodyless.
+export function blankRoutine(kind) {
+  if (kind === "session") return { kind: "session", title: "Session", focus: "", groups: [] };
+  if (kind === "class") { const c = classList()[0]; return { kind: "class", classType: c ? c.id : "", durationMin: DEFAULT_STEADY_MIN }; }
+  return { kind: "rest" };
+}
+// A fresh Group — a lone straight-set rotation (no items yet); its rounds + rests tune it into a
+// superset / circuit / steady as items are added (ADR-0019).
+export function blankGroup() { return { items: [], rounds: DEFAULT_ROUNDS, restWithin: 0, restAfter: STRAIGHT_SET_REST }; }
+// A fresh Item for a picked exercise: a rep move carries its default rail, a timed move its default
+// duration (steady in one long round, a station in seconds) — the axis follows the exercise (ADR-0019).
+export function newItem(exId) {
+  const ex = state.library[exId];
+  if (!ex) return { exId };
+  if (ex.volume === "reps") return { exId, rail: (ex.defaultRail || DEFAULT_RAIL).slice() };
+  return { exId, time: ex.loadMetric === "machine-level" ? DEFAULT_STEADY_MIN * 60 : DEFAULT_STATION_SEC };
+}
+
+// Swap two weekdays within a block's template (ADR-0024) — a true swap of the two positions, correct
+// for ANY pair (the up/down UI passes neighbours; it is not a splice-and-shift). Each day's logged
+// history follows it: swap ctx.routine a↔b on this block's performances, so a set logged for a routine
+// stays with it (the effort stays on its exercise — ADR-0020; only its slot back-reference moves).
+export function swapDays(block, a, b) {
+  const t = block.template;
+  if (!t || !t[a] || !t[b] || a === b) return;
+  [t[a], t[b]] = [t[b], t[a]];
+  Object.values(state.library).forEach((ex) => {
+    (ex.performances || []).forEach((p) => {
+      if (!p.ctx || p.ctx.block !== block.id) return;
+      if (p.ctx.routine === a) p.ctx.routine = b;
+      else if (p.ctx.routine === b) p.ctx.routine = a;
+    });
+  });
+}
 
 /* ---------------------------------------------------------------------- *
  * Store                                                                  *

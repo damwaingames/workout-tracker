@@ -67,6 +67,7 @@ WT_URL=https://damwaingames.github.io/workout-tracker/ node verify-version.mjs
 | `verify-library` | v6 Library / exercise-history view (in-browser): fresh-install seed, migration-by-reload, the migrated plan overview, an exercise's performance timeline + PRs on expand, and block-delete keeping performances |
 | `verify-week` | Week grid (#43): a block renders as seven real-calendar days (empty → Rest), Sessions render their Groups/Items (straight, superset, circuit, steady), a Class its type + duration, and switching weeks advances the dates |
 | `verify-logging` | Session logging (#44): filling a round records a Performance on the exercise (loaded set weight×reps, band tier×reps, station done-tick, steady minutes+level), under-completion leaves unfilled rounds unlogged, clearing a field un-logs it, and everything persists + re-hydrates across reload |
+| `verify-compose` | Authoring a block (#45): a new block is blank (not a clone), a day switches Session/Class/Rest, a Session grows Groups + Items with editable rails/rounds/rests (→ superset), weeks + start date are editable, days reorder, and the composed plan renders + persists |
 | `verify-version` | Footer version tag matches `APP_VERSION` (read from `../constants.js`, so no manual bump here on release) |
 | `verify-rename` | Inline block rename in Edit mode: live picker-label patch, focus retention, persistence |
 | `verify-bodystats` | Measurements card: log/track/create/remove, BMI, previous-value ghost, additive migration, key purge |
