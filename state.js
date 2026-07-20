@@ -12,7 +12,7 @@ import {
 } from "./constants.js";
 import {
   today, mondayOf, cellKey, measureKey, slugify, uniqueId, bandKg, isBandMetric, e1rm, zoneOf,
-  railZones, doubleProgression, guideLoadKg,
+  railZones, doubleProgression, guideLoadKg, snapDownDumbbellKg,
 } from "./helpers.js";
 import { migrateToV6 } from "./migrate.js";
 
@@ -407,9 +407,11 @@ export function progressionFor(item, ex) {
   }
   let guide = null, target = null;
   if (ex.loadMetric === "kg" && trend) {
-    const mag = guideLoadKg(trend.max, rail[0]);
-    if (mag != null && mag > 0) {
-      const load = { metric: "kg", mag }, volume = { type: "reps", val: rail[0] };
+    const seed = guideLoadKg(trend.max, rail[0]);
+    if (seed != null && seed > 0) {
+      // Snap the e1RM-inverted seed to a real dumbbell rung (ADR-0031) — an estimate you can't load
+      // is no use as a starting weight.
+      const load = { metric: "kg", mag: snapDownDumbbellKg(seed) }, volume = { type: "reps", val: rail[0] };
       guide = { load, volume, estimated: true };  // shown as the (estimated) ghost
       target = { load, volume, stepped: false };  // …and as the start-at-the-floor target
     }

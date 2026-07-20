@@ -8,8 +8,10 @@
  * code like any other verify-*.mjs — it just never launches Playwright. */
 
 import {
-  railZone, railZones, doubleProgression, nextBandTier, guideLoadKg, fmtTarget, e1rm, zoneOf,
+  railZone, railZones, doubleProgression, nextBandTier, nextDumbbellKg, snapDownDumbbellKg,
+  guideLoadKg, fmtTarget, e1rm, zoneOf,
 } from "../helpers.js";
+import { DUMBBELL_KG } from "../constants.js";
 import { normalise, setState, ghostFor, progressionFor, e1rmTrend, prsOf } from "../state.js";
 
 let pass = 0, fail = 0;
@@ -39,15 +41,20 @@ ck("railZones [3,5] spans only strength", railZones([3, 5]).join() === "strength
 const kg = (mag) => ({ metric: "kg", mag });
 // Below the ceiling: same load, one more rep.
 (() => {
-  const t = doubleProgression([8, 12], kg(40), 10);
-  ck("kg below ceiling → same load, +1 rep", t && t.load.metric === "kg" && t.load.mag === 40 && t.volume.val === 11 && t.stepped === false);
+  const t = doubleProgression([8, 12], kg(8), 10);
+  ck("kg below ceiling → same load, +1 rep", t && t.load.metric === "kg" && t.load.mag === 8 && t.volume.val === 11 && t.stepped === false);
 })();
-// At (and beyond) the ceiling: step the load, reset to the floor.
+// At (and beyond) the ceiling: step to the next achievable dumbbell rung, reset to the floor (ADR-0031).
 (() => {
-  const t = doubleProgression([8, 12], kg(40), 12);
-  ck("kg at ceiling → step load (+2.5), reset to floor", t && near(t.load.mag, 42.5) && t.volume.val === 8 && t.stepped === true);
-  const over = doubleProgression([8, 12], kg(40), 13);
-  ck("kg over ceiling → also steps", over && near(over.load.mag, 42.5) && over.volume.val === 8 && over.stepped === true);
+  const t = doubleProgression([8, 12], kg(8), 12);
+  ck("kg at ceiling → step to the next dumbbell rung (8→9.5), reset to floor", t && near(t.load.mag, 9.5) && t.volume.val === 8 && t.stepped === true);
+  const over = doubleProgression([8, 12], kg(8), 13);
+  ck("kg over ceiling → also steps", over && near(over.load.mag, 9.5) && over.volume.val === 8 && over.stepped === true);
+})();
+// At the heaviest dumbbell there's nothing heavier to add → keep climbing reps, don't step (ADR-0031).
+(() => {
+  const t = doubleProgression([8, 12], kg(24), 12);
+  ck("kg maxed at the heaviest dumbbell → climbs reps, never steps", t && near(t.load.mag, 24) && t.volume.val === 13 && t.stepped === false);
 })();
 // Bands step by TIER, not kg (ADR-0029): the discrete ladder is the natural "add load".
 (() => {
@@ -67,6 +74,16 @@ ck("doubleProgression with no reference reps → null", doubleProgression([8, 12
 ck("nextBandTier medium → heavy", nextBandTier("medium") === "heavy");
 ck("nextBandTier x-heavy → clamps at x-heavy", nextBandTier("x-heavy") === "x-heavy");
 
+// The kg "add load" ladder (ADR-0031) — the user's real adjustable-dumbbell steps.
+ck("nextDumbbellKg 8 → 9.5 (the next rung up)", nextDumbbellKg(8) === 9.5);
+ck("nextDumbbellKg 2.5 → 3 (the moulded 3 kg pair is the next rung)", nextDumbbellKg(2.5) === 3);
+ck("nextDumbbellKg 0 → 2.5 (the lightest dumbbell)", nextDumbbellKg(0) === 2.5);
+ck("nextDumbbellKg 24 → null (nothing heavier)", nextDumbbellKg(24) === null);
+ck("nextDumbbellKg off-ladder never steps DOWN (7.2 → 8)", nextDumbbellKg(7.2) === 8);
+ck("snapDownDumbbellKg 10 → 9.5 (nearest rung at/below)", snapDownDumbbellKg(10) === 9.5);
+ck("snapDownDumbbellKg 30 → 24 (caps at the heaviest)", snapDownDumbbellKg(30) === 24);
+ck("snapDownDumbbellKg 1 → 2.5 (never below the lightest)", snapDownDumbbellKg(1) === 2.5);
+
 /* ---------------------------------------------------------------------- *
  * Guide ghost: invert Epley to seed a cold zone's starting load (ADR-0022).*
  * ---------------------------------------------------------------------- */
@@ -77,7 +94,7 @@ ck("guideLoadKg with no reps → null", guideLoadKg(56, 0) === null);
 /* ---------------------------------------------------------------------- *
  * Formatting a target for the UI.                                         *
  * ---------------------------------------------------------------------- */
-ck("fmtTarget kg → '42.5 kg × 8'", fmtTarget(doubleProgression([8, 12], kg(40), 12)) === "42.5 kg × 8");
+ck("fmtTarget kg → '9.5 kg × 8'", fmtTarget(doubleProgression([8, 12], kg(8), 12)) === "9.5 kg × 8");
 ck("fmtTarget band → 'Heavy band × 10'", fmtTarget(doubleProgression([10, 15], { metric: "mini-loop", mag: "medium" }, 15)) === "Heavy band × 10");
 ck("fmtTarget bodyweight → '21 reps'", fmtTarget(doubleProgression([12, 20], { metric: "none", mag: null }, 20)) === "21 reps");
 
@@ -89,16 +106,16 @@ function store() {
   return normalise({
     version: 6,
     library: {
-      // a free-weight lift with a rising hypertrophy history
+      // a free-weight lift with a rising hypertrophy history (on real dumbbell rungs)
       sq: { id: "sq", name: "Squat", volume: "reps", loadMetric: "kg", equipment: [], defaultRail: [8, 12],
-        performances: [perf("2026-06-01", kg(40), 10), perf("2026-06-08", kg(40), 12)] },
+        performances: [perf("2026-06-01", kg(8), 10), perf("2026-06-08", kg(8), 12)] },
       // a lift whose only history is at a [10,15] rail's ceiling — 15 reps stores as endurance,
       // but must still count as the ghost for a [10,15] item (the straddle-cap case)
       dl: { id: "dl", name: "Deadlift", volume: "reps", loadMetric: "kg", equipment: [], defaultRail: [10, 15],
-        performances: [perf("2026-06-05", kg(60), 12), perf("2026-06-12", kg(60), 15)] },
+        performances: [perf("2026-06-05", kg(20.5), 12), perf("2026-06-12", kg(20.5), 15)] },
       // history in ONE zone only — used to prove a cold zone seeds a guide ghost and then retires it
       pr: { id: "pr", name: "Press", volume: "reps", loadMetric: "kg", equipment: [], defaultRail: [8, 12],
-        performances: [perf("2026-06-03", kg(30), 10)] },
+        performances: [perf("2026-06-03", kg(8), 10)] },
     },
     classes: {},
     blocks: [{ id: "b1", name: "B1", startDate: "2026-06-01", weeks: 1, template: [{ kind: "rest" }] }],
@@ -116,15 +133,16 @@ ck("ghostFor picks the most recent in-zone performance", (() => {
 // Working load carries across a rail change WITHIN a zone; the target re-reads the new rail (ADR-0021).
 (() => {
   const p = progressionFor({ exId: "sq", rail: [10, 15] }, { loadMetric: "kg" });
-  ck("load carries across [8,12]→[10,15] (ghost still found, same 40 kg)", p && p.ghost && p.ghost.load.mag === 40);
-  ck("target re-reads the widened rail (12<15 → 40 kg × 13)", p && p.target && p.target.load.mag === 40 && p.target.volume.val === 13);
+  ck("load carries across [8,12]→[10,15] (ghost still found, same 8 kg)", p && p.ghost && p.ghost.load.mag === 8);
+  ck("target re-reads the widened rail (12<15 → 8 kg × 13)", p && p.target && p.target.load.mag === 8 && p.target.volume.val === 13);
 })();
 
 // A zone CHANGE starts a fresh thread — no in-zone ghost, so a guide ghost seeds it instead.
 (() => {
   const p = progressionFor({ exId: "sq", rail: [3, 5] }, { loadMetric: "kg" });
   ck("a disjoint zone finds no real ghost", p && !p.ghost);
-  ck("a cold zone seeds a guide ghost (estimated, e1RM-derived)", p && p.guide && p.guide.estimated === true && p.guide.load.metric === "kg" && p.guide.load.mag > 0);
+  ck("a cold zone seeds a guide ghost (estimated, snapped to a real dumbbell rung)",
+    p && p.guide && p.guide.estimated === true && p.guide.load.metric === "kg" && p.guide.load.mag > 0 && DUMBBELL_KG.includes(p.guide.load.mag));
 })();
 
 // The straddle-cap case: a [10,15] item whose last set hit 15 reps (stored endurance) must still
@@ -132,7 +150,7 @@ ck("ghostFor picks the most recent in-zone performance", (() => {
 (() => {
   const p = progressionFor({ exId: "dl", rail: [10, 15] }, { loadMetric: "kg" });
   ck("a set at a straddling rail's ceiling is still the ghost", p && p.ghost && p.ghost.volume.val === 15);
-  ck("capping the rail steps the load and resets to the floor", p && p.target && p.target.stepped === true && near(p.target.load.mag, 62.5) && p.target.volume.val === 10);
+  ck("capping the rail steps to the next rung (20.5→23) and resets to the floor", p && p.target && p.target.stepped === true && near(p.target.load.mag, 23) && p.target.volume.val === 10);
 })();
 
 // The guide ghost self-retires the instant a real in-zone performance exists (ADR-0022).
@@ -146,8 +164,8 @@ ck("ghostFor picks the most recent in-zone performance", (() => {
 // e1RM trend: advisory only — a cross-zone max + latest + direction (ADR-0022), never a per-set judge.
 (() => {
   const t = e1rmTrend("sq");
-  ck("e1rmTrend reports the top e1RM as its max", t && near(t.max, e1rm(40, 12)));
-  ck("e1rmTrend reports the latest e1RM", t && near(t.latest, e1rm(40, 12)));
+  ck("e1rmTrend reports the top e1RM as its max", t && near(t.max, e1rm(8, 12)));
+  ck("e1rmTrend reports the latest e1RM", t && near(t.latest, e1rm(8, 12)));
   ck("e1rmTrend reads 'up' when the latest e1RM beats the prior", t && t.dir === "up");
   ck("e1rmTrend of a history-free exercise → null", e1rmTrend("no-such-id") === null);
 })();
@@ -156,7 +174,7 @@ ck("ghostFor picks the most recent in-zone performance", (() => {
 (() => {
   const pr = prsOf("sq");
   ck("PRs bucket per rep-zone", pr && pr.kind === "reps" && pr.byZone && pr.byZone.hypertrophy);
-  ck("PRs carry a headline top e1RM", pr && pr.topE1rm && near(pr.topE1rm.value, e1rm(40, 12)));
+  ck("PRs carry a headline top e1RM", pr && pr.topE1rm && near(pr.topE1rm.value, e1rm(8, 12)));
 })();
 
 console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + ` (${pass} ok, ${fail} failed)`);

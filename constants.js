@@ -28,10 +28,14 @@ export const ZONES = [
 ];
 // A rep-item's default rail (the [floor, ceiling] range double progression works between).
 export const DEFAULT_RAIL = [8, 12];
-// The kg the double-progression target adds when a kg-loaded rail is capped (ADR-0021's "step the
-// load"). A single flat increment for now — snapping the step to an achievable dumbbell weight (the
-// discrete-load ladder) is a deferred refinement (#40 Out of Scope). Bands step by tier, not this.
-export const LOAD_STEP_KG = 2.5;
+// The achievable per-dumbbell weights (kg) across the user's dumbbells — the discrete-load ladder the
+// double-progression "add load" step snaps to (ADR-0031), so a kg target is always a weight you can
+// actually pick up. Ascending. Mostly the adjustable dumbbells' settings, plus the fixed 3 kg moulded
+// pair (a valid rung between 2.5 and 3.5 — you'd just swap to it). The 1 kg punch weights are
+// deliberately NOT here: they feed a time-volume weighted-punch (no rail, so double progression never
+// touches it), not rep loading. This is the app's single kg ladder; a per-dumbbell weight in every
+// loading mode (a two-dumbbell set logs kg/db). Supersedes the old flat +2.5 kg step.
+export const DUMBBELL_KG = [2.5, 3, 3.5, 5, 6, 7, 8, 9.5, 10.5, 11.5, 13.5, 16, 18.5, 20.5, 23, 24];
 
 /* ---------------------------------------------------------------------- *
  * Load metrics & bands (ADR-0023, 0029)                                  *

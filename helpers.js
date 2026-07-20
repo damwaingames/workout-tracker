@@ -4,7 +4,7 @@
  * (performancesOf, prsOf, …) live in state.js. */
 
 import {
-  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES, DEFAULT_BAND_TIER, LOAD_STEP_KG,
+  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES, DEFAULT_BAND_TIER, DUMBBELL_KG,
 } from "./constants.js";
 
 export function today() { return fmtYMD(new Date()); }
@@ -113,26 +113,40 @@ export function nextBandTier(tier) {
   const i = BAND_TIERS.findIndex((t) => t.id === tier);
   return i >= 0 && i < BAND_TIERS.length - 1 ? BAND_TIERS[i + 1].id : tier;
 }
+// The next achievable dumbbell weight above `kg` on the discrete-load ladder (ADR-0031) — a kg
+// exercise's "add load". Strictly greater, so it never suggests a lighter weight even for an
+// off-ladder current load; null when already at/above the top rung (nothing heavier to add).
+export function nextDumbbellKg(kg) {
+  const next = DUMBBELL_KG.find((w) => w > (Number(kg) || 0));
+  return next === undefined ? null : next;
+}
+// Snap a computed load DOWN to the nearest achievable dumbbell weight ≤ it — conservative, so a
+// seeded guide load is always a rung you can actually set (below the lightest rung → the lightest).
+export function snapDownDumbbellKg(kg) {
+  const v = Number(kg) || 0;
+  let best = DUMBBELL_KG[0];
+  DUMBBELL_KG.forEach((w) => { if (w <= v) best = w; });
+  return best;
+}
 // The double-progression target: the next-set suggestion after a reference performance (ADR-0021).
 // At a fixed load, climb reps to the rail's ceiling (same load, +1 rep); once the ceiling is met or
 // beaten, step the load and reset to the floor. `refLoad` is the reference's Load ({metric, mag} —
 // a kg number, a band tier, or none); `refReps` its reps. Returns a target shaped like a Performance
 // ({load, volume, stepped}) so the renderer formats it with fmtLoad/fmtVolume, or null when there is
-// nothing to target (no rail, or no reference reps to climb from). The rule is metric-agnostic:
-// kg steps by LOAD_STEP_KG, a band by one tier, and bodyweight (no load) simply keeps climbing reps.
+// nothing to target (no rail, or no reference reps to climb from). Metric-agnostic: kg steps to the
+// next dumbbell rung (ADR-0031), a band by one tier; bodyweight (no load) simply keeps climbing reps.
+// When the load axis is already maxed — the heaviest dumbbell / top tier — there's nothing heavier
+// to add, so the target keeps climbing reps rather than suggesting an impossible weight.
 export function doubleProgression(rail, refLoad, refReps) {
   if (!Array.isArray(rail) || rail.length < 2 || !refLoad) return null;
   const floor = rail[0], ceiling = rail[1], reps = Number(refReps);
   if (!(reps > 0)) return null;
   const metric = refLoad.metric;
-  if (metric === "none" || metric == null) {
-    return { load: { metric: "none", mag: null }, volume: { type: "reps", val: reps + 1 }, stepped: false };
-  }
-  if (reps < ceiling) {
-    return { load: { metric, mag: refLoad.mag }, volume: { type: "reps", val: reps + 1 }, stepped: false };
-  }
-  const stepped = isBandMetric(metric) ? nextBandTier(refLoad.mag) : (Number(refLoad.mag) || 0) + LOAD_STEP_KG;
-  return { load: { metric, mag: stepped }, volume: { type: "reps", val: floor }, stepped: true };
+  const climb = { load: { metric, mag: metric === "none" || metric == null ? null : refLoad.mag }, volume: { type: "reps", val: reps + 1 }, stepped: false };
+  if (metric === "none" || metric == null || reps < ceiling) return climb;
+  const next = isBandMetric(metric) ? nextBandTier(refLoad.mag) : nextDumbbellKg(refLoad.mag);
+  const maxed = isBandMetric(metric) ? next === refLoad.mag : next == null;
+  return maxed ? climb : { load: { metric, mag: next }, volume: { type: "reps", val: floor }, stepped: true };
 }
 // Seed a cold zone's starting load by inverting Epley for the rail's floor reps (ADR-0022):
 // w = e1RM / (1 + reps/30), rounded DOWN (conservative). Needs a positive e1RM (a pure-bodyweight
@@ -255,7 +269,7 @@ export function fmtLoad(load) {
   }
 }
 
-// A double-progression target as human text: "42.5 kg × 8", "Heavy band × 10", or bare "21 reps"
+// A double-progression target as human text: "9.5 kg × 8", "Heavy band × 10", or bare "21 reps"
 // for a load-free (bodyweight) climb. Reuses fmtLoad + fmtVolume so a target reads exactly as a
 // Performance's own load/volume do (no re-spelt pluralisation).
 export function fmtTarget(t) {

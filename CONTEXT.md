@@ -94,8 +94,10 @@ separate and deliberately not redefined here.
   _Avoid_: rail (the exact range; a Zone is its coarse bucket).
 - **Double progression** — the progress rule: at fixed **load**, climb **volume** to the **rail**'s
   ceiling, then add load and reset to the floor. Defines "beat this"; generalizes across metrics
-  (reps+kg ≡ minutes+level); its next-set suggestion is the **target**. _ADRs_: 0021. _Avoid_:
-  overload delta (the retired single-number progress metric).
+  (reps+kg ≡ minutes+level); its next-set suggestion is the **target**. The kg "add load" step snaps
+  to the adjustable dumbbells' **discrete ladder** (ADR-0031) — a band steps by **tier** — and once
+  the load axis is maxed (heaviest dumbbell / top tier) the target keeps climbing reps instead. _ADRs_:
+  0021, 0031. _Avoid_: overload delta (the retired single-number progress metric).
 - **Ghost** — the reference shown before a set: your last in-**zone** **performance** (the *real*
   ghost); absent that, a **guide ghost** — an **e1RM**-seeded estimate from another zone
   (conservative, self-retiring). _ADRs_: 0021, 0022. _Avoid_: target (the double-progression
