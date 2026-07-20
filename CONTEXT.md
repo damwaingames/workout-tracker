@@ -131,7 +131,9 @@ separate and deliberately not redefined here.
 - **Wind-down** — a **daily mobility habit**: an evening stretch done most nights (a weekly target
   of ~6 of 7, typically skipping Sunday), *winged* by feel rather than a fixed plan. Tracked
   *outside* the **block** as weekly adherence (like body **measurements**); any stretches logged are
-  ordinary **performances** on mobility **exercises**. Not a training **session**, not a post-workout
+  ordinary **performances** on mobility **exercises**. An app-level singleton owning its own
+  history — a date-keyed **done-map** (`winddown.done`), the habit's analogue of an exercise's
+  **performances** (ADR-0020), never in the **Log**. Not a training **session**, not a post-workout
   cool-down. _ADRs_: 0028. _Avoid_: cool-down segment; stretch routine (it's unplanned, by feel).
 - **Session RPE** — a per-**session** felt-intensity score (1–10): how hard *that session* was
   *today*. A whole-session fatigue record only, never an input to progression. Distinct from **RIR**

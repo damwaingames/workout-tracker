@@ -11,7 +11,7 @@ import {
   DEFAULT_STEADY_MIN, STRAIGHT_SET_REST, DEFAULT_RAIL, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES, AWAY_KIT,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, cellScalarKey, measureKey, slugify, uniqueId, bandKg, isBandMetric,
+  today, mondayOf, fmtYMD, scheduledDate, cellKey, cellScalarKey, measureKey, slugify, uniqueId, bandKg, isBandMetric,
   e1rm, zoneOf, loadMode, railZones, doubleProgression, guideLoadKg, snapDownDumbbellKg, rirNudge, fitsKit,
 } from "./helpers.js";
 import { migrateToV6 } from "./migrate.js";
@@ -109,8 +109,9 @@ function seedHoliday() {
 }
 
 // The wind-down (ADR-0028): a freeform daily mobility habit tracked as weekly adherence, not a
-// planned routine — so it holds only a nightly duration + a weekly target, no fixed stretch list.
-function seedWinddown() { return { durationMin: WINDDOWN_DEFAULTS.durationMin, weeklyTarget: WINDDOWN_DEFAULTS.weeklyTarget }; }
+// planned routine — so it holds only a nightly duration, a weekly target, and its own done-map
+// (date → true), the habit's history the way an exercise owns its performances (ADR-0020).
+function seedWinddown() { return { durationMin: WINDDOWN_DEFAULTS.durationMin, weeklyTarget: WINDDOWN_DEFAULTS.weeklyTarget, done: {} }; }
 
 // Body-measurement catalogue (untouched infra). Bodyweight is the only mass (kg); the rest are cm.
 export function M(id, name, unit) { return { id, name, unit }; }
@@ -203,6 +204,24 @@ export function setEditing(v) { editing = v; }
 
 const clampMin = (v, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? n : d; };
 
+// Re-home legacy per-cell `.winddown` ticks onto the date-keyed habit (#49, ADR-0028). Pre-#49 the
+// wind-down was a per-routine cool-down whose done-tick lived on the cell scalar (and the v6
+// migration still carries those forward verbatim); now it's a daily habit the singleton owns, so a
+// tick on the routine at a cell becomes a tick on that routine's calendar date. Idempotent — it
+// deletes each key it re-homes, so a second load finds none. A tick whose block has vanished can't
+// be dated and is dropped rather than mis-attributed.
+function rehomeWinddownLog(s) {
+  const blockById = {};
+  s.blocks.forEach((b) => { blockById[b.id] = b; });
+  Object.keys(s.log).forEach((k) => {
+    const m = /^(.+)\.w(\d+)\.d(\d+)\.winddown$/.exec(k);
+    if (!m) return;
+    const b = blockById[m[1]];
+    if (s.log[k] && b) s.winddown.done[fmtYMD(scheduledDate(b.startDate, Number(m[2]), Number(m[3])))] = true;
+    delete s.log[k];
+  });
+}
+
 // Bring any loadable store to a well-formed v6 shape. A pre-v6 save runs through the forward
 // migration (ADRs 0019–0029); a v6 save is only backfilled. Unloadable input resets to defaults —
 // which is why applyBackup gates on the version explicitly before ever calling this.
@@ -227,9 +246,12 @@ function normalise(s) {
   if (!Array.isArray(s.tracked)) s.tracked = ["bodyweight"];
   if (!s.profile || typeof s.profile !== "object") s.profile = {};
   s.holiday = (s.holiday && Array.isArray(s.holiday.groups)) ? s.holiday : seedHoliday();
-  s.winddown = (s.winddown && typeof s.winddown === "object")
-    ? { durationMin: clampMin(s.winddown.durationMin, WINDDOWN_DEFAULTS.durationMin), weeklyTarget: clampMin(s.winddown.weeklyTarget, WINDDOWN_DEFAULTS.weeklyTarget) }
-    : seedWinddown();
+  const wd = (s.winddown && typeof s.winddown === "object") ? s.winddown : {};
+  s.winddown = {
+    durationMin: clampMin(wd.durationMin, WINDDOWN_DEFAULTS.durationMin),
+    weeklyTarget: clampMin(wd.weeklyTarget, WINDDOWN_DEFAULTS.weeklyTarget),
+    done: (wd.done && typeof wd.done === "object") ? { ...wd.done } : {},
+  };
 
   s.blocks.forEach((b) => {
     if (!b.startDate) b.startDate = mondayOf(today());
@@ -238,6 +260,7 @@ function normalise(s) {
     while (b.template.length < 7) b.template.push({ kind: "rest" });
     b.template.forEach((r, i) => { if (!r || !r.kind) b.template[i] = { kind: "rest" }; });
   });
+  rehomeWinddownLog(s); // sweep any legacy per-cell `.winddown` tick onto the date-keyed habit (blocks now dated)
   if (!s.ui || typeof s.ui !== "object" || !s.blocks.some((b) => b.id === s.ui.block)) s.ui = { block: s.blocks[0].id, week: 1 };
   if (s.ui.view !== "library") s.ui.view = "plan"; // the top-level tab; anything unknown → plan
   if (typeof s.notes !== "string") s.notes = "";
@@ -250,6 +273,10 @@ export function load() {
   let parsed = null;
   try { parsed = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { parsed = null; }
   state = normalise(parsed);
+  // Persist the normalised store so on-disk always matches the current schema: a forward migration
+  // (v5→v6) or a one-time re-home (the wind-down tick sweep, #49) reaches disk on this launch rather
+  // than lingering until the first interaction. Idempotent for an already-current store.
+  save();
 }
 export function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
 
@@ -528,3 +555,44 @@ export function bmiFor(block, wk) {
 
 // The cell coordinate for a routine position in the current block/week (occurrence scalars).
 export function currentCell(position) { return cellKey(currentBlock().id, state.ui.week, position); }
+
+/* ---------------------------------------------------------------------- *
+ * Wind-down — the daily mobility habit (#49, ADR-0028)                    *
+ * ---------------------------------------------------------------------- */
+// The current calendar week's seven nights (Mon–Sun containing today), each with its date and done
+// flag — the adherence surface. Block-independent (the habit lives outside any block), so the week
+// is anchored to today, not a block start. A night after today isn't yet a fact, so it's `future`.
+export function windDownWeek() {
+  const now = today();
+  const monday = mondayOf(now);
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const date = scheduledDate(monday, 1, i);
+    const iso = fmtYMD(date);
+    days.push({ iso, date, done: !!state.winddown.done[iso], future: iso > now, isToday: iso === now });
+  }
+  return days;
+}
+
+// Weekly adherence: nights done this calendar week against the target (~6 of 7). A readout only —
+// the wind-down feeds no progression, exactly like a body measurement.
+export function windDownAdherence() {
+  const done = windDownWeek().filter((d) => d.done).length;
+  return { done, target: state.winddown.weeklyTarget, met: done >= state.winddown.weeklyTarget };
+}
+
+// Tick / un-tick a night. A future night can't be logged (you haven't done it yet); an un-tick
+// deletes the key so the done-map stays sparse. Persists, like every store mutation.
+export function toggleWinddown(iso) {
+  if (iso > today()) return;
+  if (state.winddown.done[iso]) delete state.winddown.done[iso];
+  else state.winddown.done[iso] = true;
+  save();
+}
+
+// Set the weekly target / nightly duration (Edit mode) — each a positive integer, floored at 1
+// (the same clamp the store's other counts use).
+export function setWinddownField(field, value) {
+  state.winddown[field] = clampMin(value, 1);
+  save();
+}

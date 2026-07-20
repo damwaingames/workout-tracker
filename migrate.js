@@ -155,9 +155,11 @@ function toTemplate(routines, lib, classIdOf) {
 // schedule (`.sched`) keys don't carry a `.d`, so they never match here.
 const CELL = /^(.+)\.w(\d+)\.d(\d+)\.(.+)$/;
 // Occurrence scalars with no owning entity (Session RPE, the wind-down tick, the recovery energy
-// note, a rest-day joints note) are carried forward verbatim — real user data a later slice
-// (#47 RPE, #49 wind-down) will re-home. `done` / `collapsed` (UI + derivable from performances),
-// the now-redundant `holiday` swap flag, and `sched` (the dissolved schedule — ADR-0024) are dropped.
+// note, a rest-day joints note) are carried forward verbatim — real user data. `winddown` is carried
+// into the v6 log here, then normalise re-homes it onto the date-keyed habit (#49, ADR-0028) and
+// sweeps the key; `energy`/`joints`/`wdrpe` still await their slices. `done` / `collapsed` (UI +
+// derivable from performances), the redundant `holiday` swap flag, and `sched` (the dissolved
+// schedule — ADR-0024) are dropped.
 const KEEP_SCALARS = new Set(["rpe", "wdrpe", "energy", "joints", "winddown"]);
 
 // The historical weekday a routine fell on: the block start + week offset + its position in that
