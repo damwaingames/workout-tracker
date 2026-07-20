@@ -575,11 +575,32 @@ footer .muted { margin-top: .85rem; line-height: 1.5; }
 .group.superset { border-left: 3px solid var(--workout); }
 .group.circuit { border-left: 3px solid var(--recovery); }
 .group.steady { border-left: 3px solid var(--recovery); }
-.group-items { display: flex; flex-direction: column; gap: .25rem; }
-.item { display: flex; justify-content: space-between; gap: .6rem; }
+.group-items { display: flex; flex-direction: column; gap: .6rem; }
+.item { display: flex; flex-direction: column; gap: .35rem; }
+.item-head { display: flex; justify-content: space-between; gap: .6rem; align-items: baseline; }
 .item-name { font-weight: 500; }
 .item-target { color: var(--muted); font-size: .82rem; white-space: nowrap; }
 .group-meta { margin-top: .4rem; }
+
+/* Logging an Item (#44): a slot per planned round — a label + the mode's inputs. A slot with a
+   Performance reads as logged (tinted); an unfilled slot is an unlogged round (under-completion). */
+.item-log { display: flex; flex-direction: column; gap: .3rem; }
+.log-slot {
+  display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+  padding: .2rem .35rem; border-radius: 7px;
+}
+.log-slot.logged { background: var(--done-bg); }
+.slot-n { min-width: 3.4rem; font-size: .74rem; color: var(--muted); }
+.log-slot.logged .slot-n { color: var(--done-border); font-weight: 600; }
+.log-input, .log-select {
+  padding: .3rem .4rem;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--control); color: var(--text);
+  font: inherit; font-size: .85rem;
+}
+.log-input { width: 4.2rem; }
+.done-tick { display: inline-flex; align-items: center; gap: .35rem; font-size: .85rem; color: var(--muted); cursor: pointer; }
+.done-tick input { width: 1.05rem; height: 1.05rem; accent-color: var(--done-border); }
 
 /* The Library: each exercise / class as a native disclosure with its history + PRs. */
 .library-card {

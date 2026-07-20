@@ -2,17 +2,20 @@
  * the pure helpers; never mutates the store. The exported entry points (render + the measurement
  * live-patchers) are what events.js calls after a mutation.
  *
- * Training is still read-only here: the block renders as a real-calendar week grid (#43) and the
- * Library as each exercise's performance timeline + PRs (ADR-0020). Composing (#45) and logging
- * (#44) add their controls on top of this. The measurements card, notes, and footer are untouched
- * infra. */
+ * The block renders as a real-calendar week grid (#43); each Session Item is now loggable (#44) —
+ * its planned rounds are input slots that read from / write to the exercise's Performances (ADR-0020,
+ * the effort lives on the exercise, not the log). The Library shows each exercise's timeline + PRs.
+ * Composing the plan itself (#45) adds its controls on top. Measurements, notes, footer are
+ * untouched infra. */
 
 import {
   esc, fmt, fmtVolume, fmtLoad, fmtRail, zoneLabel, scheduledDate, fmtWeekday, measureKey,
+  itemLogMode, loadMode, repsLabel,
 } from "./helpers.js";
+import { BAND_TIERS, DEFAULT_BAND_TIER } from "./constants.js";
 import {
   state, editing,
-  currentBlock, currentBlockIndex, libraryList, classList, performancesOf, prsOf,
+  currentBlock, currentBlockIndex, libraryList, classList, performancesOf, performanceAt, prsOf,
   previousMeasure, bmiFor,
 } from "./state.js";
 
@@ -60,12 +63,12 @@ function renderHeader() {
 }
 
 /* ---------------------------------------------------------------------- *
- * The read-only week grid (#43).                                         *
+ * The week grid (#43) + Session logging (#44).                           *
  * ---------------------------------------------------------------------- */
 // The viewed block week renders as a real calendar week (ADR-0024): its seven weekdays anchored to
-// the block's start date, every day drawn, an empty day shown as Rest so the week reads true. Each
-// Routine renders its content — a Session as its ordered Groups of Items, a Class as its type +
-// planned duration. Read-only; composing (#45) and logging (#44) add their controls on top.
+// the block's start date, every day drawn, an empty day shown as Rest so the week reads true. A
+// Session's Items are loggable — each planned round is an input slot recording a Performance on the
+// exercise (ADR-0020); a Class shows its type + planned duration (Class logging is #50).
 function renderWeek() {
   const block = currentBlock();
   const wk = Math.min(state.ui.week, block.weeks);
@@ -74,7 +77,7 @@ function renderWeek() {
     : esc(block.name);
   document.getElementById("week-view").innerHTML =
     '<p class="week-heading">' + nameHtml + " · Week " + wk + " of " + block.weeks + "</p>" +
-    '<p class="muted small readonly-note">A read-only view of the week — composing and logging arrive next.</p>' +
+    '<p class="muted small readonly-note">Log your sets, rounds, and steady work below as you train — composing and editing the plan itself arrive next.</p>' +
     '<div class="week-grid">' + block.template.map((r, i) => renderRoutine(block, r, wk, i)).join("") + "</div>";
 }
 
@@ -88,7 +91,9 @@ function renderRoutine(block, r, wk, position) {
   } else if (r.kind === "session") {
     title = esc(r.title || "Session");
     body = (r.focus ? '<div class="routine-focus">' + esc(r.focus) + "</div>" : "") +
-      '<div class="routine-body">' + (Array.isArray(r.groups) ? r.groups.map(renderGroup).join("") : "") + "</div>";
+      '<div class="routine-body">' +
+      (Array.isArray(r.groups) ? r.groups.map((g, gi) => renderGroup(g, gi, block.id, wk, position)).join("") : "") +
+      "</div>";
   } else {
     title = "Rest";
     body = '<p class="rest-note">Rest day.</p>';
@@ -102,10 +107,10 @@ function renderRoutine(block, r, wk, position) {
 const classNameOf = (id) => (state.classes[id] && state.classes[id].name) || id || "Class";
 
 // A steady effort: one timed Item worked against a machine level (ADR-0019). The single definition
-// of "steady" — both the Group's kind and the Item's axis label read through it, so they can't drift.
+// of "steady" — the Group's kind, the Item's axis label, and its log inputs all read through the one
+// itemLogMode classifier, so they can't drift.
 function isSteadyItem(it) {
-  const ex = it && state.library[it.exId];
-  return !!(it && it.time != null && ex && ex.loadMetric === "machine-level");
+  return itemLogMode(it, state.library[it.exId]) === "steady";
 }
 
 // Which config of the one Group primitive this is (ADR-0019), for styling + the meta line. A
@@ -117,11 +122,11 @@ function groupKind(g) {
   return isSteadyItem(items[0]) ? "steady" : "straight";
 }
 
-// A Group as a read-only card: its items, then a meta line stating the rotation (rounds + the rest
-// within / after that make it a superset, a circuit, steady, or straight sets — ADR-0019).
-function renderGroup(g) {
+// A Group card: its Items (each with its planned target + per-round log slots), then a meta line
+// stating the rotation (rounds + the rests that make it a superset, circuit, steady, or straight).
+function renderGroup(g, gi, blockId, wk, pos) {
   const kind = groupKind(g);
-  const items = (g.items || []).map(renderItem).join("");
+  const items = (g.items || []).map((it, ii) => renderItem(it, { block: blockId, week: wk, routine: pos, group: gi, item: ii, rounds: g.rounds, kind })).join("");
   const bits = [g.rounds + " round" + (g.rounds === 1 ? "" : "s")];
   if (kind === "steady") bits.push("steady");
   if (g.restWithin > 0) bits.push(fmt(g.restWithin) + "s within");
@@ -131,7 +136,8 @@ function renderGroup(g) {
     '<div class="group-meta muted small">' + bits.join(" · ") + "</div></div>";
 }
 
-function renderItem(it) {
+// An Item: its planned target line (#43), then its log — one slot per planned round (ADR-0019).
+function renderItem(it, c) {
   const ex = state.library[it.exId];
   const name = ex ? esc(ex.name) : esc(it.exId);
   let target = "";
@@ -142,8 +148,84 @@ function renderItem(it) {
     // target (logged, not planned), so the plan just names the axis it's tracked on (ADR-0019).
     if (isSteadyItem(it)) target += " · machine level";
   }
-  return '<div class="item"><span class="item-name">' + name + "</span>" +
-    (target ? '<span class="item-target">' + esc(target) + "</span>" : "") + "</div>";
+  return '<div class="item">' +
+    '<div class="item-head"><span class="item-name">' + name + "</span>" +
+      (target ? '<span class="item-target">' + esc(target) + "</span>" : "") + "</div>" +
+    renderItemLog(it, ex, c) + "</div>";
+}
+
+/* ---------------------------------------------------------------------- *
+ * Logging an Item (#44) — a slot per planned round.                      *
+ * ---------------------------------------------------------------------- */
+// The Item's log: one input slot per planned round (a steady Item is a single round), each pre-filled
+// from its own Performance (matched by ctx) so a reload re-hydrates what you logged. A slot with no
+// Performance is an unlogged round — honest under-completion (ADR-0026).
+function renderItemLog(it, ex, c) {
+  const mode = itemLogMode(it, ex);
+  if (!mode) return "";
+  const rounds = mode === "steady" ? 1 : Math.max(1, c.rounds || 1);
+  const slotWord = c.kind === "straight" ? "Set" : "Round";
+  let rows = "";
+  for (let round = 0; round < rounds; round++) {
+    const ctx = { block: c.block, week: c.week, routine: c.routine, group: c.group, item: c.item, round };
+    rows += renderSlot(it, ex, mode, ctx, mode === "steady" ? "" : slotWord + " " + (round + 1));
+  }
+  return '<div class="item-log">' + rows + "</div>";
+}
+
+// One round's slot: the full ctx baked into data-* so the input handler can find the Performance to
+// upsert without re-deriving it, plus the mode-specific inputs pre-filled from any logged Performance.
+function renderSlot(it, ex, mode, ctx, label) {
+  const perf = performanceAt(it.exId, ctx);
+  // The ctx is baked into data-* under the SAME names logField reads back (block/week/routine/
+  // group/item/round), so the render→handler contract can't drift into a silent abbreviation.
+  return '<div class="log-slot' + (perf ? " logged" : "") + '"' +
+    ' data-ex="' + esc(it.exId) + '" data-mode="' + mode + '"' +
+    ' data-block="' + esc(ctx.block) + '" data-week="' + ctx.week + '" data-routine="' + ctx.routine +
+    '" data-group="' + ctx.group + '" data-item="' + ctx.item + '" data-round="' + ctx.round + '">' +
+    (label ? '<span class="slot-n">' + esc(label) + "</span>" : "") +
+    slotInputs(mode, ex, it, perf) + "</div>";
+}
+
+// The inputs a slot draws for its mode, pre-filled from a logged Performance (empty otherwise).
+function slotInputs(mode, ex, it, perf) {
+  switch (mode) {
+    case "load-reps": {
+      const m = loadMode(ex);
+      return numInput("w", perf ? perf.load.mag : "", m.wUnit || "kg") + numInput("r", perf ? perf.volume.val : "", repsLabel(m));
+    }
+    case "band-reps":
+      return tierSelect(perf ? perf.load.mag : DEFAULT_BAND_TIER) + numInput("r", perf ? perf.volume.val : "", repsLabel(loadMode(ex)));
+    case "reps":
+      return numInput("r", perf ? perf.volume.val : "", "reps");
+    case "steady":
+      // Prefill the exact minutes (seconds / 60, un-rounded) so a re-save can't drift the stored
+      // duration — rounding here would resave e.g. 12.5 min as 13 the next time the slot is touched.
+      return numInput("mins", perf ? Number(perf.volume.val) / 60 : "", "min") +
+        numInput("level", perf && perf.load.mag != null ? perf.load.mag : "", "level");
+    case "station": {
+      const t = it.time != null ? it.time : 0;
+      return '<label class="done-tick"><input type="checkbox" data-fh="log" data-field="done" data-time="' + t + '"' + (perf ? " checked" : "") + "> Done</label>";
+    }
+    // Unreachable — renderItemLog only draws a slot for a mode itemLogMode returned; a throw makes
+    // any future drift between the classifier and this renderer loud instead of a blank slot.
+    default: throw new Error("Unknown log mode: " + mode);
+  }
+}
+
+// A number field for a logged value: reps/level are whole (numeric), weight/minutes decimal.
+function numInput(field, val, label) {
+  const decimal = field === "w" || field === "mins";
+  return '<input type="number" inputmode="' + (decimal ? "decimal" : "numeric") + '" min="0" class="log-input"' +
+    ' data-fh="log" data-field="' + field + '" value="' + (val === "" || val == null ? "" : esc(String(val))) + '"' +
+    ' placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
+}
+
+// The band-tier picker for a banded set (ADR-0029): the shared x-light→x-heavy ladder.
+function tierSelect(tier) {
+  return '<select class="log-select" data-fh="log" data-field="tier" aria-label="Band tier">' +
+    BAND_TIERS.map((t) => '<option value="' + t.id + '"' + (t.id === tier ? " selected" : "") + ">" + esc(t.label) + " band</option>").join("") +
+    "</select>";
 }
 
 /* ---------------------------------------------------------------------- *

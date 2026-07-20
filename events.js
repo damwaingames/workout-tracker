@@ -1,14 +1,14 @@
 /* Event handling and the block / backup operations they trigger. Mutates the store (through its
  * setters), then calls into render.js to reflect the change.
  *
- * This slice (v6 store rework — #42) is read-only for training, so the handlers are just the ones
- * the surviving surfaces need: block navigation + rename, the measurements card (untouched infra),
- * and the footer backups. Logging, authoring, and the interactive week grid rebuild in later
- * slices (#43–#50) and bring their own handlers back. */
+ * Training handlers so far: block navigation + rename, and Session logging (#44) — each logging
+ * input carries data-fh="log" and routes through the fieldByName map to record a Performance on the
+ * exercise. The measurements card + footer backups are untouched infra. Composing the plan (#45)
+ * brings its authoring handlers on top. */
 
-import { slugify, uniqueId } from "./helpers.js";
+import { slugify, uniqueId, buildPerformance } from "./helpers.js";
 import {
-  state, editing, setState, setEditing, save, setLog,
+  state, editing, setState, setEditing, save, setLog, logPerformance,
   currentBlock, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
 } from "./state.js";
 import { render, renderBmi, repopulate, hydrateNotes } from "./render.js";
@@ -113,17 +113,40 @@ const fieldById = {
 // Live-patch refreshers keyed by an input's data-refresh tag — the data-*→map dispatch the CONTEXT
 // conventions mandate (behaviour routes off a tag, never a string scan). The full render already
 // emits correct totals; these only re-patch in place so the edited input keeps focus mid-type.
-// One entry this slice (BMI); logging (#44) brings its volume refreshers back onto the same map.
 const refreshBy = { bmi: renderBmi };
+
+// Special field handlers keyed by data-fh (the CONTEXT data-fh→fieldByName dispatch): a field whose
+// change isn't a plain logged scalar but drives its own effect — the picker search filter, and a
+// Session log input (gathers its slot → a Performance).
+const fieldByName = {
+  "picker-search"(el) { const zone = el.closest(".add-zone"); if (zone) repopulate(zone, el.value); },
+  log: logField,
+};
+
+// Log a Session Item's effort at one slot: gather the slot's raw inputs, build the Performance its
+// mode records (or null to clear), write it onto the exercise, and reflect the logged state in place.
+// A full render would steal focus mid-type — the measurements card avoids it the same way.
+function logField(el) {
+  const slot = el.closest(".log-slot");
+  if (!slot) return;
+  const d = slot.dataset;
+  const ex = state.library[d.ex];
+  if (!ex) return;
+  const val = (f) => { const n = slot.querySelector('[data-field="' + f + '"]'); return n ? n.value : ""; };
+  const raw = { w: val("w"), r: val("r"), tier: val("tier"), mins: val("mins"), level: val("level") };
+  const done = slot.querySelector('[data-field="done"]');
+  if (done) { raw.done = done.checked; raw.time = done.dataset.time; }
+  const ctx = { block: d.block, week: Number(d.week), routine: Number(d.routine), group: Number(d.group), item: Number(d.item), round: Number(d.round) };
+  const data = buildPerformance(d.mode, ex, raw);
+  logPerformance(d.ex, ctx, data);
+  slot.classList.toggle("logged", !!data);
+}
 
 export function handleField(e) {
   const el = e.target;
   if (el.id && Object.prototype.hasOwnProperty.call(fieldById, el.id)) return fieldById[el.id](el);
-  if (el.dataset.fh === "picker-search") {
-    const zone = el.closest(".add-zone");
-    if (zone) repopulate(zone, el.value);
-    return;
-  }
+  const fh = el.dataset.fh;
+  if (fh && Object.prototype.hasOwnProperty.call(fieldByName, fh)) return fieldByName[fh](el);
   // Generic logged-field path: everything carrying data-k (the measurement values this slice).
   const k = el.dataset.k;
   if (!k) return;
