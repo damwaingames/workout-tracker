@@ -121,8 +121,9 @@ function renderSessionCard(block, r, wk, position, when) {
   const collapsed = !!state.log[cellScalarKey(cell, "collapsed")];
   const rpe = state.log[cellScalarKey(cell, "rpe")];
   const tonnage = fmtTonnage(sessionTonnageKg(block, wk, position));
-  // The caret is always ▾; CSS rotates it to ▸ when the card carries `is-collapsed` (reusing the
-  // existing collapse styling). Collapsed → header + one-line summary only; expanded → the full body.
+  // The caret is always ▾; CSS rotates it when the card carries `is-collapsed` (reusing the existing
+  // caret + summary styling). Collapsed swaps to header + one-line summary (no body) — an instant
+  // fold, not the pre-v6 grid-row slide animation, whose wrapper this card deliberately doesn't use.
   const head = '<div class="routine-head">' +
     '<span class="routine-when">' + when + "</span>" +
     '<span class="routine-title">' + esc(r.title || "Session") + "</span>" +
@@ -151,7 +152,7 @@ function sessionMeta(cell, rpe, tonnage) {
 // The collapsed session's one-liner: what it trains (first couple of item names), its tonnage, and
 // its RPE — enough to read the day at a glance without expanding.
 function sessionSummary(r, rpe, tonnage) {
-  const names = (r.groups || []).flatMap((g) => (g.items || []).map((it) => state.library[it.exId] && state.library[it.exId].name)).filter(Boolean);
+  const names = (r.groups || []).flatMap((g) => (g.items || []).map((it) => { const ex = state.library[it.exId]; return ex && ex.name; })).filter(Boolean);
   const bits = [];
   if (names.length) bits.push(names.slice(0, 2).join(", ") + (names.length > 2 ? " +" + (names.length - 2) : ""));
   if (tonnage) bits.push(tonnage);

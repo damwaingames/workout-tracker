@@ -299,12 +299,15 @@ export function performancesOf(exId) {
 }
 
 // A Performance's ctx back-references the exact plan slot it was logged in (ADR-0020): the block,
-// week, routine position, group, item, and round. Two ctxs identify the same slot when all six
-// agree — so a migrated Performance (coarser ctx, no group/item/round) never collides with a slot.
-function sameSlot(a, b) {
+// week, routine position, group, item, and round. `sameItemSlot` matches every field BUT round —
+// it identifies one Item across all its rounds (what tonnage sums over); `sameSlot` adds the round
+// for an exact single-round match (what logging upserts). A migrated Performance (coarser ctx, no
+// group/item/round) never collides with a slot.
+function sameItemSlot(a, b) {
   return !!a && !!b && a.block === b.block && a.week === b.week && a.routine === b.routine &&
-    a.group === b.group && a.item === b.item && a.round === b.round;
+    a.group === b.group && a.item === b.item;
 }
+function sameSlot(a, b) { return sameItemSlot(a, b) && a.round === b.round; }
 
 // The Performance logged at a plan slot (or null) — what a logging input pre-fills from on render.
 export function performanceAt(exId, ctx) {
@@ -455,10 +458,9 @@ export function sessionTonnageKg(block, wk, position) {
       const ex = state.library[it.exId];
       if (!ex || !Array.isArray(it.rail)) return; // loaded rep-Items only (ADR-0029)
       const m = loadMode(ex);
+      const slot = { block: block.id, week: wk, routine: position, group: gi, item: ii };
       (ex.performances || []).forEach((p) => {
-        const c = p.ctx;
-        if (!c || c.block !== block.id || c.week !== wk || c.routine !== position || c.group !== gi || c.item !== ii) return;
-        if (!p.volume || p.volume.type !== "reps") return;
+        if (!sameItemSlot(p.ctx, slot) || !p.volume || p.volume.type !== "reps") return; // every round of this Item
         kg += loadKg(p.load) * m.wMult * (Number(p.volume.val) || 0) * m.rMult;
       });
     });
