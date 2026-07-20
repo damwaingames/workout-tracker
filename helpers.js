@@ -118,9 +118,10 @@ export const repsLabel = (m) => "reps" + (m.rUnit || "");
  * two can't disagree on what an Item logs.                                *
  * ---------------------------------------------------------------------- */
 // The input mode an Item logs on, from its volume axis (rail = reps, time) crossed with its
-// exercise's load metric (ADR-0019): a rep set is weight×reps (`load-reps`), a band tier×reps
-// (`band-reps`), or bare reps (`reps`); a timed effort is a steady minutes+level (`steady`) or a
-// done-tick station (`station`). null when the Item carries no loggable axis.
+// exercise's load metric (ADR-0019). The closed set of five, which slotInputs (which inputs) and
+// buildPerformance (which Performance) both switch on: a rep set is weight×reps (`load-reps`), a
+// band tier×reps (`band-reps`), or bare reps (`reps`); a timed effort is a steady minutes+level
+// (`steady`) or a done-tick station (`station`). null when the Item carries no loggable axis.
 export function itemLogMode(it, ex) {
   if (!it || !ex) return null;
   if (Array.isArray(it.rail)) {
@@ -157,7 +158,9 @@ export function buildPerformance(mode, ex, raw) {
     case "station":
       if (!raw.done) return null;
       return { load: { metric: "none", mag: null }, volume: { type: "time", val: Number(raw.time) || 0 } };
-    default: return null;
+    // Unreachable in correct operation (itemLogMode only ever yields one of the five modes above);
+    // a throw turns any future mode drift into an instant failure, not a set that silently won't log.
+    default: throw new Error("Unknown log mode: " + mode);
   }
 }
 

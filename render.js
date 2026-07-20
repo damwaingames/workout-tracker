@@ -126,7 +126,7 @@ function groupKind(g) {
 // stating the rotation (rounds + the rests that make it a superset, circuit, steady, or straight).
 function renderGroup(g, gi, blockId, wk, pos) {
   const kind = groupKind(g);
-  const items = (g.items || []).map((it, ii) => renderItem(it, { blockId, wk, pos, gi, ii, rounds: g.rounds, kind })).join("");
+  const items = (g.items || []).map((it, ii) => renderItem(it, { block: blockId, week: wk, routine: pos, group: gi, item: ii, rounds: g.rounds, kind })).join("");
   const bits = [g.rounds + " round" + (g.rounds === 1 ? "" : "s")];
   if (kind === "steady") bits.push("steady");
   if (g.restWithin > 0) bits.push(fmt(g.restWithin) + "s within");
@@ -167,7 +167,7 @@ function renderItemLog(it, ex, c) {
   const slotWord = c.kind === "straight" ? "Set" : "Round";
   let rows = "";
   for (let round = 0; round < rounds; round++) {
-    const ctx = { block: c.blockId, week: c.wk, routine: c.pos, group: c.gi, item: c.ii, round };
+    const ctx = { block: c.block, week: c.week, routine: c.routine, group: c.group, item: c.item, round };
     rows += renderSlot(it, ex, mode, ctx, mode === "steady" ? "" : slotWord + " " + (round + 1));
   }
   return '<div class="item-log">' + rows + "</div>";
@@ -199,13 +199,17 @@ function slotInputs(mode, ex, it, perf) {
     case "reps":
       return numInput("r", perf ? perf.volume.val : "", "reps");
     case "steady":
-      return numInput("mins", perf ? Math.round(Number(perf.volume.val) / 60) : "", "min") +
+      // Prefill the exact minutes (seconds / 60, un-rounded) so a re-save can't drift the stored
+      // duration — rounding here would resave e.g. 12.5 min as 13 the next time the slot is touched.
+      return numInput("mins", perf ? Number(perf.volume.val) / 60 : "", "min") +
         numInput("level", perf && perf.load.mag != null ? perf.load.mag : "", "level");
     case "station": {
       const t = it.time != null ? it.time : 0;
       return '<label class="done-tick"><input type="checkbox" data-fh="log" data-field="done" data-time="' + t + '"' + (perf ? " checked" : "") + "> Done</label>";
     }
-    default: return "";
+    // Unreachable — renderItemLog only draws a slot for a mode itemLogMode returned; a throw makes
+    // any future drift between the classifier and this renderer loud instead of a blank slot.
+    default: throw new Error("Unknown log mode: " + mode);
   }
 }
 

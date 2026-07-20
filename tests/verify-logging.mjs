@@ -83,14 +83,14 @@ verify(async ({ page, ck, ls, reset, key }) => {
   ck("ticking a station records a timed Performance", hk.length === 1 &&
     hk[0].volume.type === "time" && Number(hk[0].volume.val) === 30 && hk[0].load.metric === "none" && hk[0].zone == null);
 
-  // --- 5. a steady Item logs minutes + level ---
-  await page.fill(field("seated-elliptical", 0, "mins"), "25");
+  // --- 5. a steady Item logs minutes + level (a fractional minute, to guard the round-trip) ---
+  await page.fill(field("seated-elliptical", 0, "mins"), "12.5");
   await page.fill(field("seated-elliptical", 0, "level"), "6");
   await page.waitForTimeout(50);
   s = await ls();
   const el = perfsOf(s, "seated-elliptical");
   ck("a steady Item records minutes + machine level", el.length === 1 &&
-    el[0].volume.type === "time" && Number(el[0].volume.val) === 1500 &&
+    el[0].volume.type === "time" && Number(el[0].volume.val) === 750 &&
     el[0].load.metric === "machine-level" && Number(el[0].load.mag) === 6);
 
   // --- 6. a band set logs tier + reps ---
@@ -132,10 +132,16 @@ verify(async ({ page, ck, ls, reset, key }) => {
     (await page.inputValue(field("goblet-squats", 0, "w"))) === "40" &&
     (await page.inputValue(field("goblet-squats", 0, "r"))) === "10");
   ck("a steady slot re-hydrates minutes + level after reload",
-    (await page.inputValue(field("seated-elliptical", 0, "mins"))) === "25" &&
+    (await page.inputValue(field("seated-elliptical", 0, "mins"))) === "12.5" &&
     (await page.inputValue(field("seated-elliptical", 0, "level"))) === "6");
   ck("a ticked station re-hydrates as checked",
     await page.locator(field("high-knees", 0, "done")).isChecked());
+  // editing a steady slot after reload must not re-round the stored duration (12.5 min → 750 s, not
+  // 780): the un-rounded prefill guards this resave-corrupts path.
+  await page.fill(field("seated-elliptical", 0, "level"), "7");
+  await page.waitForTimeout(50);
+  s = await ls();
+  ck("editing a steady slot after reload keeps its exact duration", Number(perfsOf(s, "seated-elliptical")[0].volume.val) === 750);
 
   // --- 9. it shows in the Library timeline (the exercise owns the history — ADR-0020) ---
   await page.click('[data-action="view"][data-view="library"]');
