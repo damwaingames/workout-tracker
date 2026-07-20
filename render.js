@@ -9,14 +9,14 @@
  * footer are untouched infra. */
 
 import {
-  esc, fmt, fmtVolume, fmtLoad, fmtRail, zoneLabel, scheduledDate, fmtWeekday, measureKey,
+  esc, fmt, fmtVolume, fmtLoad, fmtRail, fmtTarget, zoneLabel, scheduledDate, fmtWeekday, measureKey,
   itemLogMode, loadMode, repsLabel,
 } from "./helpers.js";
 import { BAND_TIERS, DEFAULT_BAND_TIER } from "./constants.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, libraryList, classList, performancesOf, performanceAt, prsOf,
-  previousMeasure, bmiFor,
+  progressionFor, e1rmTrend, previousMeasure, bmiFor,
 } from "./state.js";
 import { renderEditRoutine, renderBlockConfig } from "./compose.js";
 
@@ -157,7 +157,28 @@ function renderItem(it, c) {
   return '<div class="item">' +
     '<div class="item-head"><span class="item-name">' + name + "</span>" +
       (target ? '<span class="item-target">' + esc(target) + "</span>" : "") + "</div>" +
+    renderProgression(it, ex) +
     renderItemLog(it, ex, c) + "</div>";
+}
+
+// The progression surface a rep-Item shows before its log slots (#46): the ghost (your last in-zone
+// set) or, for a cold zone, a self-retiring e1RM-seeded guide ghost (marked estimated); the
+// double-progression target (↑ when it steps the load); and the advisory e1RM max — never a per-set
+// verdict (ADR-0022). Empty for a timed Item (no rail) or an exercise with nothing to draw on. The
+// ghost, target and guide all format through fmtTarget so they read like a Performance.
+function renderProgression(it, ex) {
+  const p = progressionFor(it, ex);
+  if (!p) return "";
+  const span = (cls, text) => '<span class="' + cls + '">' + esc(text) + "</span>";
+  const parts = [];
+  if (p.ghost) {
+    parts.push(span("prog-ghost", "Ghost " + fmtTarget(p.ghost)));
+    if (p.target) parts.push('<span class="prog-target">' + esc("Target " + fmtTarget(p.target)) + (p.target.stepped ? " ↑" : "") + "</span>");
+  } else if (p.guide) {
+    parts.push(span("prog-ghost estimated", "Guide ~" + fmtTarget(p.guide) + " (est.)"));
+  }
+  if (p.e1rm && p.e1rm.max != null) parts.push(span("prog-e1rm", "e1RM ~" + fmt(p.e1rm.max) + " kg"));
+  return parts.length ? '<div class="item-progress muted small">' + parts.join(" · ") + "</div>" : "";
 }
 
 /* ---------------------------------------------------------------------- *
@@ -296,7 +317,13 @@ function prBadges(ex) {
   const badge = (t) => '<span class="pr-badge">' + esc(t) + "</span>";
   const bits = [];
   if (pr.kind === "reps") {
-    if (pr.topE1rm) bits.push(badge("e1RM " + fmt(pr.topE1rm.value) + " kg"));
+    if (pr.topE1rm) {
+      // The advisory e1RM shows its max plus a trend arrow (latest vs the prior loaded set) — a
+      // cross-zone readout, never a per-set verdict (ADR-0022). Flat draws no arrow, to stay quiet.
+      const tr = e1rmTrend(ex.id);
+      const arrow = tr ? { up: " ↑", down: " ↓", flat: "" }[tr.dir] : "";
+      bits.push(badge("e1RM " + fmt(pr.topE1rm.value) + " kg" + arrow));
+    }
     ["strength", "hypertrophy", "endurance"].forEach((z) => {
       const b = pr.byZone[z];
       if (b) bits.push(badge(zoneLabel(z) + ": " + (fmtLoad(b.perf.load) || "BW") + " × " + b.perf.volume.val));

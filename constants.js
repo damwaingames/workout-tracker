@@ -28,6 +28,10 @@ export const ZONES = [
 ];
 // A rep-item's default rail (the [floor, ceiling] range double progression works between).
 export const DEFAULT_RAIL = [8, 12];
+// The kg the double-progression target adds when a kg-loaded rail is capped (ADR-0021's "step the
+// load"). A single flat increment for now — snapping the step to an achievable dumbbell weight (the
+// discrete-load ladder) is a deferred refinement (#40 Out of Scope). Bands step by tier, not this.
+export const LOAD_STEP_KG = 2.5;
 
 /* ---------------------------------------------------------------------- *
  * Load metrics & bands (ADR-0023, 0029)                                  *
@@ -116,5 +120,6 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 // CACHE in sw.js in lockstep. v5.0.0 landed the v6 store rework; v5.0.1 moves the Library behind
 // its own top-level tab; v5.1.0 renders the block as a read-only week grid; v5.2.0 makes a Session's
 // Items loggable — each round records a Performance on the exercise; v5.3.0 adds Edit-mode authoring
-// (compose a block in the UI — Sessions/Groups/Items, rails, kind switch, reorder, weeks, no JSON).
-export const APP_VERSION = "5.3.0";
+// (compose a block in the UI — Sessions/Groups/Items, rails, kind switch, reorder, weeks, no JSON);
+// v5.4.0 surfaces progression — a rep-Item's ghost, double-progression target, e1RM trend + guide ghost.
+export const APP_VERSION = "5.4.0";

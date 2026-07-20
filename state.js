@@ -12,6 +12,7 @@ import {
 } from "./constants.js";
 import {
   today, mondayOf, cellKey, measureKey, slugify, uniqueId, bandKg, isBandMetric, e1rm, zoneOf,
+  railZones, doubleProgression, guideLoadKg,
 } from "./helpers.js";
 import { migrateToV6 } from "./migrate.js";
 
@@ -353,6 +354,67 @@ export function prsOf(exId) {
     if (p.load && p.load.metric === "machine-level" && p.load.mag != null && (!topLevel || Number(p.load.mag) > Number(topLevel.load.mag))) topLevel = p;
   });
   return { kind: "time", longest, topLevel };
+}
+
+/* ---------------------------------------------------------------------- *
+ * Progression (#46) — ghost, double-progression target, e1RM, guide ghost*
+ * reading the exercise's own timeline (ADRs 0020/0021/0022).             *
+ * ---------------------------------------------------------------------- */
+// The real ghost (ADR-0021): the most recent performance whose rep-zone is one the item's rail
+// spans (railZones) — "your last in-zone set." Matching the spanned zones rather than a single
+// label means a set logged at a boundary-straddling rail's ceiling (a [10,15] rail's 15th rep
+// stores as endurance) still counts as its ghost. Latest date wins, ties broken by log order (a
+// re-logged slot moves to the array's end). Null when nothing in the timeline is in-zone.
+export function ghostFor(exId, rail) {
+  const zones = railZones(rail);
+  if (!zones.length) return null;
+  let best = null;
+  performancesOf(exId).forEach((p) => {
+    if (!p.zone || zones.indexOf(p.zone) < 0) return;
+    if (!best || p.date >= best.date) best = p;
+  });
+  return best;
+}
+
+// The advisory e1RM readout (ADR-0022): a cross-zone max, the latest, and a direction — never a
+// per-set verdict (double progression owns that). Reads the loaded performances in date order
+// (bodyweight sets yield no e1RM and drop out); null when the exercise has none.
+export function e1rmTrend(exId) {
+  const series = performancesOf(exId)
+    .slice()
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    .map((p) => e1rm(loadKg(p.load), p.volume && p.volume.val))
+    .filter((v) => v != null);
+  if (!series.length) return null;
+  const latest = series[series.length - 1];
+  const prev = series.length > 1 ? series[series.length - 2] : null;
+  const dir = prev == null ? "flat" : latest > prev + 1e-9 ? "up" : latest < prev - 1e-9 ? "down" : "flat";
+  return { max: Math.max(...series), latest, dir };
+}
+
+// The progression surface a rep-Item renders before its log slots (ADR-0021/0022): the real ghost
+// (last in-zone set) with its double-progression target; failing that, a self-retiring guide ghost
+// (an e1RM-seeded starting load for a cold zone) with a start-at-the-floor target; plus the advisory
+// e1RM. Only rep-Items thread this way — a timed Item (no rail) returns null. The guide ghost is a
+// kg seed only: a band tier isn't inferred from kg, and a pure-bodyweight move has no e1RM to invert.
+export function progressionFor(item, ex) {
+  if (!ex || !item || !Array.isArray(item.rail)) return null;
+  const rail = item.rail;
+  const trend = e1rmTrend(item.exId);
+  const ghost = ghostFor(item.exId, rail);
+  if (ghost) {
+    return { ghost, guide: null, target: doubleProgression(rail, ghost.load, ghost.volume.val), e1rm: trend };
+  }
+  let guide = null, target = null;
+  if (ex.loadMetric === "kg" && trend) {
+    const mag = guideLoadKg(trend.max, rail[0]);
+    if (mag != null && mag > 0) {
+      const shape = { load: { metric: "kg", mag }, volume: { type: "reps", val: rail[0] } };
+      guide = { load: shape.load, volume: shape.volume, estimated: true };
+      target = { load: shape.load, volume: shape.volume, stepped: false };
+    }
+  }
+  return { ghost: null, guide, target, e1rm: trend };
 }
 
 /* ---------------------------------------------------------------------- *

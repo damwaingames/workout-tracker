@@ -4,7 +4,7 @@
  * (performancesOf, prsOf, …) live in state.js. */
 
 import {
-  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES, DEFAULT_BAND_TIER,
+  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES, DEFAULT_BAND_TIER, LOAD_STEP_KG,
 } from "./constants.js";
 
 export function today() { return fmtYMD(new Date()); }
@@ -88,6 +88,59 @@ export function e1rm(kg, reps) {
   const w = Number(kg), r = Number(reps);
   if (!(w > 0) || !(r > 0)) return null;
   return w * (1 + r / 30);
+}
+
+// The zone a rail is *labelled* as, derived from its FLOOR (ADR-0021). The floor rule is what keeps
+// the ADR's own load-carries example one zone: [8,12] and [10,15] both floor into hypertrophy, so a
+// within-zone widening doesn't reset the thread; [8,12]→[3,5] drops to strength (a fresh thread).
+export function railZone(rail) {
+  return Array.isArray(rail) && rail.length ? zoneOf(rail[0]) : null;
+}
+// The zones a rail *spans* — the set the ghost matches a past performance against. A rail is a
+// contiguous rep range and the zones are contiguous bands, so the span is every zone from the
+// floor's up to the ceiling's. This is why a set logged at a straddling rail's ceiling (a [10,15]
+// rail's 15th rep stores as endurance) still threads with that rail — the item labels hypertrophy,
+// but its thread reaches into endurance, so the cap set is not orphaned.
+export function railZones(rail) {
+  if (!Array.isArray(rail) || !rail.length) return [];
+  const lo = zoneOf(rail[0]), hi = zoneOf(rail[rail.length - 1]);
+  if (!lo || !hi) return [];
+  const from = ZONES.findIndex((z) => z.id === lo), to = ZONES.findIndex((z) => z.id === hi);
+  return ZONES.slice(Math.min(from, to), Math.max(from, to) + 1).map((z) => z.id);
+}
+// The next band tier up the shared ladder, clamped at the top (ADR-0029) — a band's "add load".
+export function nextBandTier(tier) {
+  const i = BAND_TIERS.findIndex((t) => t.id === tier);
+  return i >= 0 && i < BAND_TIERS.length - 1 ? BAND_TIERS[i + 1].id : tier;
+}
+// The double-progression target: the next-set suggestion after a reference performance (ADR-0021).
+// At a fixed load, climb reps to the rail's ceiling (same load, +1 rep); once the ceiling is met or
+// beaten, step the load and reset to the floor. `refLoad` is the reference's Load ({metric, mag} —
+// a kg number, a band tier, or none); `refReps` its reps. Returns a target shaped like a Performance
+// ({load, volume, stepped}) so the renderer formats it with fmtLoad/fmtVolume, or null when there is
+// nothing to target (no rail, or no reference reps to climb from). The rule is metric-agnostic:
+// kg steps by LOAD_STEP_KG, a band by one tier, and bodyweight (no load) simply keeps climbing reps.
+export function doubleProgression(rail, refLoad, refReps) {
+  if (!Array.isArray(rail) || rail.length < 2 || !refLoad) return null;
+  const floor = rail[0], ceiling = rail[1], reps = Number(refReps);
+  if (!(reps > 0)) return null;
+  const metric = refLoad.metric;
+  if (metric === "none" || metric == null) {
+    return { load: { metric: "none", mag: null }, volume: { type: "reps", val: reps + 1 }, stepped: false };
+  }
+  if (reps < ceiling) {
+    return { load: { metric, mag: refLoad.mag }, volume: { type: "reps", val: reps + 1 }, stepped: false };
+  }
+  const stepped = isBandMetric(metric) ? nextBandTier(refLoad.mag) : (Number(refLoad.mag) || 0) + LOAD_STEP_KG;
+  return { load: { metric, mag: stepped }, volume: { type: "reps", val: floor }, stepped: true };
+}
+// Seed a cold zone's starting load by inverting Epley for the rail's floor reps (ADR-0022):
+// w = e1RM / (1 + reps/30), rounded DOWN (conservative). Needs a positive e1RM (a pure-bodyweight
+// move seeds nothing) and reps — else null.
+export function guideLoadKg(topE1rm, reps) {
+  const e = Number(topE1rm), r = Number(reps);
+  if (!(e > 0) || !(r > 0)) return null;
+  return Math.floor(e / (1 + r / 30));
 }
 
 /* ---------------------------------------------------------------------- *
@@ -200,6 +253,14 @@ export function fmtLoad(load) {
     case "machine-level": return mag != null && mag !== "" ? "Level " + mag : "";
     default: return "";
   }
+}
+
+// A double-progression target as human text: "42.5 kg × 8", "Heavy band × 10", or bare "21 reps"
+// for a load-free (bodyweight) climb. Reuses fmtLoad so the load reads exactly as a Performance's.
+export function fmtTarget(t) {
+  if (!t || !t.volume) return "";
+  const reps = t.volume.val, load = fmtLoad(t.load);
+  return load ? load + " × " + reps : reps + " rep" + (Number(reps) === 1 ? "" : "s");
 }
 
 export function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }
