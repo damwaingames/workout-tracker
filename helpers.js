@@ -173,6 +173,11 @@ export function bandKg(family, tier) {
 // from BAND_FAMILIES so it can't drift from the family table. Used by fmtLoad, loadKg, and migrate.
 export const isBandMetric = (metric) => Object.prototype.hasOwnProperty.call(BAND_FAMILIES, metric);
 
+// True when an exercise's required equipment is a subset of a kit (ADR-0023) — the "can I do this
+// with what I've got?" test. Empty equipment fits any kit (bodyweight needs nothing). Filters, never
+// gates: its first job is assembling the Holiday Session from the away kit (ADR-0025).
+export const fitsKit = (equipment, kit) => (equipment || []).every((tag) => kit.includes(tag));
+
 const LOAD_MODE_BY_ID = Object.fromEntries(LOAD_MODES.map((m) => [m.id, m]));
 // The loading-mode record for an exercise (default standard). Pure — both the renderer (input
 // labels) and the tonnage maths read through this, so they can't disagree on what a mode means.

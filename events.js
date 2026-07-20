@@ -36,6 +36,12 @@ export function handleClick(e) {
       const k = cellScalarKey(currentCell(Number(el.dataset.pos)), "collapsed");
       setLog(k, state.log[k] ? "" : true); render(); break;
     }
+    // Swap the Holiday Session into (or out of) a day (#48, ADR-0025) — a per-occurrence flag; the
+    // planned exercises simply accrue no Performance while it's swapped in, so their ghosts wait.
+    case "holiday-swap": {
+      const k = cellScalarKey(currentCell(Number(el.dataset.pos)), "holiday");
+      setLog(k, state.log[k] ? "" : true); render(); break;
+    }
     case "new-block": newBlock(); break;
     case "delete-block": removeCurrentBlock(); break;
     case "edit-block": setEditing(!editing); render(); break;
@@ -182,8 +188,10 @@ export function handleField(e) {
 /* ---------------------------------------------------------------------- *
  * Plan authoring (#45) — compose the current block's weekly template.     *
  * ---------------------------------------------------------------------- */
-// Locate the routine / group / item a compose control points at, from its data-pos/g/i.
-const routineAt = (el) => currentBlock().template[Number(el.dataset.pos)];
+// Locate the routine / group / item a compose control points at, from its data-pos/g/i — or the
+// app-level Holiday Session singleton when the control carries data-holiday (#48). Its Groups/Items
+// then compose through the same mutators, since they only ever go through routineAt/groupAt/itemAt.
+const routineAt = (el) => (el.dataset.holiday ? state.holiday : currentBlock().template[Number(el.dataset.pos)]);
 const groupAt = (el) => { const r = routineAt(el); return r && r.groups && r.groups[Number(el.dataset.g)]; };
 const itemAt = (el) => { const g = groupAt(el); return g && g.items && g.items[Number(el.dataset.i)]; };
 // Swap array element i with its neighbour in `dir` (±1), if that neighbour exists.

@@ -16,9 +16,9 @@ import { BAND_TIERS, DEFAULT_BAND_TIER, RIR_BUCKETS } from "./constants.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, libraryList, classList, performancesOf, performanceAt, prsOf,
-  progressionFor, e1rmTrend, sessionTonnageKg, blockTonnageKg, previousMeasure, bmiFor,
+  progressionFor, e1rmTrend, sessionTonnageKg, blockTonnageKg, effectiveRoutine, previousMeasure, bmiFor,
 } from "./state.js";
-import { renderEditRoutine, renderBlockConfig } from "./compose.js";
+import { renderEditRoutine, renderBlockConfig, renderHolidayEditor } from "./compose.js";
 
 export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); applyView(); }
 
@@ -89,8 +89,17 @@ function renderWeek() {
     (editing ? renderBlockConfig(block) : "") + note +
     (blockTon ? '<p class="muted small block-tonnage">Block work done · ' + blockTon + "</p>" : "") +
     '<div class="week-grid">' +
-    block.template.map((r, i) => (editing ? renderEditRoutine(block, r, wk, i) : renderRoutine(block, r, wk, i))).join("") +
-    "</div>";
+    // Edit mode composes the real plan (block.template); the log view renders the effective routine —
+    // the Holiday Session on a swapped day (ADR-0025), the planned routine otherwise.
+    block.template.map((r, i) => (editing ? renderEditRoutine(block, r, wk, i) : renderRoutine(block, effectiveRoutine(block, wk, i), wk, i))).join("") +
+    "</div>" +
+    (editing ? renderHolidayEditor() : "");
+}
+
+// The 🏝 toggle sits on every day (log view): swap the Holiday Session in for a travel day, or out.
+function holidayToggle(position, active) {
+  return '<button class="holiday-toggle' + (active ? " active" : "") + '" type="button" data-action="holiday-swap" data-pos="' + position +
+    '" aria-pressed="' + active + '" aria-label="' + (active ? "Restore the planned day" : "Swap in the Holiday Session") + '" title="Holiday Session">🏝</button>';
 }
 
 // One weekday's Routine as a grid card, headed by its real calendar Weekday date (ADR-0024). A
@@ -108,7 +117,7 @@ function renderRoutine(block, r, wk, position) {
   }
   return '<div class="routine ' + r.kind + '">' +
     '<div class="routine-head"><span class="routine-when">' + when + "</span>" +
-      '<span class="routine-title">' + title + "</span></div>" +
+      '<span class="routine-title">' + title + "</span>" + holidayToggle(position, false) + "</div>" +
     body + "</div>";
 }
 
@@ -121,20 +130,23 @@ function renderSessionCard(block, r, wk, position, when) {
   const collapsed = !!state.log[cellScalarKey(cell, "collapsed")];
   const rpe = state.log[cellScalarKey(cell, "rpe")];
   const tonnage = fmtTonnage(sessionTonnageKg(block, wk, position));
+  const holiday = !!r.holiday; // the Holiday Session, swapped in for a travel day (ADR-0025)
   // The caret is always ▾; CSS rotates it when the card carries `is-collapsed` (reusing the existing
   // caret + summary styling). Collapsed swaps to header + one-line summary (no body) — an instant
   // fold, not the pre-v6 grid-row slide animation, whose wrapper this card deliberately doesn't use.
   const head = '<div class="routine-head">' +
     '<span class="routine-when">' + when + "</span>" +
-    '<span class="routine-title">' + esc(r.title || "Session") + "</span>" +
+    '<span class="routine-title">' + esc(r.title || "Session") + (holiday ? ' <span class="holiday-badge">Holiday</span>' : "") + "</span>" +
+    holidayToggle(position, holiday) +
     '<button class="routine-collapse" type="button" data-action="toggle-collapse" data-pos="' + position +
       '" aria-expanded="' + (!collapsed) + '" aria-label="' + (collapsed ? "Expand session" : "Collapse session") + '">▾</button></div>';
-  if (collapsed) return '<div class="routine session is-collapsed">' + head + sessionSummary(r, rpe, tonnage) + "</div>";
+  const cls = "routine session" + (holiday ? " is-holiday" : "");
+  if (collapsed) return '<div class="' + cls + ' is-collapsed">' + head + sessionSummary(r, rpe, tonnage) + "</div>";
   const body = (r.focus ? '<div class="routine-focus">' + esc(r.focus) + "</div>" : "") +
     '<div class="routine-body">' +
     (Array.isArray(r.groups) ? r.groups.map((g, gi) => renderGroup(g, gi, block.id, wk, position)).join("") : "") +
     "</div>" + sessionMeta(cell, rpe, tonnage);
-  return '<div class="routine session">' + head + body + "</div>";
+  return '<div class="' + cls + '">' + head + body + "</div>";
 }
 
 // The expanded session footer: the Session-RPE input (a per-occurrence scalar keyed by cell — the
