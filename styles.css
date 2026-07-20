@@ -602,6 +602,60 @@ footer .muted { margin-top: .85rem; line-height: 1.5; }
 .done-tick { display: inline-flex; align-items: center; gap: .35rem; font-size: .85rem; color: var(--muted); cursor: pointer; }
 .done-tick input { width: 1.05rem; height: 1.05rem; accent-color: var(--done-border); }
 
+/* Composing a block (#45): the Edit-mode authoring controls on each routine card + the block config. */
+.block-config { display: flex; flex-wrap: wrap; gap: .4rem 1.1rem; align-items: center; margin: -.3rem 0 .8rem; }
+.block-config .cfg { display: inline-flex; align-items: center; gap: .35rem; font-size: .82rem; color: var(--muted); }
+.block-config input[type="date"] {
+  font: inherit; font-size: .85rem; color: var(--text);
+  padding: .2rem .35rem; border: 1px solid var(--border); border-radius: 6px; background: var(--control);
+}
+.weeks-n { color: var(--text); font-variant-numeric: tabular-nums; min-width: 1.2rem; text-align: center; }
+.mini {
+  border: 1px solid var(--border); background: var(--control); color: var(--text);
+  border-radius: 6px; padding: 0 .45rem; min-width: 1.6rem; height: 1.6rem;
+  font: inherit; font-size: .9rem; line-height: 1; cursor: pointer;
+}
+.mini:hover:not(:disabled) { border-color: var(--border-strong); }
+.mini:disabled { opacity: .3; cursor: default; }
+
+.kind-switch { display: inline-flex; gap: .2rem; margin-left: auto; }
+.kind-btn {
+  border: 1px solid var(--border); background: var(--control); color: var(--muted);
+  border-radius: 6px; padding: .2rem .5rem; font: inherit; font-size: .78rem; cursor: pointer;
+}
+.kind-btn:hover { border-color: var(--border-strong); }
+.kind-btn.active { background: var(--workout); border-color: var(--workout); color: var(--on-accent); font-weight: 600; }
+.day-move { display: inline-flex; gap: .15rem; }
+
+.routine-edit-body { margin-top: .7rem; display: flex; flex-direction: column; gap: .55rem; }
+.compose-input {
+  font: inherit; color: var(--text); width: 100%;
+  padding: .3rem .45rem; border: 1px solid var(--border); border-radius: 7px; background: var(--control);
+}
+.groups-edit { display: flex; flex-direction: column; gap: .6rem; }
+.group-edit { border: 1px solid var(--border); border-radius: 9px; padding: .55rem .65rem; background: var(--sunken); }
+.group-edit-head { display: flex; align-items: center; gap: .5rem; }
+.group-edit-title { font-weight: 600; font-size: .85rem; }
+.group-move { display: inline-flex; gap: .15rem; }
+.group-edit-head .remove { margin-left: auto; }
+.group-config { display: flex; flex-wrap: wrap; gap: .35rem .8rem; margin: .5rem 0; }
+.cfg { display: inline-flex; align-items: center; gap: .3rem; font-size: .8rem; color: var(--muted); }
+.cfg-input {
+  width: 3.4rem; font: inherit; font-size: .82rem; color: var(--text);
+  padding: .2rem .35rem; border: 1px solid var(--border); border-radius: 6px; background: var(--control);
+}
+.rail-input { width: 3rem; }
+.items-edit { display: flex; flex-direction: column; gap: .3rem; }
+.item-edit { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.item-edit .item-name { flex: 1 1 8rem; min-width: 0; }
+.rail-edit, .time-edit { display: inline-flex; align-items: center; gap: .25rem; font-size: .8rem; color: var(--muted); }
+.item-edit .remove { margin-left: auto; }
+.item-add {
+  align-self: flex-start; margin-top: .1rem;
+  font: inherit; font-size: .82rem; color: var(--text);
+  padding: .25rem .4rem; border: 1px solid var(--border); border-radius: 6px; background: var(--control);
+}
+
 /* The Library: each exercise / class as a native disclosure with its history + PRs. */
 .library-card {
   background: var(--card);

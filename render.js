@@ -2,11 +2,11 @@
  * the pure helpers; never mutates the store. The exported entry points (render + the measurement
  * live-patchers) are what events.js calls after a mutation.
  *
- * The block renders as a real-calendar week grid (#43); each Session Item is now loggable (#44) —
- * its planned rounds are input slots that read from / write to the exercise's Performances (ADR-0020,
- * the effort lives on the exercise, not the log). The Library shows each exercise's timeline + PRs.
- * Composing the plan itself (#45) adds its controls on top. Measurements, notes, footer are
- * untouched infra. */
+ * The block renders as a real-calendar week grid (#43); each Session Item is loggable (#44) — its
+ * planned rounds are input slots that read from / write to the exercise's Performances (ADR-0020, the
+ * effort lives on the exercise, not the log). In Edit mode each routine card delegates to compose.js
+ * to author the plan (#45). The Library shows each exercise's timeline + PRs. Measurements, notes,
+ * footer are untouched infra. */
 
 import {
   esc, fmt, fmtVolume, fmtLoad, fmtRail, zoneLabel, scheduledDate, fmtWeekday, measureKey,
@@ -18,6 +18,7 @@ import {
   currentBlock, currentBlockIndex, libraryList, classList, performancesOf, performanceAt, prsOf,
   previousMeasure, bmiFor,
 } from "./state.js";
+import { renderEditRoutine, renderBlockConfig } from "./compose.js";
 
 export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); applyView(); }
 
@@ -75,10 +76,15 @@ function renderWeek() {
   const nameHtml = editing
     ? '<input type="text" id="block-name-input" class="block-name-input" value="' + esc(block.name) + '" placeholder="Block name" aria-label="Block name" maxlength="40">'
     : esc(block.name);
+  const note = editing
+    ? '<p class="muted small readonly-note edit-hint">Compose the week — switch a day between Session / Class / Rest, add Groups and exercises, set rounds &amp; rests, and reorder the days.</p>'
+    : '<p class="muted small readonly-note">Log your sets, rounds, and steady work below as you train — or hit Edit to compose the plan.</p>';
   document.getElementById("week-view").innerHTML =
     '<p class="week-heading">' + nameHtml + " · Week " + wk + " of " + block.weeks + "</p>" +
-    '<p class="muted small readonly-note">Log your sets, rounds, and steady work below as you train — composing and editing the plan itself arrive next.</p>' +
-    '<div class="week-grid">' + block.template.map((r, i) => renderRoutine(block, r, wk, i)).join("") + "</div>";
+    (editing ? renderBlockConfig(block) : "") + note +
+    '<div class="week-grid">' +
+    block.template.map((r, i) => (editing ? renderEditRoutine(block, r, wk, i) : renderRoutine(block, r, wk, i))).join("") +
+    "</div>";
 }
 
 // One weekday's Routine as a grid card, headed by its real calendar Weekday date (ADR-0024).
