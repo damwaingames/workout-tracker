@@ -8,7 +8,7 @@
  * code like any other verify-*.mjs — it just never launches Playwright. */
 
 import {
-  railZone, railZones, doubleProgression, nextBandTier, nextDumbbellKg, snapDownDumbbellKg,
+  railZones, doubleProgression, nextBandTier, nextDumbbellKg, snapDownDumbbellKg,
   guideLoadKg, fmtTarget, e1rm, zoneOf,
 } from "../helpers.js";
 import { DUMBBELL_KG } from "../constants.js";
@@ -19,21 +19,17 @@ const ck = (label, cond) => { (cond ? pass++ : fail++); console.log((cond ? "ok 
 const near = (a, b) => Math.abs(a - b) < 1e-9;
 
 /* ---------------------------------------------------------------------- *
- * Rail → zone: the thread double progression runs on (ADR-0021).          *
+ * Rail → zones: the thread double progression runs on (ADR-0021). The     *
+ * ghost matches on the zones a rail SPANS, so load carries across a       *
+ * within-zone widening ([8,12]→[10,15] still share hypertrophy) while a   *
+ * disjoint change ([8,12]→[3,5]) starts fresh, and a set at a straddling  *
+ * rail's ceiling still threads (a [10,15] rail reaches into endurance).   *
  * ---------------------------------------------------------------------- */
-// The item's display zone is derived from the rail's FLOOR, so a within-zone widening keeps it:
-// the ADR's own load-carries example, [8,12] → [10,15], must stay one zone.
-ck("railZone [8,12] → hypertrophy", railZone([8, 12]) === "hypertrophy");
-ck("railZone [10,15] → hypertrophy (same as [8,12] — load carries)", railZone([10, 15]) === "hypertrophy");
-ck("railZone [3,5] → strength", railZone([3, 5]) === "strength");
-ck("railZone [15,20] → endurance", railZone([15, 20]) === "endurance");
-ck("railZone of a garbage rail → null", railZone(null) === null);
-
-// The set of zones a rail SPANS — what the ghost matches against, so a set logged at a
-// boundary-straddling rail's ceiling still threads (a [10,15] rail reaches into endurance).
 ck("railZones [8,12] spans only hypertrophy", railZones([8, 12]).join() === "hypertrophy");
 ck("railZones [10,15] spans hypertrophy + endurance", railZones([10, 15]).includes("hypertrophy") && railZones([10, 15]).includes("endurance"));
 ck("railZones [3,5] spans only strength", railZones([3, 5]).join() === "strength");
+ck("railZones [15,20] spans only endurance", railZones([15, 20]).join() === "endurance");
+ck("railZones of a garbage rail → []", railZones(null).length === 0);
 
 /* ---------------------------------------------------------------------- *
  * Double progression: climb reps to the ceiling, then step load, reset.   *
@@ -62,6 +58,8 @@ const kg = (mag) => ({ metric: "kg", mag });
   ck("band below ceiling → same tier, +1 rep", below && below.load.mag === "medium" && below.volume.val === 13 && below.stepped === false);
   const cap = doubleProgression([10, 15], { metric: "mini-loop", mag: "medium" }, 15);
   ck("band at ceiling → next tier, reset to floor", cap && cap.load.mag === "heavy" && cap.volume.val === 10 && cap.stepped === true);
+  const maxed = doubleProgression([10, 15], { metric: "mini-loop", mag: "x-heavy" }, 15);
+  ck("band maxed at the top tier → climbs reps, never steps", maxed && maxed.load.mag === "x-heavy" && maxed.volume.val === 16 && maxed.stepped === false);
 })();
 // Bodyweight (none) has no load to add — the target is always one more rep, never a step.
 (() => {
@@ -72,7 +70,7 @@ ck("doubleProgression of a garbage rail → null", doubleProgression(null, kg(40
 ck("doubleProgression with no reference reps → null", doubleProgression([8, 12], kg(40), 0) === null);
 
 ck("nextBandTier medium → heavy", nextBandTier("medium") === "heavy");
-ck("nextBandTier x-heavy → clamps at x-heavy", nextBandTier("x-heavy") === "x-heavy");
+ck("nextBandTier x-heavy → null (nothing heavier — matches nextDumbbellKg's cap)", nextBandTier("x-heavy") === null);
 
 // The kg "add load" ladder (ADR-0031) — the user's real adjustable-dumbbell steps.
 ck("nextDumbbellKg 8 → 9.5 (the next rung up)", nextDumbbellKg(8) === 9.5);
@@ -165,7 +163,6 @@ ck("ghostFor picks the most recent in-zone performance", (() => {
 (() => {
   const t = e1rmTrend("sq");
   ck("e1rmTrend reports the top e1RM as its max", t && near(t.max, e1rm(8, 12)));
-  ck("e1rmTrend reports the latest e1RM", t && near(t.latest, e1rm(8, 12)));
   ck("e1rmTrend reads 'up' when the latest e1RM beats the prior", t && t.dir === "up");
   ck("e1rmTrend of a history-free exercise → null", e1rmTrend("no-such-id") === null);
 })();

@@ -376,9 +376,9 @@ export function ghostFor(exId, rail) {
   return best;
 }
 
-// The advisory e1RM readout (ADR-0022): a cross-zone max, the latest, and a direction — never a
-// per-set verdict (double progression owns that). Reads the loaded performances in date order
-// (bodyweight sets yield no e1RM and drop out); null when the exercise has none.
+// The advisory e1RM readout (ADR-0022): a cross-zone max + a trend direction — never a per-set
+// verdict (double progression owns that). Reads the loaded performances in date order (bodyweight
+// sets yield no e1RM and drop out); null when the exercise has none.
 export function e1rmTrend(exId) {
   const series = performancesOf(exId)
     .slice()
@@ -386,10 +386,9 @@ export function e1rmTrend(exId) {
     .map((p) => e1rm(loadKg(p.load), p.volume && p.volume.val))
     .filter((v) => v != null);
   if (!series.length) return null;
-  const latest = series[series.length - 1];
-  const prev = series.length > 1 ? series[series.length - 2] : null;
+  const latest = series[series.length - 1], prev = series.length > 1 ? series[series.length - 2] : null;
   const dir = prev == null ? "flat" : latest > prev + 1e-9 ? "up" : latest < prev - 1e-9 ? "down" : "flat";
-  return { max: Math.max(...series), latest, dir };
+  return { max: Math.max(...series), dir };
 }
 
 // The progression surface a rep-Item renders before its log slots (ADR-0021/0022): the real ghost
@@ -410,10 +409,11 @@ export function progressionFor(item, ex) {
     const seed = guideLoadKg(trend.max, rail[0]);
     if (seed != null && seed > 0) {
       // Snap the e1RM-inverted seed to a real dumbbell rung (ADR-0031) — an estimate you can't load
-      // is no use as a starting weight.
-      const load = { metric: "kg", mag: snapDownDumbbellKg(seed) }, volume = { type: "reps", val: rail[0] };
-      guide = { load, volume, estimated: true };  // shown as the (estimated) ghost
-      target = { load, volume, stepped: false };  // …and as the start-at-the-floor target
+      // is no use as a starting weight. Guide + target hold the same numbers (start at the floor on
+      // the seeded load) but own separate objects, so neither aliases the other.
+      const mag = snapDownDumbbellKg(seed), floor = rail[0];
+      guide = { load: { metric: "kg", mag }, volume: { type: "reps", val: floor }, estimated: true };
+      target = { load: { metric: "kg", mag }, volume: { type: "reps", val: floor }, stepped: false };
     }
   }
   return { ghost: null, guide, target, e1rm: trend };

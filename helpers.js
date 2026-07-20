@@ -90,17 +90,13 @@ export function e1rm(kg, reps) {
   return w * (1 + r / 30);
 }
 
-// The zone a rail is *labelled* as, derived from its FLOOR (ADR-0021). The floor rule is what keeps
-// the ADR's own load-carries example one zone: [8,12] and [10,15] both floor into hypertrophy, so a
-// within-zone widening doesn't reset the thread; [8,12]→[3,5] drops to strength (a fresh thread).
-export function railZone(rail) {
-  return Array.isArray(rail) && rail.length ? zoneOf(rail[0]) : null;
-}
-// The zones a rail *spans* — the set the ghost matches a past performance against. A rail is a
-// contiguous rep range and the zones are contiguous bands, so the span is every zone from the
-// floor's up to the ceiling's. This is why a set logged at a straddling rail's ceiling (a [10,15]
-// rail's 15th rep stores as endurance) still threads with that rail — the item labels hypertrophy,
-// but its thread reaches into endurance, so the cap set is not orphaned.
+// The zones a rail *spans* — the set the ghost matches a past performance against (a rail is a
+// contiguous rep range and the zones are contiguous bands, so the span runs from the floor's zone up
+// to the ceiling's). Matching on the span, not a single zone, is what makes double progression's
+// thread behave (ADR-0021): [8,12] spans {hypertrophy} and [10,15] spans {hypertrophy, endurance}, so
+// they share a zone and a within-zone widening carries your load — while [8,12]→[3,5] spans {strength}
+// instead, disjoint, so it starts a fresh thread. It also keeps a set logged at a straddling rail's
+// ceiling (a [10,15] rail's 15th rep stores as endurance) as that rail's ghost, not orphaned.
 export function railZones(rail) {
   if (!Array.isArray(rail) || !rail.length) return [];
   const lo = zoneOf(rail[0]), hi = zoneOf(rail[rail.length - 1]);
@@ -108,10 +104,11 @@ export function railZones(rail) {
   const from = ZONES.findIndex((z) => z.id === lo), to = ZONES.findIndex((z) => z.id === hi);
   return ZONES.slice(Math.min(from, to), Math.max(from, to) + 1).map((z) => z.id);
 }
-// The next band tier up the shared ladder, clamped at the top (ADR-0029) — a band's "add load".
+// The next band tier up the shared ladder (ADR-0029) — a band's "add load"; null at the top rung
+// (nothing heavier to add), matching nextDumbbellKg's cap contract so a caller reads one sentinel.
 export function nextBandTier(tier) {
   const i = BAND_TIERS.findIndex((t) => t.id === tier);
-  return i >= 0 && i < BAND_TIERS.length - 1 ? BAND_TIERS[i + 1].id : tier;
+  return i >= 0 && i < BAND_TIERS.length - 1 ? BAND_TIERS[i + 1].id : null;
 }
 // The next achievable dumbbell weight above `kg` on the discrete-load ladder (ADR-0031) — a kg
 // exercise's "add load". Strictly greater, so it never suggests a lighter weight even for an
@@ -142,11 +139,13 @@ export function doubleProgression(rail, refLoad, refReps) {
   const floor = rail[0], ceiling = rail[1], reps = Number(refReps);
   if (!(reps > 0)) return null;
   const metric = refLoad.metric;
-  const climb = { load: { metric, mag: metric === "none" || metric == null ? null : refLoad.mag }, volume: { type: "reps", val: reps + 1 }, stepped: false };
-  if (metric === "none" || metric == null || reps < ceiling) return climb;
+  const loadless = metric === "none" || metric == null; // bodyweight — no load axis to step
+  const climb = { load: { metric, mag: loadless ? null : refLoad.mag }, volume: { type: "reps", val: reps + 1 }, stepped: false };
+  if (loadless || reps < ceiling) return climb;
+  // At/over the ceiling: step the load axis and reset to the floor. Both next-rung helpers signal a
+  // maxed axis (heaviest dumbbell / top tier) with null, so there's nothing heavier — keep climbing.
   const next = isBandMetric(metric) ? nextBandTier(refLoad.mag) : nextDumbbellKg(refLoad.mag);
-  const maxed = isBandMetric(metric) ? next === refLoad.mag : next == null;
-  return maxed ? climb : { load: { metric, mag: next }, volume: { type: "reps", val: floor }, stepped: true };
+  return next == null ? climb : { load: { metric, mag: next }, volume: { type: "reps", val: floor }, stepped: true };
 }
 // Seed a cold zone's starting load by inverting Epley for the rail's floor reps (ADR-0022):
 // w = e1RM / (1 + reps/30), rounded DOWN (conservative). Needs a positive e1RM (a pure-bodyweight
