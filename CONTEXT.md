@@ -168,8 +168,10 @@ separate and deliberately not redefined here.
   wholesale replace), upload, sync.
 - **Log** — the flat `state.log` map, now **slim**: the exercise-effort key grammar re-homed to the
   exercise timelines at v6 (ADR-0020), so the log carries only per-occurrence data no entity owns —
-  **Session RPE** (ADR-0012), the done flag — plus weekly body **measurements**. Keys are built
-  through the surviving key-grammar helpers (`cellKey`, `cellScalarKey`, `measureKey`) and nowhere else.
+  **Session RPE** (ADR-0012) and the **collapsed** flag, both position-keyed — plus weekly body
+  **measurements**. Keys are built through the surviving key-grammar helpers (`cellKey`,
+  `cellScalarKey`, `measureKey`) and nowhere else. A position-keyed scalar follows its routine when a
+  day is reordered (`swapDays`).
 - **Cell** — a `block/week/position` coordinate (`cellKey`), the prefix an occurrence-scalar key
   hangs off; `.d{position}` is the routine's 0-based slot in the weekly template. The `block.id`
   prefix is load-bearing: deleting a block sweeps its occurrence + measurement keys in one prefix
