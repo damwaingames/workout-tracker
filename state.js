@@ -567,7 +567,7 @@ export function windDownWeek() {
   const monday = mondayOf(now);
   const days = [];
   for (let i = 0; i < 7; i++) {
-    const date = scheduledDate(monday, 1, i);
+    const date = scheduledDate(monday, 1, i); // week 1 zeroes the offset → just monday + i days
     const iso = fmtYMD(date);
     days.push({ iso, date, done: !!state.winddown.done[iso], future: iso > now, isToday: iso === now });
   }
