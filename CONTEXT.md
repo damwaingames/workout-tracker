@@ -126,8 +126,9 @@ separate and deliberately not redefined here.
   catalogue; a **block**'s class routine references it, so deleting a block keeps every attendance.
   _ADRs_: 0030. _Avoid_: "a class type is just a name" (the pre-v6 derived-only stance).
 - **Attendance** — one logged occurrence of a **class**: a date, actual **minutes**, the wearable's
-  **calorie burn** (ADR-0014), and a **note**. The atomic unit of a **class type**'s history — the
-  class analogue of a **Performance**. _ADRs_: 0030.
+  **calorie burn** (ADR-0014), and a **note** — and, when logged live, the plan slot it was done in
+  (so the card re-hydrates), exactly as a **Performance** carries its ctx. The atomic unit of a
+  **class type**'s history — the class analogue of a **Performance**. _ADRs_: 0030.
 - **Wind-down** — a **daily mobility habit**: an evening stretch done most nights (a weekly target
   of ~6 of 7, typically skipping Sunday), *winged* by feel rather than a fixed plan. Tracked
   *outside* the **block** as weekly adherence (like body **measurements**); any stretches logged are

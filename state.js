@@ -384,6 +384,76 @@ export function logPerformance(exId, ctx, data) {
   save();
 }
 
+/* ---------------------------------------------------------------------- *
+ * Class attendance logging (#50) — the class sibling of logPerformance    *
+ * ---------------------------------------------------------------------- */
+// A class occurrence is keyed by its plan slot {block, week, routine} — the class analogue of a
+// Performance's ctx, but coarser (a class isn't composed of group/item/round). A migrated Attendance
+// carries no ctx, so it never collides with a live slot.
+function sameClassSlot(a, b) {
+  return !!a && !!b && a.block === b.block && a.week === b.week && a.routine === b.routine;
+}
+
+// The Attendance logged at a class slot (or null) — what the class card's inputs pre-fill from.
+export function attendanceAt(classTypeId, ctx) {
+  const ct = state.classes[classTypeId];
+  return (ct && Array.isArray(ct.attendances) && ct.attendances.find((a) => sameClassSlot(a.ctx, ctx))) || null;
+}
+
+// Log (or clear) a Class occurrence: an Attendance on the class type (ADR-0030), owning its history
+// exactly as an exercise owns its performances (ADR-0020). Its actuals are the minutes, the wearable
+// calorie burn (ADR-0014), and a note; `data` null (all fields empty) clears it — honest
+// under-completion, like an unlogged round (ADR-0026). Upserts by slot, dated today.
+export function logAttendance(classTypeId, ctx, data) {
+  const ct = state.classes[classTypeId];
+  if (!ct) return;
+  if (!Array.isArray(ct.attendances)) ct.attendances = [];
+  ct.attendances = ct.attendances.filter((a) => !sameClassSlot(a.ctx, ctx));
+  if (data) ct.attendances.push({ date: today(), mins: data.mins, kcal: data.kcal, note: data.note, ctx });
+  save();
+}
+
+/* ---------------------------------------------------------------------- *
+ * Library edit / retire (#50) — correct or hide an exercise (ADR-0020)   *
+ * ---------------------------------------------------------------------- */
+// The exercise fields the Library lets you correct (ADR-0020's "history lives on the entity" means a
+// correction to a field derived figures read — e.g. loadMode → tonnage — reflects across the whole
+// history for free, since every figure is computed on read from the record, never stored). A metric
+// correction (loadMetric) is prospective: it changes how future sets are logged; past performances
+// keep the metric they were logged with (loadKg reads the performance's own load, not the record —
+// rewriting history would falsify a real logged set, the thing ADR-0020 protects). The editable set
+// is an allow-list so a stray target can't write an arbitrary record field (the composeTargets idiom).
+const EX_EDITABLE = new Set(["name", "setup", "cue", "loadMode", "loadMetric"]);
+export function updateExercise(exId, field, value) {
+  const ex = state.library[exId];
+  if (!ex) return;
+  if (field === "rail-floor" || field === "rail-ceiling") {
+    if (!Array.isArray(ex.defaultRail)) ex.defaultRail = DEFAULT_RAIL.slice();
+    ex.defaultRail[field === "rail-floor" ? 0 : 1] = clampMin(value, 1);
+  } else if (EX_EDITABLE.has(field)) {
+    ex[field] = value;
+  }
+  save();
+}
+
+// Toggle an equipment tag on an exercise's required kit (ADR-0023). Absent = add, present = remove.
+export function toggleExerciseEquip(exId, tag) {
+  const ex = state.library[exId];
+  if (!ex) return;
+  if (!Array.isArray(ex.equipment)) ex.equipment = [];
+  ex.equipment = ex.equipment.includes(tag) ? ex.equipment.filter((t) => t !== tag) : ex.equipment.concat(tag);
+  save();
+}
+
+// Retire / un-retire an exercise (ADR-0020): a retired move is hidden from pickers but never deleted
+// (a performance references it — deleting would orphan history). Reversible.
+export function setExerciseRetired(exId, retired) {
+  const ex = state.library[exId];
+  if (!ex) return;
+  if (retired) ex.retired = true; else delete ex.retired;
+  save();
+}
+
 // The kg-equivalent of a Load, for e1RM + volume-load: a kg magnitude direct, a band tier via its
 // family's table (ADR-0029), and 0 for a machine level or a resistance-free move (no real kg).
 export function loadKg(load) {

@@ -12,12 +12,12 @@ import {
   esc, fmt, fmtVolume, fmtLoad, fmtRail, fmtTarget, fmtTonnage, zoneLabel, scheduledDate, fmtWeekday,
   measureKey, cellKey, cellScalarKey, itemLogMode, loadMode, repsLabel,
 } from "./helpers.js";
-import { BAND_TIERS, DEFAULT_BAND_TIER, RIR_BUCKETS } from "./constants.js";
+import { BAND_TIERS, DEFAULT_BAND_TIER, RIR_BUCKETS, LOAD_METRICS, LOAD_MODES, EQUIPMENT } from "./constants.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, libraryList, classList, performancesOf, performanceAt, prsOf,
   progressionFor, e1rmTrend, sessionTonnageKg, blockTonnageKg, effectiveRoutine, previousMeasure, bmiFor,
-  windDownWeek, windDownAdherence,
+  windDownWeek, windDownAdherence, attendanceAt,
 } from "./state.js";
 import { renderEditRoutine, renderBlockConfig, renderHolidayEditor } from "./compose.js";
 
@@ -104,22 +104,44 @@ function holidayToggle(position, active) {
 }
 
 // One weekday's Routine as a grid card, headed by its real calendar Weekday date (ADR-0024). A
-// Session gets the richer card (collapse + RPE + tonnage); a Class/Rest is a plain header + body.
+// Session gets the richer card (collapse + RPE + tonnage); a Rest is a plain header; a Class shows its
+// plan + a log of what you actually did — minutes, wearable burn, a note (#50).
 function renderRoutine(block, r, wk, position) {
   const when = fmtWeekday(scheduledDate(block.startDate, wk, position));
   if (r.kind === "session") return renderSessionCard(block, r, wk, position, when);
-  let title, body;
+  let title, body, extra = "";
   if (r.kind === "class") {
     title = esc(classNameOf(r.classType));
-    body = '<div class="routine-focus">Class · ' + esc(String(r.durationMin || "")) + " min</div>";
+    body = '<div class="routine-focus">Class · ' + esc(String(r.durationMin || "")) + " min planned</div>";
+    extra = renderClassLog(block, r, wk, position);
   } else {
     title = "Rest";
     body = '<p class="rest-note">Rest day.</p>';
   }
-  return '<div class="routine ' + r.kind + '">' +
+  const logged = r.kind === "class" && !!attendanceAt(r.classType, { block: block.id, week: wk, routine: position });
+  return '<div class="routine ' + r.kind + (logged ? " logged" : "") + '">' +
     '<div class="routine-head"><span class="routine-when">' + when + "</span>" +
       '<span class="routine-title">' + title + "</span>" + holidayToggle(position, false) + "</div>" +
-    body + "</div>";
+    body + extra + "</div>";
+}
+
+// A Class routine's log (#50, ADRs 0030/0014): what you actually did — actual minutes, the wearable's
+// calorie burn, and a note — upserted as an Attendance on the class type by its plan slot, pre-filled
+// from any logged one. The ctx is baked into data-* under the names the handler reads back. A class
+// with no known type (a half-composed plan) draws no log.
+function renderClassLog(block, r, wk, position) {
+  if (!r.classType || !state.classes[r.classType]) return "";
+  const a = attendanceAt(r.classType, { block: block.id, week: wk, routine: position });
+  const num = (field, val, label) =>
+    '<input type="number" inputmode="numeric" min="0" class="log-input" data-fh="class-log" data-field="' + field +
+    '" value="' + (val == null || val === "" ? "" : esc(String(val))) + '" placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
+  return '<div class="class-log" data-class="' + esc(r.classType) + '" data-block="' + esc(block.id) +
+    '" data-week="' + wk + '" data-routine="' + position + '">' +
+    num("mins", a ? a.mins : "", "min") +
+    num("kcal", a ? a.kcal : "", "kcal") +
+    '<input type="text" class="log-input class-note" data-fh="class-log" data-field="note" value="' + esc(a && a.note ? a.note : "") +
+    '" placeholder="Note" aria-label="Class note" maxlength="120">' +
+    "</div>";
 }
 
 // A Session card (#47): its Groups/Items to log, plus a per-session RPE input and a tonnage readout.
@@ -338,9 +360,13 @@ function renderLibrary() {
   if (!card) return;
   const exs = libraryList().map(renderLibraryExercise).join("");
   const classes = classList().map(renderLibraryClass).join("");
+  // Its own Edit toggle (#50): the plan-view one lives inside #plan-view, hidden on this tab, so
+  // editing an exercise from the Library needs its own — driving the same shared `editing` flag.
   card.innerHTML =
-    "<h2>Library</h2>" +
-    '<p class="muted small">Every exercise owns its performance history — progression and PRs follow the movement, not a block, so deleting a block never loses them (ADR-0020).</p>' +
+    '<div class="lib-head"><h2>Library</h2>' +
+      '<button data-action="edit-block" class="ghost lib-edit-toggle' + (editing ? " active" : "") + '">' + (editing ? "Done" : "Edit") + "</button></div>" +
+    '<p class="muted small">Every exercise owns its performance history — progression and PRs follow the movement, not a block, so deleting a block never loses them (ADR-0020).' +
+      (editing ? " Hit Edit on an exercise to correct its fields or retire it." : "") + "</p>" +
     '<div class="lib-list">' + exs + "</div>" +
     "<h2>Classes</h2>" +
     '<p class="muted small">Each class type owns its attendance history the same way (ADR-0030).</p>' +
@@ -368,10 +394,44 @@ function renderLibraryExercise(ex) {
       '<span class="lib-ex-count">' + perfs.length + " logged</span>" +
     "</summary>" +
     '<div class="lib-ex-body">' +
-      '<div class="lib-meta muted small">' + metaLine(ex) + "</div>" +
+      (editing ? renderExerciseEdit(ex) : '<div class="lib-meta muted small">' + metaLine(ex) + "</div>") +
       prBadges(ex) +
       '<div class="perf-timeline">' + timeline + "</div>" +
     "</div></details>";
+}
+
+// The exercise editor (#50, ADR-0020) — shown in Edit mode in place of the read-only meta line. Every
+// field is a correction to the record itself, so anything a derived figure reads (loadMode → tonnage)
+// reflects across the whole history for free. Scalar edits route data-fh="ex-edit" + data-target (no
+// re-render, keeping focus, like the compose inputs); equipment toggles route data-fh="ex-equip";
+// retire is a data-action. Rail is only shown for a rep exercise (a timed move has none).
+function renderExerciseEdit(ex) {
+  const f = (target, val, label, type) =>
+    '<label class="ex-field"><span>' + label + "</span>" +
+    '<input type="' + (type || "text") + '" class="ex-input" data-fh="ex-edit" data-target="' + target + '" data-ex="' + esc(ex.id) +
+    '" value="' + esc(val == null ? "" : String(val)) + '"' + (type === "number" ? ' inputmode="numeric" min="1"' : "") + "></label>";
+  const sel = (target, val, options, label) =>
+    '<label class="ex-field"><span>' + label + '</span><select class="ex-input" data-fh="ex-edit" data-target="' + target + '" data-ex="' + esc(ex.id) + '">' +
+    options.map((o) => '<option value="' + o + '"' + (o === val ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select></label>";
+  const equip = '<div class="ex-field ex-equip"><span>Equipment</span><div class="ex-equip-tags">' +
+    EQUIPMENT.map((tag) => '<label class="equip-tag"><input type="checkbox" data-fh="ex-equip" data-ex="' + esc(ex.id) + '" data-equip="' + tag + '"' +
+      ((ex.equipment || []).includes(tag) ? " checked" : "") + "> " + esc(tag) + "</label>").join("") + "</div></div>";
+  const rail = ex.volume === "reps"
+    ? '<div class="ex-field ex-rail"><span>Default rail</span>' +
+        f("rail-floor", Array.isArray(ex.defaultRail) ? ex.defaultRail[0] : "", "", "number") +
+        '<span class="rail-dash">–</span>' +
+        f("rail-ceiling", Array.isArray(ex.defaultRail) ? ex.defaultRail[1] : "", "", "number") + "</div>"
+    : "";
+  return '<div class="lib-edit">' +
+    f("name", ex.name, "Name") +
+    f("setup", ex.setup, "Setup") +
+    f("cue", ex.cue, "Cue") +
+    sel("loadMode", ex.loadMode || "standard", LOAD_MODES.map((m) => m.id), "Loading mode") +
+    sel("loadMetric", ex.loadMetric, LOAD_METRICS, "Load metric") +
+    equip + rail +
+    '<button type="button" class="link ex-retire-btn" data-action="ex-retire" data-ex="' + esc(ex.id) + '">' +
+      (ex.retired ? "Un-retire" : "Retire") + "</button>" +
+    "</div>";
 }
 
 // One performance row: date · load · volume · zone — the atomic history line (ADR-0020).

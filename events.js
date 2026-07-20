@@ -8,7 +8,8 @@
 
 import { slugify, uniqueId, buildPerformance, validYMD, cellScalarKey } from "./helpers.js";
 import {
-  state, editing, setState, setEditing, save, setLog, logPerformance,
+  state, editing, setState, setEditing, save, setLog, logPerformance, logAttendance,
+  updateExercise, toggleExerciseEquip, setExerciseRetired,
   currentBlock, currentCell, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
   blankRoutine, blankGroup, newItem, swapDays, toggleWinddown, setWinddownField,
 } from "./state.js";
@@ -45,6 +46,9 @@ export function handleClick(e) {
     // Tick / un-tick a wind-down night (#49, ADR-0028) — a date-keyed habit outside any block; a
     // full render is fine since no text field holds focus. A future night's button is disabled.
     case "winddown-toggle": toggleWinddown(el.dataset.date); render(); break;
+    // Retire / un-retire an exercise (#50, ADR-0020) — re-render so it re-sorts, tags, and drops out
+    // of (or back into) the composer pickers, which filter retired.
+    case "ex-retire": { const ex = state.library[el.dataset.ex]; setExerciseRetired(el.dataset.ex, !(ex && ex.retired)); render(); break; }
     case "new-block": newBlock(); break;
     case "delete-block": removeCurrentBlock(); break;
     case "edit-block": setEditing(!editing); render(); break;
@@ -159,7 +163,36 @@ const fieldByName = {
     const g = groupAt(el);
     if (g && el.value) { g.items.push(newItem(el.value)); save(); render(); }
   },
+  // Log a Class occurrence (#50): gather the card's minutes / kcal / note → an Attendance on the type.
+  "class-log": classLogField,
+  // Edit an exercise field in the Library (#50). Scalar mutate + save, no re-render (keeps focus); the
+  // summary name is hand-patched, like the block-name input patches its select option.
+  "ex-edit"(el) {
+    updateExercise(el.dataset.ex, el.dataset.target, el.value);
+    if (el.dataset.target === "name") {
+      const nm = document.querySelector('.lib-ex[data-ex="' + el.dataset.ex + '"] .lib-ex-name');
+      if (nm) nm.textContent = el.value;
+    }
+  },
+  // Toggle an equipment tag on an exercise (#50) — a checkbox, so it reflects its own state; no render.
+  "ex-equip"(el) { toggleExerciseEquip(el.dataset.ex, el.dataset.equip); },
 };
+
+// Log (or clear) a Class occurrence's actuals at its plan slot (#50, ADR-0030): gather the card's
+// minutes, wearable kcal, and note → an Attendance on the class type (null when all empty — honest
+// under-completion). A full render would steal focus mid-type, so it reflects the logged state in place.
+function classLogField(el) {
+  const box = el.closest(".class-log");
+  if (!box) return;
+  const d = box.dataset;
+  const val = (f) => { const n = box.querySelector('[data-field="' + f + '"]'); return n ? n.value : ""; };
+  const mins = Number(val("mins")) || 0, kcal = Number(val("kcal")) || 0, note = val("note").trim();
+  const ctx = { block: d.block, week: Number(d.week), routine: Number(d.routine) };
+  const data = (mins > 0 || kcal > 0 || note) ? { mins, kcal, note } : null;
+  logAttendance(d.class, ctx, data);
+  const card = box.closest(".routine");
+  if (card) card.classList.toggle("logged", !!data);
+}
 
 // Log a Session Item's effort at one slot: gather the slot's raw inputs, build the Performance its
 // mode records (or null to clear), write it onto the exercise, and reflect the logged state in place.
