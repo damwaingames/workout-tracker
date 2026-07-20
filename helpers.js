@@ -256,11 +256,12 @@ export function fmtLoad(load) {
 }
 
 // A double-progression target as human text: "42.5 kg × 8", "Heavy band × 10", or bare "21 reps"
-// for a load-free (bodyweight) climb. Reuses fmtLoad so the load reads exactly as a Performance's.
+// for a load-free (bodyweight) climb. Reuses fmtLoad + fmtVolume so a target reads exactly as a
+// Performance's own load/volume do (no re-spelt pluralisation).
 export function fmtTarget(t) {
   if (!t || !t.volume) return "";
-  const reps = t.volume.val, load = fmtLoad(t.load);
-  return load ? load + " × " + reps : reps + " rep" + (Number(reps) === 1 ? "" : "s");
+  const load = fmtLoad(t.load);
+  return load ? load + " × " + t.volume.val : fmtVolume(t.volume);
 }
 
 export function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }

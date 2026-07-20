@@ -409,9 +409,9 @@ export function progressionFor(item, ex) {
   if (ex.loadMetric === "kg" && trend) {
     const mag = guideLoadKg(trend.max, rail[0]);
     if (mag != null && mag > 0) {
-      const shape = { load: { metric: "kg", mag }, volume: { type: "reps", val: rail[0] } };
-      guide = { load: shape.load, volume: shape.volume, estimated: true };
-      target = { load: shape.load, volume: shape.volume, stepped: false };
+      const load = { metric: "kg", mag }, volume = { type: "reps", val: rail[0] };
+      guide = { load, volume, estimated: true };  // shown as the (estimated) ghost
+      target = { load, volume, stepped: false };  // …and as the start-at-the-floor target
     }
   }
   return { ghost: null, guide, target, e1rm: trend };

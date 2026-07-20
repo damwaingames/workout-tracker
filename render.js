@@ -22,6 +22,10 @@ import { renderEditRoutine, renderBlockConfig } from "./compose.js";
 
 export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); applyView(); }
 
+// The advisory e1RM trend arrow (ADR-0022), shared by the Item surface and the Library so the two
+// can't drift. Flat draws nothing, to stay quiet.
+const TREND_ARROW = { up: " ↑", down: " ↓", flat: "" };
+
 // Top-level view switch (Plan | Library). The Library grew large enough to want its own tab rather
 // than hanging below the plan; the choice persists in state.ui.view (normalise owns the invariant
 // that it's always "plan" | "library", so readers here just trust it). This is the nav scaffold the
@@ -177,7 +181,7 @@ function renderProgression(it, ex) {
   } else if (p.guide) {
     parts.push(span("prog-ghost estimated", "Guide ~" + fmtTarget(p.guide) + " (est.)"));
   }
-  if (p.e1rm && p.e1rm.max != null) parts.push(span("prog-e1rm", "e1RM ~" + fmt(p.e1rm.max) + " kg"));
+  if (p.e1rm && p.e1rm.max != null) parts.push(span("prog-e1rm", "e1RM ~" + fmt(p.e1rm.max) + " kg" + (TREND_ARROW[p.e1rm.dir] || "")));
   return parts.length ? '<div class="item-progress muted small">' + parts.join(" · ") + "</div>" : "";
 }
 
@@ -319,10 +323,9 @@ function prBadges(ex) {
   if (pr.kind === "reps") {
     if (pr.topE1rm) {
       // The advisory e1RM shows its max plus a trend arrow (latest vs the prior loaded set) — a
-      // cross-zone readout, never a per-set verdict (ADR-0022). Flat draws no arrow, to stay quiet.
+      // cross-zone readout, never a per-set verdict (ADR-0022).
       const tr = e1rmTrend(ex.id);
-      const arrow = tr ? { up: " ↑", down: " ↓", flat: "" }[tr.dir] : "";
-      bits.push(badge("e1RM " + fmt(pr.topE1rm.value) + " kg" + arrow));
+      bits.push(badge("e1RM " + fmt(pr.topE1rm.value) + " kg" + (tr ? TREND_ARROW[tr.dir] : "")));
     }
     ["strength", "hypertrophy", "endurance"].forEach((z) => {
       const b = pr.byZone[z];
