@@ -267,15 +267,16 @@ function renderSlot(it, ex, mode, ctx, label) {
 
 // The inputs a slot draws for its mode, pre-filled from a logged Performance (empty otherwise).
 function slotInputs(mode, ex, it, perf) {
+  const rir = () => rirSelect(perf ? perf.rir : ""); // the three rep modes all carry an optional RIR marker
   switch (mode) {
     case "load-reps": {
       const m = loadMode(ex);
-      return numInput("w", perf ? perf.load.mag : "", m.wUnit || "kg") + numInput("r", perf ? perf.volume.val : "", repsLabel(m)) + rirSelect(perf ? perf.rir : "");
+      return numInput("w", perf ? perf.load.mag : "", m.wUnit || "kg") + numInput("r", perf ? perf.volume.val : "", repsLabel(m)) + rir();
     }
     case "band-reps":
-      return tierSelect(perf ? perf.load.mag : DEFAULT_BAND_TIER) + numInput("r", perf ? perf.volume.val : "", repsLabel(loadMode(ex))) + rirSelect(perf ? perf.rir : "");
+      return tierSelect(perf ? perf.load.mag : DEFAULT_BAND_TIER) + numInput("r", perf ? perf.volume.val : "", repsLabel(loadMode(ex))) + rir();
     case "reps":
-      return numInput("r", perf ? perf.volume.val : "", "reps") + rirSelect(perf ? perf.rir : "");
+      return numInput("r", perf ? perf.volume.val : "", "reps") + rir();
     case "steady":
       // Prefill the exact minutes (seconds / 60, un-rounded) so a re-save can't drift the stored
       // duration — rounding here would resave e.g. 12.5 min as 13 the next time the slot is touched.
