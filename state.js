@@ -159,18 +159,19 @@ export function newItem(exId) {
   return { exId, time: ex.loadMetric === "machine-level" ? DEFAULT_STEADY_MIN * 60 : DEFAULT_STATION_SEC };
 }
 
-// Reorder two weekdays within a block's template (ADR-0024). The day's logged history follows it: the
-// routine that WAS at `from` is now at `to`, so swap ctx.routine from↔to on this block's performances
-// — the effort stays on its exercise (ADR-0020); only its slot back-reference moves with the day.
-export function moveDayInBlock(block, from, to) {
+// Swap two weekdays within a block's template (ADR-0024) — a true swap of the two positions, correct
+// for ANY pair (the up/down UI passes neighbours; it is not a splice-and-shift). Each day's logged
+// history follows it: swap ctx.routine a↔b on this block's performances, so a set logged for a routine
+// stays with it (the effort stays on its exercise — ADR-0020; only its slot back-reference moves).
+export function swapDays(block, a, b) {
   const t = block.template;
-  if (!t || !t[from] || !t[to] || from === to) return;
-  [t[from], t[to]] = [t[to], t[from]];
+  if (!t || !t[a] || !t[b] || a === b) return;
+  [t[a], t[b]] = [t[b], t[a]];
   Object.values(state.library).forEach((ex) => {
     (ex.performances || []).forEach((p) => {
       if (!p.ctx || p.ctx.block !== block.id) return;
-      if (p.ctx.routine === from) p.ctx.routine = to;
-      else if (p.ctx.routine === to) p.ctx.routine = from;
+      if (p.ctx.routine === a) p.ctx.routine = b;
+      else if (p.ctx.routine === b) p.ctx.routine = a;
     });
   });
 }
