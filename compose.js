@@ -11,7 +11,7 @@
  * routine / group / item, matching the plan indices. */
 
 import { esc, fmtWeekday, scheduledDate, itemLogMode } from "./helpers.js";
-import { state, libraryList, classList } from "./state.js";
+import { state, libraryList, classList, awayEligible } from "./state.js";
 
 const KIND_LABEL = { session: "Session", class: "Class", rest: "Rest" };
 
@@ -25,11 +25,24 @@ export function renderEditRoutine(block, r, wk, position) {
     kindSwitch(position, r.kind) +
     "</div>";
   let body;
-  if (r.kind === "session") body = editSession(r, position);
+  if (r.kind === "session") body = editSession(r, 'data-pos="' + position + '"', libraryList().filter((e) => !e.retired));
   else if (r.kind === "class") body = editClass(r, position);
   else body = '<p class="rest-note">Rest day — nothing scheduled.</p>';
   return '<div class="routine ' + r.kind + ' editing">' + head +
     '<div class="routine-edit-body">' + body + "</div></div>";
+}
+
+// The Holiday Session editor (#48/ADR-0025): the same Session composer, but located at the app-level
+// `state.holiday` singleton (via `data-holiday`, which the events locators resolve) and with its
+// exercise picker restricted to the away-eligible set (equipment ⊆ away kit). Shown once in Edit
+// mode; there is no weekday, kind switch, or day-reorder — it is not a routine in the template.
+export function renderHolidayEditor() {
+  const h = state.holiday;
+  return '<div class="holiday-editor">' +
+    '<h3 class="holiday-editor-title">🏝 Holiday Session</h3>' +
+    '<p class="muted small">One catch-all session built only from your away kit — mini-loops, resistance bands, and a door anchor. Swap it into any day with the 🏝 toggle while you’re travelling; your planned exercises wait untouched (ADR-0025).</p>' +
+    editSession(h, 'data-holiday="1"', awayEligible()) +
+    "</div>";
 }
 
 // The block-level knobs shown above the week in Edit mode: its length (N real weeks) and start date
@@ -59,18 +72,21 @@ function kindSwitch(pos, kind) {
     "</span>";
 }
 
-/* ---- Session editor ---- */
-function editSession(r, pos) {
-  const groups = (r.groups || []).map((g, gi) => editGroup(g, gi, pos)).join("");
-  return '<input class="compose-input" data-fh="compose" data-target="title" data-pos="' + pos + '" value="' + esc(r.title || "") + '" placeholder="Session name" aria-label="Session name" maxlength="40">' +
-    '<input class="compose-input" data-fh="compose" data-target="focus" data-pos="' + pos + '" value="' + esc(r.focus || "") + '" placeholder="Focus (optional)" aria-label="Session focus" maxlength="60">' +
+/* ---- Session editor (reused by the block routines and the Holiday Session) ----
+ * `loc` is the locator data-attribute the events mutators resolve the session from — `data-pos="N"`
+ * for a block routine, `data-holiday="1"` for the singleton. `exList` is the exercise picker source
+ * (the whole library for a block, the away-eligible set for the Holiday Session). */
+function editSession(r, loc, exList) {
+  const groups = (r.groups || []).map((g, gi) => editGroup(g, gi, loc, exList)).join("");
+  return '<input class="compose-input" data-fh="compose" data-target="title" ' + loc + ' value="' + esc(r.title || "") + '" placeholder="Session name" aria-label="Session name" maxlength="40">' +
+    '<input class="compose-input" data-fh="compose" data-target="focus" ' + loc + ' value="' + esc(r.focus || "") + '" placeholder="Focus (optional)" aria-label="Session focus" maxlength="60">' +
     '<div class="groups-edit">' + groups + "</div>" +
-    '<button type="button" class="add-btn" data-action="add-group" data-pos="' + pos + '">＋ Add group</button>';
+    '<button type="button" class="add-btn" data-action="add-group" ' + loc + ">＋ Add group</button>";
 }
 
-function editGroup(g, gi, pos) {
-  const a = ' data-pos="' + pos + '" data-g="' + gi + '"';
-  const items = (g.items || []).map((it, ii) => editItem(it, ii, pos, gi)).join("");
+function editGroup(g, gi, loc, exList) {
+  const a = " " + loc + ' data-g="' + gi + '"';
+  const items = (g.items || []).map((it, ii) => editItem(it, ii, loc, gi)).join("");
   return '<div class="group-edit">' +
     '<div class="group-edit-head">' +
       '<span class="group-edit-title">Group ' + (gi + 1) + "</span>" +
@@ -86,14 +102,14 @@ function editGroup(g, gi, pos) {
       cfgNum("rest after", "ra", g.restAfter || 0, 0, a, "s") +
     "</div>" +
     '<div class="items-edit">' + items + "</div>" +
-    itemAddSelect(pos, gi) +
+    itemAddSelect(loc, gi, exList) +
     "</div>";
 }
 
-function editItem(it, ii, pos, gi) {
+function editItem(it, ii, loc, gi) {
   const ex = state.library[it.exId];
   const name = ex ? esc(ex.name) : esc(it.exId);
-  const a = ' data-pos="' + pos + '" data-g="' + gi + '" data-i="' + ii + '"';
+  const a = " " + loc + ' data-g="' + gi + '" data-i="' + ii + '"';
   let controls = "";
   if (Array.isArray(it.rail)) {
     controls = '<span class="rail-edit">' +
@@ -111,10 +127,9 @@ function editItem(it, ii, pos, gi) {
     '<button type="button" class="remove" data-action="remove-item"' + a + ' aria-label="Remove exercise">×</button></div>';
 }
 
-function itemAddSelect(pos, gi) {
-  const opts = libraryList().filter((e) => !e.retired)
-    .map((e) => '<option value="' + esc(e.id) + '">' + esc(e.name) + "</option>").join("");
-  return '<select class="item-add" data-fh="item-add" data-pos="' + pos + '" data-g="' + gi + '" aria-label="Add exercise">' +
+function itemAddSelect(loc, gi, exList) {
+  const opts = exList.map((e) => '<option value="' + esc(e.id) + '">' + esc(e.name) + "</option>").join("");
+  return '<select class="item-add" data-fh="item-add" ' + loc + ' data-g="' + gi + '" aria-label="Add exercise">' +
     '<option value="">＋ Add exercise…</option>' + opts + "</select>";
 }
 

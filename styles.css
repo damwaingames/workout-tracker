@@ -604,6 +604,16 @@ footer .muted { margin-top: .85rem; line-height: 1.5; }
 .tonnage { font-variant-numeric: tabular-nums; }
 .block-tonnage { margin: -.3rem 0 .7rem; font-variant-numeric: tabular-nums; }
 
+/* The Holiday Session editor (#48): an inset section below the week grid in Edit mode, composed with
+   the same Session editor but from the away-eligible exercises only (ADR-0025). */
+.holiday-editor {
+  margin-top: 1rem; padding: .9rem 1rem;
+  border: 1px solid var(--border); border-left: 4px solid var(--holiday);
+  border-radius: 12px; background: var(--sunken);
+}
+.holiday-editor-title { margin: 0 0 .3rem; font-size: 1rem; }
+.holiday-toggle.active { opacity: 1; }
+
 /* Logging an Item (#44): a slot per planned round — a label + the mode's inputs. A slot with a
    Performance reads as logged (tinted); an unfilled slot is an unlogged round (under-completion). */
 .item-log { display: flex; flex-direction: column; gap: .3rem; }

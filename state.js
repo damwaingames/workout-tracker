@@ -8,11 +8,11 @@
 
 import {
   STORAGE_KEY, SUPPORTED_VERSIONS, STORE_VERSION, DEFAULT_WEEKS, DEFAULT_ROUNDS, DEFAULT_STATION_SEC,
-  DEFAULT_STEADY_MIN, STRAIGHT_SET_REST, DEFAULT_RAIL, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES,
+  DEFAULT_STEADY_MIN, STRAIGHT_SET_REST, DEFAULT_RAIL, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES, AWAY_KIT,
 } from "./constants.js";
 import {
   today, mondayOf, cellKey, cellScalarKey, measureKey, slugify, uniqueId, bandKg, isBandMetric,
-  e1rm, zoneOf, loadMode, railZones, doubleProgression, guideLoadKg, snapDownDumbbellKg, rirNudge,
+  e1rm, zoneOf, loadMode, railZones, doubleProgression, guideLoadKg, snapDownDumbbellKg, rirNudge, fitsKit,
 } from "./helpers.js";
 import { migrateToV6 } from "./migrate.js";
 
@@ -161,8 +161,9 @@ export function newItem(exId) {
 }
 
 // The per-occurrence log scalars keyed by a routine's template position — they must follow a day
-// when it is reordered (#47), else a swapped day mis-associates its RPE with the wrong routine.
-const CELL_SCALARS = ["rpe", "collapsed"];
+// when it is reordered (#47/#48), else a swapped day mis-associates its RPE / holiday state with the
+// wrong routine. (Session RPE, collapsed flag, Holiday-Session swap.)
+const CELL_SCALARS = ["rpe", "collapsed", "holiday"];
 
 // Swap two weekdays within a block's template (ADR-0024) — a true swap of the two positions, correct
 // for ANY pair (the up/down UI passes neighbours; it is not a splice-and-shift). Each day's logged
@@ -258,6 +259,21 @@ export function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)
 export function currentBlock() { return state.blocks.find((b) => b.id === state.ui.block) || state.blocks[0]; }
 export function currentBlockIndex() { return Math.max(0, state.blocks.findIndex((b) => b.id === state.ui.block)); }
 
+// The Holiday-Session swap (ADR-0025): a per-occurrence flag (`.holiday` cell scalar, position-keyed
+// like `.collapsed`) that substitutes the single shared Holiday Session for a day's plan when you're
+// away from your kit. `effectiveRoutine` is what the log view + tonnage read — the swapped-in Holiday
+// Session (marked `holiday: true`) or the planned routine. The plan (Edit mode) always shows the real
+// routine; only logging is redirected, so the planned exercises accrue no Performance that day and
+// their ghosts wait untouched — ADR-0025's outcome, free from per-exercise progression (ADR-0020).
+export function isHolidayCell(block, wk, position) {
+  return !!state.log[cellScalarKey(cellKey(block.id, wk, position), "holiday")];
+}
+export function effectiveRoutine(block, wk, position) {
+  if (!isHolidayCell(block, wk, position)) return block.template[position];
+  const h = state.holiday;
+  return { kind: "session", holiday: true, title: h.title, focus: h.focus, groups: h.groups };
+}
+
 export function setLog(k, v) {
   if (v === "" || v === false || v == null) delete state.log[k];
   else state.log[k] = v;
@@ -292,6 +308,12 @@ export function libraryList() {
 }
 export function classList() {
   return Object.values(state.classes).sort((a, b) => a.name.localeCompare(b.name));
+}
+// The exercises the Holiday Session can be built from (ADR-0023/0025): every non-retired exercise
+// whose required equipment ⊆ the away-from-home kit (mini-loops + resistance-bands + door-anchor).
+// Bodyweight moves (no kit) qualify too. Alphabetical, like libraryList.
+export function awayEligible() {
+  return libraryList().filter((e) => !e.retired && fitsKit(e.equipment, AWAY_KIT));
 }
 export function performancesOf(exId) {
   const ex = state.library[exId];
@@ -450,7 +472,7 @@ export function progressionFor(item, ex) {
 // A band tier resolves to kg (loadKg); bodyweight (0 kg) and timed Items add nothing. 0 for a
 // non-Session routine or an unlogged occurrence.
 export function sessionTonnageKg(block, wk, position) {
-  const r = block.template[position];
+  const r = effectiveRoutine(block, wk, position); // a holiday-swapped day tallies the Holiday Session
   if (!r || r.kind !== "session" || !Array.isArray(r.groups)) return 0;
   let kg = 0;
   r.groups.forEach((g, gi) => {
