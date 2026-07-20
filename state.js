@@ -11,8 +11,8 @@ import {
   DEFAULT_STEADY_MIN, STRAIGHT_SET_REST, DEFAULT_RAIL, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES,
 } from "./constants.js";
 import {
-  today, mondayOf, cellKey, measureKey, slugify, uniqueId, bandKg, isBandMetric, e1rm, zoneOf,
-  railZones, doubleProgression, guideLoadKg, snapDownDumbbellKg,
+  today, mondayOf, cellKey, cellScalarKey, measureKey, slugify, uniqueId, bandKg, isBandMetric,
+  e1rm, zoneOf, loadMode, railZones, doubleProgression, guideLoadKg, snapDownDumbbellKg, rirNudge,
 } from "./helpers.js";
 import { migrateToV6 } from "./migrate.js";
 
@@ -160,10 +160,16 @@ export function newItem(exId) {
   return { exId, time: ex.loadMetric === "machine-level" ? DEFAULT_STEADY_MIN * 60 : DEFAULT_STATION_SEC };
 }
 
+// The per-occurrence log scalars keyed by a routine's template position — they must follow a day
+// when it is reordered (#47), else a swapped day mis-associates its RPE with the wrong routine.
+const CELL_SCALARS = ["rpe", "collapsed"];
+
 // Swap two weekdays within a block's template (ADR-0024) — a true swap of the two positions, correct
 // for ANY pair (the up/down UI passes neighbours; it is not a splice-and-shift). Each day's logged
-// history follows it: swap ctx.routine a↔b on this block's performances, so a set logged for a routine
-// stays with it (the effort stays on its exercise — ADR-0020; only its slot back-reference moves).
+// history follows it: (1) swap ctx.routine a↔b on this block's performances, so a set logged for a
+// routine stays with it (the effort stays on its exercise — ADR-0020; only its slot back-reference
+// moves); (2) swap the per-occurrence log scalars (Session RPE, collapsed) at positions a↔b across
+// EVERY week, since those are keyed by template position (#47 — carried from #45's day-reorder).
 export function swapDays(block, a, b) {
   const t = block.template;
   if (!t || !t[a] || !t[b] || a === b) return;
@@ -175,6 +181,15 @@ export function swapDays(block, a, b) {
       else if (p.ctx.routine === b) p.ctx.routine = a;
     });
   });
+  for (let wk = 1; wk <= block.weeks; wk++) {
+    CELL_SCALARS.forEach((field) => {
+      const ka = cellScalarKey(cellKey(block.id, wk, a), field);
+      const kb = cellScalarKey(cellKey(block.id, wk, b), field);
+      const va = state.log[ka], vb = state.log[kb]; // read both before writing either
+      if (vb === undefined) delete state.log[ka]; else state.log[ka] = vb;
+      if (va === undefined) delete state.log[kb]; else state.log[kb] = va;
+    });
+  }
 }
 
 /* ---------------------------------------------------------------------- *
@@ -284,12 +299,15 @@ export function performancesOf(exId) {
 }
 
 // A Performance's ctx back-references the exact plan slot it was logged in (ADR-0020): the block,
-// week, routine position, group, item, and round. Two ctxs identify the same slot when all six
-// agree — so a migrated Performance (coarser ctx, no group/item/round) never collides with a slot.
-function sameSlot(a, b) {
+// week, routine position, group, item, and round. `sameItemSlot` matches every field BUT round —
+// it identifies one Item across all its rounds (what tonnage sums over); `sameSlot` adds the round
+// for an exact single-round match (what logging upserts). A migrated Performance (coarser ctx, no
+// group/item/round) never collides with a slot.
+function sameItemSlot(a, b) {
   return !!a && !!b && a.block === b.block && a.week === b.week && a.routine === b.routine &&
-    a.group === b.group && a.item === b.item && a.round === b.round;
+    a.group === b.group && a.item === b.item;
 }
+function sameSlot(a, b) { return sameItemSlot(a, b) && a.round === b.round; }
 
 // The Performance logged at a plan slot (or null) — what a logging input pre-fills from on render.
 export function performanceAt(exId, ctx) {
@@ -307,10 +325,12 @@ export function logPerformance(exId, ctx, data) {
   if (!Array.isArray(ex.performances)) ex.performances = [];
   ex.performances = ex.performances.filter((p) => !sameSlot(p.ctx, ctx));
   if (data) {
-    ex.performances.push({
+    const p = {
       date: today(), load: data.load, volume: data.volume,
       zone: data.volume.type === "reps" ? zoneOf(data.volume.val) : null, ctx,
-    });
+    };
+    if (data.rir) p.rir = data.rir; // optional per-set marker (ADR-0027); most sets carry none
+    ex.performances.push(p);
   }
   save();
 }
@@ -402,7 +422,8 @@ export function progressionFor(item, ex) {
   const trend = e1rmTrend(item.exId);
   const ghost = ghostFor(item.exId, rail);
   if (ghost) {
-    return { ghost, guide: null, target: doubleProgression(rail, ghost.load, ghost.volume.val), e1rm: trend };
+    // The ghost's RIR (if any) nudges the next set — advisory, never a gate (ADR-0027).
+    return { ghost, guide: null, target: doubleProgression(rail, ghost.load, ghost.volume.val), e1rm: trend, nudge: rirNudge(ghost.rir) };
   }
   let guide = null, target = null;
   if (ex.loadMetric === "kg" && trend) {
@@ -416,7 +437,42 @@ export function progressionFor(item, ex) {
       target = { load: { metric: "kg", mag }, volume: { type: "reps", val: floor }, stepped: false };
     }
   }
-  return { ghost: null, guide, target, e1rm: trend };
+  return { ghost: null, guide, target, e1rm: trend, nudge: null };
+}
+
+/* ---------------------------------------------------------------------- *
+ * Tonnage (#47) — the volume-load readout (ADR-0029), never a progression *
+ * signal. Loading mode makes it honest: per-side counts reps on both      *
+ * sides (rMult), two-dumbbell the weight on both (wMult).                  *
+ * ---------------------------------------------------------------------- */
+// A Session's total volume-load (kg) for one occurrence (block/week/position): over its loaded
+// rep-Items only, sum each logged set's kg-equivalent × reps, scaled by the exercise's loading mode.
+// A band tier resolves to kg (loadKg); bodyweight (0 kg) and timed Items add nothing. 0 for a
+// non-Session routine or an unlogged occurrence.
+export function sessionTonnageKg(block, wk, position) {
+  const r = block.template[position];
+  if (!r || r.kind !== "session" || !Array.isArray(r.groups)) return 0;
+  let kg = 0;
+  r.groups.forEach((g, gi) => {
+    (g.items || []).forEach((it, ii) => {
+      const ex = state.library[it.exId];
+      if (!ex || !Array.isArray(it.rail)) return; // loaded rep-Items only (ADR-0029)
+      const m = loadMode(ex);
+      const slot = { block: block.id, week: wk, routine: position, group: gi, item: ii };
+      (ex.performances || []).forEach((p) => {
+        if (!sameItemSlot(p.ctx, slot) || !p.volume || p.volume.type !== "reps") return; // every round of this Item
+        kg += loadKg(p.load) * m.wMult * (Number(p.volume.val) || 0) * m.rMult;
+      });
+    });
+  });
+  return kg;
+}
+// A Block's total volume-load (kg) — every week × every day's Session tonnage.
+export function blockTonnageKg(block) {
+  let kg = 0;
+  for (let wk = 1; wk <= block.weeks; wk++)
+    for (let pos = 0; pos < block.template.length; pos++) kg += sessionTonnageKg(block, wk, pos);
+  return kg;
 }
 
 /* ---------------------------------------------------------------------- *

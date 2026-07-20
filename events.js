@@ -6,10 +6,10 @@
  * exercise. The measurements card + footer backups are untouched infra. Composing the plan (#45)
  * brings its authoring handlers on top. */
 
-import { slugify, uniqueId, buildPerformance, validYMD } from "./helpers.js";
+import { slugify, uniqueId, buildPerformance, validYMD, cellScalarKey } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logPerformance,
-  currentBlock, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
+  currentBlock, currentCell, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
   blankRoutine, blankGroup, newItem, swapDays,
 } from "./state.js";
 import { render, renderBmi, repopulate, hydrateNotes } from "./render.js";
@@ -31,6 +31,11 @@ export function handleClick(e) {
   switch (el.dataset.action) {
     case "view": state.ui.view = el.dataset.view; save(); render(); break;
     case "week": state.ui.week = Number(el.dataset.week); save(); render(); break;
+    // Fold/unfold a Session card (#47) — a persisted per-occurrence flag keyed by cell, like `.done`.
+    case "toggle-collapse": {
+      const k = cellScalarKey(currentCell(Number(el.dataset.pos)), "collapsed");
+      setLog(k, state.log[k] ? "" : true); render(); break;
+    }
     case "new-block": newBlock(); break;
     case "delete-block": removeCurrentBlock(); break;
     case "edit-block": setEditing(!editing); render(); break;
@@ -152,7 +157,7 @@ function logField(el) {
   const ex = state.library[d.ex];
   if (!ex) return;
   const val = (f) => { const n = slot.querySelector('[data-field="' + f + '"]'); return n ? n.value : ""; };
-  const raw = { w: val("w"), r: val("r"), tier: val("tier"), mins: val("mins"), level: val("level") };
+  const raw = { w: val("w"), r: val("r"), tier: val("tier"), mins: val("mins"), level: val("level"), rir: val("rir") };
   const done = slot.querySelector('[data-field="done"]');
   if (done) { raw.done = done.checked; raw.time = done.dataset.time; }
   const ctx = { block: d.block, week: Number(d.week), routine: Number(d.routine), group: Number(d.group), item: Number(d.item), round: Number(d.round) };

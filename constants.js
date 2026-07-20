@@ -37,6 +37,15 @@ export const DEFAULT_RAIL = [8, 12];
 // loading mode (a two-dumbbell set logs kg/db). Supersedes the old flat +2.5 kg step.
 export const DUMBBELL_KG = [2.5, 3, 3.5, 5, 6, 7, 8, 9.5, 10.5, 11.5, 13.5, 16, 18.5, 20.5, 23, 24];
 
+// The optional per-set RIR marker (ADR-0027) — proximity to failure in three buckets. Advisory
+// exactly like e1RM: logged on the Performance, may nudge the target, never gates progression. Most
+// sets carry none (the unset default). `id` is the stored value; ordered easy→hard for the picker.
+export const RIR_BUCKETS = [
+  { id: "easy", label: "Too easy" },   // RIR 4+ — reps in reserve
+  { id: "ideal", label: "Ideal" },     // RIR 2–3 — on target
+  { id: "hard", label: "Too hard" },   // RIR 0 — to failure
+];
+
 /* ---------------------------------------------------------------------- *
  * Load metrics & bands (ADR-0023, 0029)                                  *
  * ---------------------------------------------------------------------- */
@@ -125,5 +134,7 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 // its own top-level tab; v5.1.0 renders the block as a read-only week grid; v5.2.0 makes a Session's
 // Items loggable — each round records a Performance on the exercise; v5.3.0 adds Edit-mode authoring
 // (compose a block in the UI — Sessions/Groups/Items, rails, kind switch, reorder, weeks, no JSON);
-// v5.4.0 surfaces progression — a rep-Item's ghost, double-progression target, e1RM trend + guide ghost.
-export const APP_VERSION = "5.4.0";
+// v5.4.0 surfaces progression — a rep-Item's ghost, double-progression target, e1RM trend + guide ghost;
+// v5.5.0 adds the three logged extras — per-set RIR (advisory nudge), per-session RPE, and a tonnage
+// volume-load readout (session + block), plus a collapse chevron on Session cards.
+export const APP_VERSION = "5.5.0";

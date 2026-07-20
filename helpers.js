@@ -4,8 +4,10 @@
  * (performancesOf, prsOf, …) live in state.js. */
 
 import {
-  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES, DEFAULT_BAND_TIER, DUMBBELL_KG,
+  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES, DEFAULT_BAND_TIER, DUMBBELL_KG, RIR_BUCKETS,
 } from "./constants.js";
+
+const RIR_IDS = RIR_BUCKETS.map((b) => b.id);
 
 export function today() { return fmtYMD(new Date()); }
 
@@ -207,14 +209,14 @@ export function buildPerformance(mode, ex, raw) {
     case "load-reps": {
       if (!(reps > 0)) return null;
       const w = Number(raw.w);
-      return { load: { metric: "kg", mag: w > 0 ? w : 0 }, volume: { type: "reps", val: reps } };
+      return repPerf({ metric: "kg", mag: w > 0 ? w : 0 }, reps, raw.rir);
     }
     case "band-reps":
       if (!(reps > 0)) return null;
-      return { load: { metric: ex.loadMetric, mag: raw.tier || DEFAULT_BAND_TIER }, volume: { type: "reps", val: reps } };
+      return repPerf({ metric: ex.loadMetric, mag: raw.tier || DEFAULT_BAND_TIER }, reps, raw.rir);
     case "reps":
       if (!(reps > 0)) return null;
-      return { load: { metric: "none", mag: null }, volume: { type: "reps", val: reps } };
+      return repPerf({ metric: "none", mag: null }, reps, raw.rir);
     case "steady": {
       const mins = Number(raw.mins);
       if (!(mins > 0)) return null;
@@ -228,6 +230,21 @@ export function buildPerformance(mode, ex, raw) {
     // a throw turns any future mode drift into an instant failure, not a set that silently won't log.
     default: throw new Error("Unknown log mode: " + mode);
   }
+}
+// A rep-volume Performance's {load, volume}, carrying an optional RIR marker (ADR-0027) only when a
+// real bucket is set — most sets carry none, so an unset/garbage rir leaves no `rir` field at all.
+function repPerf(load, reps, rir) {
+  const p = { load, volume: { type: "reps", val: reps } };
+  if (RIR_IDS.includes(rir)) p.rir = rir;
+  return p;
+}
+// The advisory RIR nudge for the next set (ADR-0027) — reps-to-spare says size up, to-failure says
+// hold; ideal / none say nothing. Advisory only: it never gates progression (double progression is
+// the judge, ADR-0021) — the renderer shows it beside the target, no more.
+export function rirNudge(rir) {
+  if (rir === "easy") return "reps to spare last time — size up";
+  if (rir === "hard") return "to failure last time — hold this weight";
+  return null;
 }
 
 /* ---------------------------------------------------------------------- *
@@ -275,6 +292,12 @@ export function fmtTarget(t) {
   if (!t || !t.volume) return "";
   const load = fmtLoad(t.load);
   return load ? load + " × " + t.volume.val : fmtVolume(t.volume);
+}
+
+// The volume-load readout as human text (ADR-0029): kilograms rendered as tonnes to one decimal
+// ("3.5 t"). Empty for nothing done (≤ 0), so a session/block with no logged work draws no readout.
+export function fmtTonnage(kg) {
+  return kg > 0 ? (kg / 1000).toFixed(1) + " t" : "";
 }
 
 export function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }

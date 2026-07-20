@@ -9,14 +9,14 @@
  * footer are untouched infra. */
 
 import {
-  esc, fmt, fmtVolume, fmtLoad, fmtRail, fmtTarget, zoneLabel, scheduledDate, fmtWeekday, measureKey,
-  itemLogMode, loadMode, repsLabel,
+  esc, fmt, fmtVolume, fmtLoad, fmtRail, fmtTarget, fmtTonnage, zoneLabel, scheduledDate, fmtWeekday,
+  measureKey, cellKey, cellScalarKey, itemLogMode, loadMode, repsLabel,
 } from "./helpers.js";
-import { BAND_TIERS, DEFAULT_BAND_TIER } from "./constants.js";
+import { BAND_TIERS, DEFAULT_BAND_TIER, RIR_BUCKETS } from "./constants.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, libraryList, classList, performancesOf, performanceAt, prsOf,
-  progressionFor, e1rmTrend, previousMeasure, bmiFor,
+  progressionFor, e1rmTrend, sessionTonnageKg, blockTonnageKg, previousMeasure, bmiFor,
 } from "./state.js";
 import { renderEditRoutine, renderBlockConfig } from "./compose.js";
 
@@ -83,27 +83,25 @@ function renderWeek() {
   const note = editing
     ? '<p class="muted small readonly-note edit-hint">Compose the week — switch a day between Session / Class / Rest, add Groups and exercises, set rounds &amp; rests, and reorder the days.</p>'
     : '<p class="muted small readonly-note">Log your sets, rounds, and steady work below as you train — or hit Edit to compose the plan.</p>';
+  const blockTon = fmtTonnage(blockTonnageKg(block));
   document.getElementById("week-view").innerHTML =
     '<p class="week-heading">' + nameHtml + " · Week " + wk + " of " + block.weeks + "</p>" +
     (editing ? renderBlockConfig(block) : "") + note +
+    (blockTon ? '<p class="muted small block-tonnage">Block work done · ' + blockTon + "</p>" : "") +
     '<div class="week-grid">' +
     block.template.map((r, i) => (editing ? renderEditRoutine(block, r, wk, i) : renderRoutine(block, r, wk, i))).join("") +
     "</div>";
 }
 
-// One weekday's Routine as a grid card, headed by its real calendar Weekday date (ADR-0024).
+// One weekday's Routine as a grid card, headed by its real calendar Weekday date (ADR-0024). A
+// Session gets the richer card (collapse + RPE + tonnage); a Class/Rest is a plain header + body.
 function renderRoutine(block, r, wk, position) {
   const when = fmtWeekday(scheduledDate(block.startDate, wk, position));
+  if (r.kind === "session") return renderSessionCard(block, r, wk, position, when);
   let title, body;
   if (r.kind === "class") {
     title = esc(classNameOf(r.classType));
     body = '<div class="routine-focus">Class · ' + esc(String(r.durationMin || "")) + " min</div>";
-  } else if (r.kind === "session") {
-    title = esc(r.title || "Session");
-    body = (r.focus ? '<div class="routine-focus">' + esc(r.focus) + "</div>" : "") +
-      '<div class="routine-body">' +
-      (Array.isArray(r.groups) ? r.groups.map((g, gi) => renderGroup(g, gi, block.id, wk, position)).join("") : "") +
-      "</div>";
   } else {
     title = "Rest";
     body = '<p class="rest-note">Rest day.</p>';
@@ -112,6 +110,54 @@ function renderRoutine(block, r, wk, position) {
     '<div class="routine-head"><span class="routine-when">' + when + "</span>" +
       '<span class="routine-title">' + title + "</span></div>" +
     body + "</div>";
+}
+
+// A Session card (#47): its Groups/Items to log, plus a per-session RPE input and a tonnage readout.
+// The header carries a chevron collapsing the card to just its header + a one-line summary (content,
+// tonnage, RPE) — a persisted per-occurrence flag, to cut mobile scroll (ADR-0012 / the collapsed
+// routine).
+function renderSessionCard(block, r, wk, position, when) {
+  const cell = cellKey(block.id, wk, position);
+  const collapsed = !!state.log[cellScalarKey(cell, "collapsed")];
+  const rpe = state.log[cellScalarKey(cell, "rpe")];
+  const tonnage = fmtTonnage(sessionTonnageKg(block, wk, position));
+  // The caret is always ▾; CSS rotates it when the card carries `is-collapsed` (reusing the existing
+  // caret + summary styling). Collapsed swaps to header + one-line summary (no body) — an instant
+  // fold, not the pre-v6 grid-row slide animation, whose wrapper this card deliberately doesn't use.
+  const head = '<div class="routine-head">' +
+    '<span class="routine-when">' + when + "</span>" +
+    '<span class="routine-title">' + esc(r.title || "Session") + "</span>" +
+    '<button class="routine-collapse" type="button" data-action="toggle-collapse" data-pos="' + position +
+      '" aria-expanded="' + (!collapsed) + '" aria-label="' + (collapsed ? "Expand session" : "Collapse session") + '">▾</button></div>';
+  if (collapsed) return '<div class="routine session is-collapsed">' + head + sessionSummary(r, rpe, tonnage) + "</div>";
+  const body = (r.focus ? '<div class="routine-focus">' + esc(r.focus) + "</div>" : "") +
+    '<div class="routine-body">' +
+    (Array.isArray(r.groups) ? r.groups.map((g, gi) => renderGroup(g, gi, block.id, wk, position)).join("") : "") +
+    "</div>" + sessionMeta(cell, rpe, tonnage);
+  return '<div class="routine session">' + head + body + "</div>";
+}
+
+// The expanded session footer: the Session-RPE input (a per-occurrence scalar keyed by cell — the
+// slim v6 log, ADR-0012) + the tonnage readout (ADR-0029). RPE routes through the generic data-k log
+// path, so typing it neither re-renders nor steals focus.
+function sessionMeta(cell, rpe, tonnage) {
+  return '<div class="session-meta muted small">' +
+    '<label class="rpe-field">Session RPE ' +
+      '<input type="number" inputmode="numeric" min="1" max="10" class="rpe-input" data-k="' + esc(cellScalarKey(cell, "rpe")) +
+      '" value="' + esc(rpe != null ? rpe : "") + '" placeholder="1–10" aria-label="Session RPE"></label>' +
+    (tonnage ? '<span class="tonnage">' + esc(tonnage) + " · work done</span>" : "") +
+    "</div>";
+}
+
+// The collapsed session's one-liner: what it trains (first couple of item names), its tonnage, and
+// its RPE — enough to read the day at a glance without expanding.
+function sessionSummary(r, rpe, tonnage) {
+  const names = (r.groups || []).flatMap((g) => (g.items || []).map((it) => { const ex = state.library[it.exId]; return ex && ex.name; })).filter(Boolean);
+  const bits = [];
+  if (names.length) bits.push(names.slice(0, 2).join(", ") + (names.length > 2 ? " +" + (names.length - 2) : ""));
+  if (tonnage) bits.push(tonnage);
+  if (rpe != null && rpe !== "") bits.push("RPE " + rpe);
+  return '<div class="routine-summary muted small">' + esc(bits.join(" · ") || "Session") + "</div>";
 }
 
 const classNameOf = (id) => (state.classes[id] && state.classes[id].name) || id || "Class";
@@ -182,6 +228,7 @@ function renderProgression(it, ex) {
     parts.push(span("prog-ghost estimated", "Guide ~" + fmtTarget(p.guide) + " (est.)"));
   }
   if (p.e1rm && p.e1rm.max != null) parts.push(span("prog-e1rm", "e1RM ~" + fmt(p.e1rm.max) + " kg" + (TREND_ARROW[p.e1rm.dir] || "")));
+  if (p.nudge) parts.push(span("prog-nudge", p.nudge)); // advisory RIR nudge (ADR-0027), never a gate
   return parts.length ? '<div class="item-progress muted small">' + parts.join(" · ") + "</div>" : "";
 }
 
@@ -220,15 +267,16 @@ function renderSlot(it, ex, mode, ctx, label) {
 
 // The inputs a slot draws for its mode, pre-filled from a logged Performance (empty otherwise).
 function slotInputs(mode, ex, it, perf) {
+  const rir = () => rirSelect(perf ? perf.rir : ""); // the three rep modes all carry an optional RIR marker
   switch (mode) {
     case "load-reps": {
       const m = loadMode(ex);
-      return numInput("w", perf ? perf.load.mag : "", m.wUnit || "kg") + numInput("r", perf ? perf.volume.val : "", repsLabel(m));
+      return numInput("w", perf ? perf.load.mag : "", m.wUnit || "kg") + numInput("r", perf ? perf.volume.val : "", repsLabel(m)) + rir();
     }
     case "band-reps":
-      return tierSelect(perf ? perf.load.mag : DEFAULT_BAND_TIER) + numInput("r", perf ? perf.volume.val : "", repsLabel(loadMode(ex)));
+      return tierSelect(perf ? perf.load.mag : DEFAULT_BAND_TIER) + numInput("r", perf ? perf.volume.val : "", repsLabel(loadMode(ex))) + rir();
     case "reps":
-      return numInput("r", perf ? perf.volume.val : "", "reps");
+      return numInput("r", perf ? perf.volume.val : "", "reps") + rir();
     case "steady":
       // Prefill the exact minutes (seconds / 60, un-rounded) so a re-save can't drift the stored
       // duration — rounding here would resave e.g. 12.5 min as 13 the next time the slot is touched.
@@ -256,6 +304,16 @@ function numInput(field, val, label) {
 function tierSelect(tier) {
   return '<select class="log-select" data-fh="log" data-field="tier" aria-label="Band tier">' +
     BAND_TIERS.map((t) => '<option value="' + t.id + '"' + (t.id === tier ? " selected" : "") + ">" + esc(t.label) + " band</option>").join("") +
+    "</select>";
+}
+
+// The optional RIR marker for a rep set (ADR-0027): how close to failure it was, advisory only.
+// Blank = unset (most sets carry none). Routes through the log path (data-fh="log"), so choosing it
+// re-logs the set carrying its rir — which then nudges the next target, never gates it.
+function rirSelect(rir) {
+  return '<select class="log-select rir-select" data-fh="log" data-field="rir" aria-label="Reps in reserve">' +
+    '<option value="">RIR?</option>' +
+    RIR_BUCKETS.map((b) => '<option value="' + b.id + '"' + (b.id === rir ? " selected" : "") + ">" + esc(b.label) + "</option>").join("") +
     "</select>";
 }
 

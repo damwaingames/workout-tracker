@@ -588,6 +588,21 @@ footer .muted { margin-top: .85rem; line-height: 1.5; }
 .item-progress { display: flex; flex-wrap: wrap; gap: .2rem .55rem; font-variant-numeric: tabular-nums; }
 .item-progress .prog-target { color: var(--workout); font-weight: 500; }
 .item-progress .estimated { font-style: italic; }
+.item-progress .prog-nudge { color: var(--rest); } /* advisory RIR nudge (#47) — amber, stands apart */
+
+/* RIR / RPE / tonnage (#47). The RIR select sits after the reps input on a rep slot; the Session
+   footer carries the per-session RPE input + the tonnage readout; the block total sits under the
+   week heading. */
+.rir-select { font-size: .78rem; }
+.session-meta { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem .9rem; margin-top: .75rem; }
+.rpe-field { display: inline-flex; align-items: center; gap: .4rem; }
+.rpe-input {
+  width: 3.6rem; padding: .3rem .4rem;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--control); color: var(--text); font: inherit; font-size: .85rem;
+}
+.tonnage { font-variant-numeric: tabular-nums; }
+.block-tonnage { margin: -.3rem 0 .7rem; font-variant-numeric: tabular-nums; }
 
 /* Logging an Item (#44): a slot per planned round — a label + the mode's inputs. A slot with a
    Performance reads as logged (tinted); an unfilled slot is an unlogged round (under-completion). */
