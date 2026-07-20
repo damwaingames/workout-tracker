@@ -338,20 +338,9 @@ nav.weeks {
 .holiday-edit-h { font-size: 1rem; margin: 0 0 .2rem; }
 .holiday-edit .routine-body { margin-top: .6rem; }
 
-/* The shared Wind-down under each training day (ADR-0013) — a compact reminder + a per-day
- * done-tick, separated like the class section was. The move names sit under the tick. */
-.winddown { margin-top: .75rem; padding-top: .6rem; border-top: 1px dashed var(--border); }
-.winddown-done { display: inline-flex; align-items: center; gap: .4rem; font-size: .85rem; font-weight: 600; color: var(--text); cursor: pointer; }
-.winddown-moves { margin-top: .3rem; font-size: .8rem; color: var(--muted); }
-/* Edit-mode Wind-down editor — the shared mobility segment, defined once. */
-.winddown-edit { margin: .5rem 0 1rem; padding: .7rem .8rem; border: 1px solid var(--border); border-radius: 8px; background: var(--sunken); }
-.winddown-edit-h { font-size: 1rem; margin: 0 0 .2rem; }
-.winddown-edit .routine-body { margin-top: .6rem; }
-
-/* Session RPE (ADR-0012) — a per-session 1–10 fatigue field on each non-rest routine, plus a
- * separate one on the wind-down. A logged record; also echoed in the collapsed summary. */
+/* Session RPE (ADR-0012) — a per-session 1–10 fatigue field on each non-rest routine. A logged
+ * record; also echoed in the collapsed summary. */
 .session-rpe { margin-top: .5rem; }
-.winddown .session-rpe { margin-top: .35rem; }
 
 /* Header class-minutes line — parallels .volume. */
 .class-total { font-size: .8rem; color: var(--muted); margin: .15rem 0 0; font-variant-numeric: tabular-nums; }
@@ -497,7 +486,7 @@ textarea { width: 100%; resize: vertical; }
   cursor: pointer;
 }
 
-.notes-card, .measurements-card {
+.notes-card, .measurements-card, .winddown-card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -505,7 +494,35 @@ textarea { width: 100%; resize: vertical; }
   margin-top: 1.5rem;
   box-shadow: var(--shadow);
 }
-.notes-card h2, .measurements-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
+.notes-card h2, .measurements-card h2, .winddown-card h2 { margin: 0 0 .6rem; font-size: 1rem; }
+
+/* Wind-down (ADR-0028) — the daily mobility habit as weekly adherence. A seven-night strip for the
+ * current calendar week: each cell is a tickable night (done cells filled, today ringed, a future
+ * night muted + disabled), read against the weekly target below. */
+.winddown-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: .4rem; }
+.wd-day {
+  display: flex; flex-direction: column; align-items: center; gap: .15rem;
+  padding: .45rem 0; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--control); color: var(--text); cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.wd-day:hover:not(:disabled) { border-color: var(--border-strong); }
+.wd-dow { font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.wd-num { font-size: .9rem; font-weight: 600; }
+.wd-day.done { background: var(--done-bg); border-color: var(--done-border); }
+.wd-day.done .wd-num { color: var(--done-border); }
+.wd-day.today { box-shadow: inset 0 0 0 2px var(--recovery); }
+.wd-day.future { opacity: .45; cursor: default; }
+.winddown-adherence {
+  margin: .7rem 0 0; padding-top: .6rem; border-top: 1px dashed var(--border);
+  font-size: .85rem; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.winddown-adherence strong { color: var(--text); }
+.winddown-adherence.met { color: var(--done-border); }
+.winddown-adherence.met strong { color: var(--done-border); }
+.winddown-card .muted.small { margin: .6rem 0 0; }
+.winddown-edit { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: .7rem; }
+.winddown-edit input[type="number"] { width: 3.5rem; text-align: center; }
 
 .measure-row { display: flex; align-items: center; gap: .5rem; padding: .45rem 0; border-top: 1px solid var(--border); }
 .measure-row:first-of-type { border-top: none; }

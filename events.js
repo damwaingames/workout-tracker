@@ -10,9 +10,9 @@ import { slugify, uniqueId, buildPerformance, validYMD, cellScalarKey } from "./
 import {
   state, editing, setState, setEditing, save, setLog, logPerformance,
   currentBlock, currentCell, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
-  blankRoutine, blankGroup, newItem, swapDays,
+  blankRoutine, blankGroup, newItem, swapDays, toggleWinddown, setWinddownField,
 } from "./state.js";
-import { render, renderBmi, repopulate, hydrateNotes } from "./render.js";
+import { render, renderBmi, renderWinddownAdherence, repopulate, hydrateNotes } from "./render.js";
 import { exportBackup, importBackup, drivePush, drivePull } from "./io.js";
 
 /* ---------------------------------------------------------------------- *
@@ -42,6 +42,9 @@ export function handleClick(e) {
       const k = cellScalarKey(currentCell(Number(el.dataset.pos)), "holiday");
       setLog(k, state.log[k] ? "" : true); render(); break;
     }
+    // Tick / un-tick a wind-down night (#49, ADR-0028) — a date-keyed habit outside any block; a
+    // full render is fine since no text field holds focus. A future night's button is disabled.
+    case "winddown-toggle": toggleWinddown(el.dataset.date); render(); break;
     case "new-block": newBlock(); break;
     case "delete-block": removeCurrentBlock(); break;
     case "edit-block": setEditing(!editing); render(); break;
@@ -130,6 +133,11 @@ const fieldById = {
   // The block start date (Edit mode) — a valid YYYY-MM-DD re-anchors the weekday labels (ADR-0024),
   // so it re-renders; garbage from a half-cleared field is ignored rather than corrupting the date.
   "block-start-input"(el) { const b = currentBlock(); if (validYMD(el.value)) { b.startDate = el.value; save(); render(); } },
+  // The wind-down weekly target / nightly duration (Edit mode). The target drives the adherence
+  // readout, so live-patch just that line (no full render, keeping the number input's focus); the
+  // duration is text-only, so it needs no patch. Both are app-level singletons, not block state.
+  "winddown-target"(el) { setWinddownField("weeklyTarget", el.value); renderWinddownAdherence(); },
+  "winddown-duration"(el) { setWinddownField("durationMin", el.value); },
 };
 
 // Live-patch refreshers keyed by an input's data-refresh tag — the data-*→map dispatch the CONTEXT

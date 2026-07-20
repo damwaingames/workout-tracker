@@ -17,10 +17,11 @@ import {
   state, editing,
   currentBlock, currentBlockIndex, libraryList, classList, performancesOf, performanceAt, prsOf,
   progressionFor, e1rmTrend, sessionTonnageKg, blockTonnageKg, effectiveRoutine, previousMeasure, bmiFor,
+  windDownWeek, windDownAdherence,
 } from "./state.js";
 import { renderEditRoutine, renderBlockConfig, renderHolidayEditor } from "./compose.js";
 
-export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); applyView(); }
+export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); renderWinddown(); applyView(); }
 
 // The advisory e1RM trend arrow (ADR-0022), shared by the Item surface and the Library so the two
 // can't drift. Flat draws nothing, to stay quiet.
@@ -467,6 +468,52 @@ export function renderBmi() {
   const out = document.getElementById("bmi-value");
   if (b == null) { line.hidden = true; if (out) out.textContent = ""; }
   else { line.hidden = false; if (out) out.textContent = b.toFixed(1); }
+}
+
+/* ---------------------------------------------------------------------- *
+ * Wind-down card (#49, ADR-0028) — the daily mobility habit               *
+ * ---------------------------------------------------------------------- */
+// A weekly-adherence surface, app-level and outside any block (the way a body measurement is a
+// periodic record). Seven night-cells for the current calendar week, each tickable so a missed night
+// can be backfilled; a night after today isn't yet a fact, so it's disabled. Edit mode exposes the
+// weekly target + nightly duration. The done/target readout is a readout only — the wind-down feeds
+// no tonnage or progression (it's winged by feel, not a planned, progressed routine).
+const WD_INITIALS = ["S", "M", "T", "W", "T", "F", "S"];
+function adherenceHtml() {
+  const a = windDownAdherence();
+  return '<p class="winddown-adherence' + (a.met ? " met" : "") + '">' +
+    "<strong>" + a.done + " / " + a.target + "</strong> nights this week" + (a.met ? " ✓" : "") + "</p>";
+}
+function renderWinddown() {
+  const card = document.getElementById("winddown-card");
+  if (!card) return;
+  const cells = windDownWeek().map((d) => {
+    const cls = "wd-day" + (d.done ? " done" : "") + (d.isToday ? " today" : "") + (d.future ? " future" : "");
+    return '<button class="' + cls + '" type="button" data-action="winddown-toggle" data-date="' + d.iso + '"' +
+      (d.future ? " disabled" : "") + ' aria-pressed="' + d.done + '" aria-label="' + esc(fmtWeekday(d.date)) + '">' +
+      '<span class="wd-dow">' + WD_INITIALS[d.date.getDay()] + "</span>" +
+      '<span class="wd-num">' + d.date.getDate() + "</span></button>";
+  }).join("");
+  const wd = state.winddown;
+  const foot = editing
+    ? '<div class="winddown-edit">' +
+        '<label class="inline">Target <input type="number" inputmode="numeric" min="1" max="7" id="winddown-target" value="' + esc(wd.weeklyTarget) + '"> nights/wk</label>' +
+        '<label class="inline">Nightly <input type="number" inputmode="numeric" min="1" id="winddown-duration" value="' + esc(wd.durationMin) + '"> min</label>' +
+      "</div>"
+    : '<p class="muted small">~' + esc(wd.durationMin) + " min nightly · mobility by feel, tick each night you do it.</p>";
+  card.innerHTML =
+    "<h2>Wind-down</h2>" +
+    '<div class="winddown-week">' + cells + "</div>" +
+    adherenceHtml() + foot;
+}
+
+// Live-patch just the adherence line when the target changes in Edit mode, so its number input keeps
+// focus mid-type (the measurements card patches its BMI line the same way).
+export function renderWinddownAdherence() {
+  const card = document.getElementById("winddown-card");
+  if (!card) return;
+  const line = card.querySelector(".winddown-adherence");
+  if (line) line.outerHTML = adherenceHtml();
 }
 
 export function hydrateNotes() {
