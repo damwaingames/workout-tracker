@@ -28,6 +28,14 @@ export const ZONES = [
 ];
 // A rep-item's default rail (the [floor, ceiling] range double progression works between).
 export const DEFAULT_RAIL = [8, 12];
+// The achievable per-dumbbell weights (kg) across the user's dumbbells — the discrete-load ladder the
+// double-progression "add load" step snaps to (ADR-0031), so a kg target is always a weight you can
+// actually pick up. Ascending. Mostly the adjustable dumbbells' settings, plus the fixed 3 kg moulded
+// pair (a valid rung between 2.5 and 3.5 — you'd just swap to it). The 1 kg punch weights are
+// deliberately NOT here: they feed a time-volume weighted-punch (no rail, so double progression never
+// touches it), not rep loading. This is the app's single kg ladder; a per-dumbbell weight in every
+// loading mode (a two-dumbbell set logs kg/db). Supersedes the old flat +2.5 kg step.
+export const DUMBBELL_KG = [2.5, 3, 3.5, 5, 6, 7, 8, 9.5, 10.5, 11.5, 13.5, 16, 18.5, 20.5, 23, 24];
 
 /* ---------------------------------------------------------------------- *
  * Load metrics & bands (ADR-0023, 0029)                                  *
@@ -116,5 +124,6 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 // CACHE in sw.js in lockstep. v5.0.0 landed the v6 store rework; v5.0.1 moves the Library behind
 // its own top-level tab; v5.1.0 renders the block as a read-only week grid; v5.2.0 makes a Session's
 // Items loggable — each round records a Performance on the exercise; v5.3.0 adds Edit-mode authoring
-// (compose a block in the UI — Sessions/Groups/Items, rails, kind switch, reorder, weeks, no JSON).
-export const APP_VERSION = "5.3.0";
+// (compose a block in the UI — Sessions/Groups/Items, rails, kind switch, reorder, weeks, no JSON);
+// v5.4.0 surfaces progression — a rep-Item's ghost, double-progression target, e1RM trend + guide ghost.
+export const APP_VERSION = "5.4.0";

@@ -4,7 +4,7 @@
  * (performancesOf, prsOf, …) live in state.js. */
 
 import {
-  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES, DEFAULT_BAND_TIER,
+  ZONES, BAND_TIERS, BAND_FAMILIES, LOAD_MODES, DEFAULT_BAND_TIER, DUMBBELL_KG,
 } from "./constants.js";
 
 export function today() { return fmtYMD(new Date()); }
@@ -88,6 +88,72 @@ export function e1rm(kg, reps) {
   const w = Number(kg), r = Number(reps);
   if (!(w > 0) || !(r > 0)) return null;
   return w * (1 + r / 30);
+}
+
+// The zones a rail *spans* — the set the ghost matches a past performance against (a rail is a
+// contiguous rep range and the zones are contiguous bands, so the span runs from the floor's zone up
+// to the ceiling's). Matching on the span, not a single zone, is what makes double progression's
+// thread behave (ADR-0021): [8,12] spans {hypertrophy} and [10,15] spans {hypertrophy, endurance}, so
+// they share a zone and a within-zone widening carries your load — while [8,12]→[3,5] spans {strength}
+// instead, disjoint, so it starts a fresh thread. It also keeps a set logged at a straddling rail's
+// ceiling (a [10,15] rail's 15th rep stores as endurance) as that rail's ghost, not orphaned.
+export function railZones(rail) {
+  if (!Array.isArray(rail) || !rail.length) return [];
+  const lo = zoneOf(rail[0]), hi = zoneOf(rail[rail.length - 1]);
+  if (!lo || !hi) return [];
+  const from = ZONES.findIndex((z) => z.id === lo), to = ZONES.findIndex((z) => z.id === hi);
+  return ZONES.slice(Math.min(from, to), Math.max(from, to) + 1).map((z) => z.id);
+}
+// The next band tier up the shared ladder (ADR-0029) — a band's "add load"; null at the top rung
+// (nothing heavier to add), matching nextDumbbellKg's cap contract so a caller reads one sentinel.
+export function nextBandTier(tier) {
+  const i = BAND_TIERS.findIndex((t) => t.id === tier);
+  return i >= 0 && i < BAND_TIERS.length - 1 ? BAND_TIERS[i + 1].id : null;
+}
+// The next achievable dumbbell weight above `kg` on the discrete-load ladder (ADR-0031) — a kg
+// exercise's "add load". Strictly greater, so it never suggests a lighter weight even for an
+// off-ladder current load; null when already at/above the top rung (nothing heavier to add).
+export function nextDumbbellKg(kg) {
+  const next = DUMBBELL_KG.find((w) => w > (Number(kg) || 0));
+  return next === undefined ? null : next;
+}
+// Snap a computed load DOWN to the nearest achievable dumbbell weight ≤ it — conservative, so a
+// seeded guide load is always a rung you can actually set (below the lightest rung → the lightest).
+export function snapDownDumbbellKg(kg) {
+  const v = Number(kg) || 0;
+  let best = DUMBBELL_KG[0];
+  DUMBBELL_KG.forEach((w) => { if (w <= v) best = w; });
+  return best;
+}
+// The double-progression target: the next-set suggestion after a reference performance (ADR-0021).
+// At a fixed load, climb reps to the rail's ceiling (same load, +1 rep); once the ceiling is met or
+// beaten, step the load and reset to the floor. `refLoad` is the reference's Load ({metric, mag} —
+// a kg number, a band tier, or none); `refReps` its reps. Returns a target shaped like a Performance
+// ({load, volume, stepped}) so the renderer formats it with fmtLoad/fmtVolume, or null when there is
+// nothing to target (no rail, or no reference reps to climb from). Metric-agnostic: kg steps to the
+// next dumbbell rung (ADR-0031), a band by one tier; bodyweight (no load) simply keeps climbing reps.
+// When the load axis is already maxed — the heaviest dumbbell / top tier — there's nothing heavier
+// to add, so the target keeps climbing reps rather than suggesting an impossible weight.
+export function doubleProgression(rail, refLoad, refReps) {
+  if (!Array.isArray(rail) || rail.length < 2 || !refLoad) return null;
+  const floor = rail[0], ceiling = rail[1], reps = Number(refReps);
+  if (!(reps > 0)) return null;
+  const metric = refLoad.metric;
+  const loadless = metric === "none" || metric == null; // bodyweight — no load axis to step
+  const climb = { load: { metric, mag: loadless ? null : refLoad.mag }, volume: { type: "reps", val: reps + 1 }, stepped: false };
+  if (loadless || reps < ceiling) return climb;
+  // At/over the ceiling: step the load axis and reset to the floor. Both next-rung helpers signal a
+  // maxed axis (heaviest dumbbell / top tier) with null, so there's nothing heavier — keep climbing.
+  const next = isBandMetric(metric) ? nextBandTier(refLoad.mag) : nextDumbbellKg(refLoad.mag);
+  return next == null ? climb : { load: { metric, mag: next }, volume: { type: "reps", val: floor }, stepped: true };
+}
+// Seed a cold zone's starting load by inverting Epley for the rail's floor reps (ADR-0022):
+// w = e1RM / (1 + reps/30), rounded DOWN (conservative). Needs a positive e1RM (a pure-bodyweight
+// move seeds nothing) and reps — else null.
+export function guideLoadKg(topE1rm, reps) {
+  const e = Number(topE1rm), r = Number(reps);
+  if (!(e > 0) || !(r > 0)) return null;
+  return Math.floor(e / (1 + r / 30));
 }
 
 /* ---------------------------------------------------------------------- *
@@ -200,6 +266,15 @@ export function fmtLoad(load) {
     case "machine-level": return mag != null && mag !== "" ? "Level " + mag : "";
     default: return "";
   }
+}
+
+// A double-progression target as human text: "9.5 kg × 8", "Heavy band × 10", or bare "21 reps"
+// for a load-free (bodyweight) climb. Reuses fmtLoad + fmtVolume so a target reads exactly as a
+// Performance's own load/volume do (no re-spelt pluralisation).
+export function fmtTarget(t) {
+  if (!t || !t.volume) return "";
+  const load = fmtLoad(t.load);
+  return load ? load + " × " + t.volume.val : fmtVolume(t.volume);
 }
 
 export function slugify(s) { return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, ""); }

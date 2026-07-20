@@ -582,6 +582,13 @@ footer .muted { margin-top: .85rem; line-height: 1.5; }
 .item-target { color: var(--muted); font-size: .82rem; white-space: nowrap; }
 .group-meta { margin-top: .4rem; }
 
+/* Progression (#46): the ghost / double-progression target / advisory e1RM line a rep-Item shows
+   before its log slots. The target is the one call to action (accent-tinted); the ghost + guide are
+   history/estimate (muted), the guide italic to read as an estimate. */
+.item-progress { display: flex; flex-wrap: wrap; gap: .2rem .55rem; font-variant-numeric: tabular-nums; }
+.item-progress .prog-target { color: var(--workout); font-weight: 500; }
+.item-progress .estimated { font-style: italic; }
+
 /* Logging an Item (#44): a slot per planned round — a label + the mode's inputs. A slot with a
    Performance reads as logged (tinted); an unfilled slot is an unlogged round (under-completion). */
 .item-log { display: flex; flex-direction: column; gap: .3rem; }
