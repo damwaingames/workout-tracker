@@ -109,16 +109,18 @@ function holidayToggle(position, active) {
 function renderRoutine(block, r, wk, position) {
   const when = fmtWeekday(scheduledDate(block.startDate, wk, position));
   if (r.kind === "session") return renderSessionCard(block, r, wk, position, when);
-  let title, body, extra = "";
+  let title, body, extra = "", logged = false;
   if (r.kind === "class") {
+    // Look the Attendance up once — it drives both the `.logged` flag and the log inputs' prefill.
+    const att = attendanceAt(r.classType, { block: block.id, week: wk, routine: position });
     title = esc(classNameOf(r.classType));
     body = '<div class="routine-focus">Class · ' + esc(String(r.durationMin || "")) + " min planned</div>";
-    extra = renderClassLog(block, r, wk, position);
+    extra = renderClassLog(block, r, wk, position, att);
+    logged = !!att;
   } else {
     title = "Rest";
     body = '<p class="rest-note">Rest day.</p>';
   }
-  const logged = r.kind === "class" && !!attendanceAt(r.classType, { block: block.id, week: wk, routine: position });
   return '<div class="routine ' + r.kind + (logged ? " logged" : "") + '">' +
     '<div class="routine-head"><span class="routine-when">' + when + "</span>" +
       '<span class="routine-title">' + title + "</span>" + holidayToggle(position, false) + "</div>" +
@@ -127,11 +129,10 @@ function renderRoutine(block, r, wk, position) {
 
 // A Class routine's log (#50, ADRs 0030/0014): what you actually did — actual minutes, the wearable's
 // calorie burn, and a note — upserted as an Attendance on the class type by its plan slot, pre-filled
-// from any logged one. The ctx is baked into data-* under the names the handler reads back. A class
-// with no known type (a half-composed plan) draws no log.
-function renderClassLog(block, r, wk, position) {
+// from any logged one (`a`, looked up once by the caller). The ctx is baked into data-* under the
+// names the handler reads back. A class with no known type (a half-composed plan) draws no log.
+function renderClassLog(block, r, wk, position, a) {
   if (!r.classType || !state.classes[r.classType]) return "";
-  const a = attendanceAt(r.classType, { block: block.id, week: wk, routine: position });
   const num = (field, val, label) =>
     '<input type="number" inputmode="numeric" min="0" class="log-input" data-fh="class-log" data-field="' + field +
     '" value="' + (val == null || val === "" ? "" : esc(String(val))) + '" placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
