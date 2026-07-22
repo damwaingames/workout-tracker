@@ -1,8 +1,11 @@
-/* Service worker — offline app shell cache.
- * CACHE carries the app's semver (see APP_VERSION in constants.js) — keep the two
- * in lockstep. Bumping it on each release busts the old cache on the next activate,
- * so phones pick up the new index.html / styles.css / JS modules on next launch. */
-const CACHE = "workout-tracker-v5.8.0";
+/* Service worker — offline app shell cache, NETWORK-FIRST.
+ * CACHE carries the app's semver (see APP_VERSION in constants.js) — keep the two in lockstep; the
+ * activate handler still sweeps older caches. The fetch handler is network-first: a launch with any
+ * connectivity always fetches the live app shell (so a new deploy shows up immediately, no waiting on
+ * the service-worker update cycle), refreshing the cache with what it gets; the cache is the OFFLINE
+ * fallback, not the primary source. This replaced a cache-first handler that served the last-cached
+ * shell until the SW fully cycled — which could strand a device on an old version (v5.8.1). */
+const CACHE = "workout-tracker-v5.8.1";
 const ASSETS = [
   "./",
   "./index.html",
@@ -39,21 +42,22 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
-  // Cache the app shell only — let every cross-origin request (Google Drive auth + API)
-  // pass straight to the network untouched. Without this guard the cache-first path below
-  // would pollute the cache with API responses, and a failed Drive call would fall back to
-  // index.html instead of erroring. (ADR-0006.)
+  // Cache the app shell only — let every cross-origin request (Google Drive auth + API) pass straight
+  // to the network untouched. Without this guard the cache writes below would pollute the cache with
+  // API responses, and a failed Drive call would fall back to index.html instead of erroring. (ADR-0006.)
   if (new URL(e.request.url).origin !== self.location.origin) return;
+  // Network-first: fetch the live asset, refresh the cache with a successful (ok) response, and serve
+  // it — so every online launch is current. Only when the network is unreachable do we fall back to
+  // the cache, then to index.html for a navigation, so the app still opens offline.
   e.respondWith(
-    caches.match(e.request).then((hit) =>
-      hit ||
-      fetch(e.request)
-        .then((resp) => {
+    fetch(e.request)
+      .then((resp) => {
+        if (resp && resp.ok) {
           const copy = resp.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
-          return resp;
-        })
-        .catch(() => caches.match("./index.html"))
-    )
+        }
+        return resp;
+      })
+      .catch(() => caches.match(e.request).then((hit) => hit || caches.match("./index.html")))
   );
 });
