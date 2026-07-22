@@ -138,5 +138,7 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 // v5.5.0 adds the three logged extras — per-set RIR (advisory nudge), per-session RPE, and a tonnage
 // volume-load readout (session + block), plus a collapse chevron on Session cards; v5.6.0 adds the
 // Holiday Session — definable from the away-eligible exercises, swapped into a day with the 🏝 toggle;
-// v5.7.0 adds the Wind-down — the daily mobility habit tracked outside any block as weekly adherence.
-export const APP_VERSION = "5.7.0";
+// v5.7.0 adds the Wind-down — the daily mobility habit tracked outside any block as weekly adherence;
+// v5.8.0 logs Class attendances (minutes / wearable burn / note) + gives the Library exercise editing
+// and retire/un-retire — the last v6-rework slice.
+export const APP_VERSION = "5.8.0";
