@@ -13,6 +13,7 @@ import {
   currentBlock, currentCell, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
   blankRoutine, blankGroup, newItem, swapDays, toggleWinddown, setWinddownField, effectiveRoutine,
 } from "./state.js";
+import { ACTION, FH, TARGET } from "./actions.js";
 import { slotCtx, classSlotCtx, fieldSelector, LOG_FIELDS, CLASS_FIELDS, DONE_FIELD } from "./slot.js";
 import { render, renderBmi, renderWinddownAdherence, repopulate, hydrateNotes } from "./render.js";
 import { exportBackup, importBackup, drivePush, drivePull } from "./io.js";
@@ -31,37 +32,37 @@ export function handleClick(e) {
     return;
   }
   switch (el.dataset.action) {
-    case "view": state.ui.view = el.dataset.view; save(); render(); break;
-    case "week": state.ui.week = Number(el.dataset.week); save(); render(); break;
+    case ACTION.view: state.ui.view = el.dataset.view; save(); render(); break;
+    case ACTION.week: state.ui.week = Number(el.dataset.week); save(); render(); break;
     // Fold/unfold a Session card (#47) — a persisted per-occurrence flag keyed by cell, like `.done`.
-    case "toggle-collapse": {
+    case ACTION.toggleCollapse: {
       const k = cellScalarKey(currentCell(Number(el.dataset.pos)), "collapsed");
       setLog(k, state.log[k] ? "" : true); render(); break;
     }
     // Swap the Holiday Session into (or out of) a day (#48, ADR-0025) — a per-occurrence flag; the
     // planned exercises simply accrue no Performance while it's swapped in, so their ghosts wait.
-    case "holiday-swap": {
+    case ACTION.holidaySwap: {
       const k = cellScalarKey(currentCell(Number(el.dataset.pos)), "holiday");
       setLog(k, state.log[k] ? "" : true); render(); break;
     }
     // Tick / un-tick a wind-down night (#49, ADR-0028) — a date-keyed habit outside any block; a
     // full render is fine since no text field holds focus. A future night's button is disabled.
-    case "winddown-toggle": toggleWinddown(el.dataset.date); render(); break;
+    case ACTION.winddownToggle: toggleWinddown(el.dataset.date); render(); break;
     // Retire / un-retire an exercise (#50, ADR-0020) — re-render so it re-sorts, tags, and drops out
     // of (or back into) the composer pickers, which filter retired.
-    case "ex-retire": { const ex = state.library[el.dataset.ex]; setExerciseRetired(el.dataset.ex, !(ex && ex.retired)); render(); break; }
-    case "new-block": newBlock(); break;
-    case "delete-block": removeCurrentBlock(); break;
-    case "edit-block": setEditing(!editing); render(); break;
-    case "m-add": {
+    case ACTION.exRetire: { const ex = state.library[el.dataset.ex]; setExerciseRetired(el.dataset.ex, !(ex && ex.retired)); render(); break; }
+    case ACTION.newBlock: newBlock(); break;
+    case ACTION.deleteBlock: removeCurrentBlock(); break;
+    case ACTION.editBlock: setEditing(!editing); render(); break;
+    case ACTION.mAdd: {
       const id = el.dataset.m;
       if (state.measurements[id] && state.tracked.indexOf(id) < 0) state.tracked.push(id);
       save(); render(); break;
     }
-    case "m-remove":
+    case ACTION.mRemove:
       state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
       save(); render(); break;
-    case "picker-open": {
+    case ACTION.pickerOpen: {
       const zone = el.closest("[data-picker]");
       const picker = zone && zone.querySelector("[data-picker-panel]");
       if (!picker) break;
@@ -75,24 +76,24 @@ export function handleClick(e) {
     }
     // Generic form disclosure: a trigger button + a hidden <form> sibling. Open reveals the form
     // and hides the trigger; cancel resets it and restores the trigger.
-    case "form-open": {
+    case ACTION.formOpen: {
       const form = el.parentNode.querySelector("form");
       form.hidden = false; el.hidden = true;
       const first = form.querySelector("input, select, textarea");
       if (first) first.focus();
       break;
     }
-    case "form-cancel": {
+    case ACTION.formCancel: {
       const form = el.closest("form");
       form.hidden = true; form.reset();
-      const trigger = form.parentNode.querySelector('[data-action="form-open"]');
+      const trigger = form.parentNode.querySelector('[data-action="' + ACTION.formOpen + '"]');
       if (trigger) trigger.hidden = false;
       break;
     }
-    case "export": exportBackup(); break;
-    case "drive-push": drivePush(); break;
-    case "drive-pull": drivePull(); break;
-    case "reset": resetAll(); break;
+    case ACTION.export: exportBackup(); break;
+    case ACTION.drivePush: drivePush(); break;
+    case ACTION.drivePull: drivePull(); break;
+    case ACTION.reset: resetAll(); break;
   }
 }
 
@@ -155,21 +156,21 @@ const refreshBy = { bmi: renderBmi };
 // change isn't a plain logged scalar but drives its own effect — the picker search filter, and a
 // Session log input (gathers its slot → a Performance).
 const fieldByName = {
-  "picker-search"(el) { const zone = el.closest("[data-picker]"); if (zone) repopulate(zone, el.value); },
-  log: logField,
+  [FH.pickerSearch](el) { const zone = el.closest("[data-picker]"); if (zone) repopulate(zone, el.value); },
+  [FH.log]: logField,
   // Scalar plan edits (title/focus/rounds/rests/rail/duration) mutate + save but DON'T re-render, so
   // the field keeps focus mid-type — like the block-name input and the measurement values.
-  compose: composeField,
+  [FH.compose]: composeField,
   // Adding an exercise to a Group IS structural (a new Item row), so it re-renders.
-  "item-add"(el) {
+  [FH.itemAdd](el) {
     const g = groupAt(el);
     if (g && el.value) { g.items.push(newItem(el.value)); save(); render(); }
   },
   // Log a Class occurrence (#50): gather the card's minutes / kcal / note → an Attendance on the type.
-  "class-log": classLogField,
+  [FH.classLog]: classLogField,
   // Edit an exercise field in the Library (#50). Scalar mutate + save, no re-render (keeps focus); the
   // summary name is hand-patched, like the block-name input patches its select option.
-  "ex-edit"(el) {
+  [FH.exEdit](el) {
     updateExercise(el.dataset.ex, el.dataset.target, el.value);
     if (el.dataset.target === "name") {
       // data-lib-ex marks the Library entry; data-ex names the exercise (a log slot carries one too,
@@ -179,7 +180,7 @@ const fieldByName = {
     }
   },
   // Toggle an equipment tag on an exercise (#50) — a checkbox, so it reflects its own state; no render.
-  "ex-equip"(el) { toggleExerciseEquip(el.dataset.ex, el.dataset.equip); },
+  [FH.exEquip](el) { toggleExerciseEquip(el.dataset.ex, el.dataset.equip); },
 };
 
 // The Item a Session-slot ctx points at — the planned Item, or the Holiday Session's when that day is
@@ -267,34 +268,34 @@ const clampNum = (v, min) => { const n = Math.round(Number(v)); return Number.is
 
 // Structural authoring clicks — each mutates the current block's template; handleClick saves + renders.
 const composeActions = {
-  "add-group"(el) { const r = routineAt(el); if (r && r.groups) r.groups.push(blankGroup()); },
-  "remove-group"(el) { const r = routineAt(el); if (r && r.groups) r.groups.splice(Number(el.dataset.g), 1); },
-  "group-up"(el) { const r = routineAt(el); if (r) swapBy(r.groups, Number(el.dataset.g), -1); },
-  "group-down"(el) { const r = routineAt(el); if (r) swapBy(r.groups, Number(el.dataset.g), 1); },
-  "remove-item"(el) { const g = groupAt(el); if (g) g.items.splice(Number(el.dataset.i), 1); },
+  [ACTION.addGroup](el) { const r = routineAt(el); if (r && r.groups) r.groups.push(blankGroup()); },
+  [ACTION.removeGroup](el) { const r = routineAt(el); if (r && r.groups) r.groups.splice(Number(el.dataset.g), 1); },
+  [ACTION.groupUp](el) { const r = routineAt(el); if (r) swapBy(r.groups, Number(el.dataset.g), -1); },
+  [ACTION.groupDown](el) { const r = routineAt(el); if (r) swapBy(r.groups, Number(el.dataset.g), 1); },
+  [ACTION.removeItem](el) { const g = groupAt(el); if (g) g.items.splice(Number(el.dataset.i), 1); },
   // Switch a day's kind — a fresh Routine of that kind (only when it actually changes, so an accidental
   // re-click of the active kind doesn't wipe the day's content).
-  kind(el) { const b = currentBlock(); const pos = Number(el.dataset.pos); if (b.template[pos] && b.template[pos].kind !== el.dataset.kind) b.template[pos] = blankRoutine(el.dataset.kind); },
-  "day-up"(el) { const b = currentBlock(); const p = Number(el.dataset.pos); swapDays(b, p, p - 1); },
-  "day-down"(el) { const b = currentBlock(); const p = Number(el.dataset.pos); swapDays(b, p, p + 1); },
-  "weeks-inc"() { currentBlock().weeks += 1; },
-  "weeks-dec"() { const b = currentBlock(); b.weeks = Math.max(1, b.weeks - 1); if (state.ui.week > b.weeks) state.ui.week = b.weeks; },
+  [ACTION.kind](el) { const b = currentBlock(); const pos = Number(el.dataset.pos); if (b.template[pos] && b.template[pos].kind !== el.dataset.kind) b.template[pos] = blankRoutine(el.dataset.kind); },
+  [ACTION.dayUp](el) { const b = currentBlock(); const p = Number(el.dataset.pos); swapDays(b, p, p - 1); },
+  [ACTION.dayDown](el) { const b = currentBlock(); const p = Number(el.dataset.pos); swapDays(b, p, p + 1); },
+  [ACTION.weeksInc]() { currentBlock().weeks += 1; },
+  [ACTION.weeksDec]() { const b = currentBlock(); b.weeks = Math.max(1, b.weeks - 1); if (state.ui.week > b.weeks) state.ui.week = b.weeks; },
 };
 
 // Scalar plan edits keyed by data-target — the CONTEXT data-*→map dispatch (like fieldByName). Each
 // handler locates its own level (routine / group / item) off the input's data-pos/g/i and sets one
 // field from the value, so all ten read the same way.
 const composeTargets = {
-  title: (el, v) => { const r = routineAt(el); if (r) r.title = v; },
-  focus: (el, v) => { const r = routineAt(el); if (r) r.focus = v; },
-  "class-type": (el, v) => { const r = routineAt(el); if (r) r.classType = v; },
-  "class-dur": (el, v) => { const r = routineAt(el); if (r) r.durationMin = clampNum(v, 0); },
-  rounds: (el, v) => { const g = groupAt(el); if (g) g.rounds = clampNum(v, 1); },
-  rw: (el, v) => { const g = groupAt(el); if (g) g.restWithin = clampNum(v, 0); },
-  ra: (el, v) => { const g = groupAt(el); if (g) g.restAfter = clampNum(v, 0); },
-  "rail-floor": (el, v) => { const it = itemAt(el); if (it && it.rail) it.rail[0] = clampNum(v, 1); },
-  "rail-ceiling": (el, v) => { const it = itemAt(el); if (it && it.rail) it.rail[1] = clampNum(v, 1); },
-  "item-time": (el, v) => { const it = itemAt(el); if (it) it.time = clampNum(v, 0) * (el.dataset.unit === "min" ? 60 : 1); },
+  [TARGET.title]: (el, v) => { const r = routineAt(el); if (r) r.title = v; },
+  [TARGET.focus]: (el, v) => { const r = routineAt(el); if (r) r.focus = v; },
+  [TARGET.classType]: (el, v) => { const r = routineAt(el); if (r) r.classType = v; },
+  [TARGET.classDur]: (el, v) => { const r = routineAt(el); if (r) r.durationMin = clampNum(v, 0); },
+  [TARGET.rounds]: (el, v) => { const g = groupAt(el); if (g) g.rounds = clampNum(v, 1); },
+  [TARGET.rw]: (el, v) => { const g = groupAt(el); if (g) g.restWithin = clampNum(v, 0); },
+  [TARGET.ra]: (el, v) => { const g = groupAt(el); if (g) g.restAfter = clampNum(v, 0); },
+  [TARGET.railFloor]: (el, v) => { const it = itemAt(el); if (it && it.rail) it.rail[0] = clampNum(v, 1); },
+  [TARGET.railCeiling]: (el, v) => { const it = itemAt(el); if (it && it.rail) it.rail[1] = clampNum(v, 1); },
+  [TARGET.itemTime]: (el, v) => { const it = itemAt(el); if (it) it.time = clampNum(v, 0) * (el.dataset.unit === "min" ? 60 : 1); },
 };
 // Set the field a compose input names, then save — no render, so the edited input keeps focus mid-type
 // (like the block-name + measurement inputs). An unknown target is ignored, as the field dispatch does.

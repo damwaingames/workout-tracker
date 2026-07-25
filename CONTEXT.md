@@ -188,8 +188,14 @@ separate and deliberately not redefined here.
 - **Dispatch by `data-*` tag → map.** Every event routes through a lookup map keyed by a
   data attribute, never a class scan: `data-action` (clicks → `handleClick`), `data-fh`
   (special field handlers → `fieldByName`), `data-target` (which plan field a compose input
-  sets → `composeTargets`), `data-refresh` (which running total a logged field re-patches
-  live → `refreshBy`). CSS classes are for styling and test selection only — they don't route
+  sets → `composeTargets`, or which **exercise** field a Library editor sets → `updateExercise`),
+  `data-refresh` (which running total a logged field re-patches live → `refreshBy`). Every one of
+  those names is declared once in `actions.js` and used by *both* sides — the emitter interpolates
+  the constant, the dispatch map is keyed by it — so a rename moves both together. A `data-fh` or
+  `data-target` that stops matching its handler is otherwise **silent** (the field dispatch falls
+  through and returns), which is why the vocabulary is shared rather than trusted. The app shell's
+  own hand-written actions can't import it, so `verify-actions` scrapes the live DOM and asserts
+  every routing attribute it finds is declared. CSS classes are for styling and test selection only — they don't route
   behaviour, so an element a handler must *find* carries a marker attribute of its own
   (`data-slot`, `data-class-slot`, `data-routine-card`, `data-picker`, `data-picker-panel`,
   `data-picker-form`, `data-lib-ex`, `data-lib-ex-name`).

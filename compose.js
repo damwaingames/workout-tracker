@@ -5,13 +5,14 @@
  * module graph stays acyclic (render → compose → state/helpers; events → compose is not needed).
  *
  * DOM contract: structural changes are data-action clicks (add-group, remove-group, group-up/down,
- * remove-item, kind, day-up/down, weeks-inc/dec); scalar edits carry data-fh="compose" + data-target
+ * remove-item, kind, day-up/down, weeks-inc/dec); scalar edits carry data-fh="' + FH.compose + '" + data-target
  * (title/focus/rounds/rw/ra/rail-floor/rail-ceiling/item-time/class-type/class-dur) and don't re-render
- * (focus stays mid-type); adding an exercise is a data-fh="item-add" select. data-pos/g/i locate the
+ * (focus stays mid-type); adding an exercise is a data-fh="' + FH.itemAdd + '" select. data-pos/g/i locate the
  * routine / group / item, matching the plan indices. */
 
 import { esc, fmtWeekday, scheduledDate, itemLogMode } from "./helpers.js";
 import { state, libraryList, classList, awayEligible } from "./state.js";
+import { ACTION, FH, TARGET } from "./actions.js";
 
 const KIND_LABEL = { session: "Session", class: "Class", rest: "Rest" };
 
@@ -50,24 +51,24 @@ export function renderHolidayEditor() {
 export function renderBlockConfig(block) {
   return '<div class="block-config">' +
     '<span class="cfg">Weeks ' +
-      '<button type="button" class="mini" data-action="weeks-dec"' + (block.weeks <= 1 ? " disabled" : "") + ' aria-label="Fewer weeks">−</button>' +
+      '<button type="button" class="mini" data-action="' + ACTION.weeksDec + '"' + (block.weeks <= 1 ? " disabled" : "") + ' aria-label="Fewer weeks">−</button>' +
       '<strong class="weeks-n">' + block.weeks + "</strong>" +
-      '<button type="button" class="mini" data-action="weeks-inc" aria-label="More weeks">＋</button></span>' +
+      '<button type="button" class="mini" data-action="' + ACTION.weeksInc + '" aria-label="More weeks">＋</button></span>' +
     '<label class="cfg">Start <input type="date" id="block-start-input" value="' + esc(block.startDate) + '"></label>' +
     "</div>";
 }
 
 function dayMove(pos, len) {
   return '<span class="day-move">' +
-    '<button type="button" class="mini" data-action="day-up" data-pos="' + pos + '"' + (pos === 0 ? " disabled" : "") + ' aria-label="Move day earlier">↑</button>' +
-    '<button type="button" class="mini" data-action="day-down" data-pos="' + pos + '"' + (pos === len - 1 ? " disabled" : "") + ' aria-label="Move day later">↓</button>' +
+    '<button type="button" class="mini" data-action="' + ACTION.dayUp + '" data-pos="' + pos + '"' + (pos === 0 ? " disabled" : "") + ' aria-label="Move day earlier">↑</button>' +
+    '<button type="button" class="mini" data-action="' + ACTION.dayDown + '" data-pos="' + pos + '"' + (pos === len - 1 ? " disabled" : "") + ' aria-label="Move day later">↓</button>' +
     "</span>";
 }
 
 function kindSwitch(pos, kind) {
   return '<span class="kind-switch">' +
     ["session", "class", "rest"].map((k) =>
-      '<button type="button" class="kind-btn' + (k === kind ? " active" : "") + '" data-action="kind" data-pos="' + pos + '" data-kind="' + k + '"' +
+      '<button type="button" class="kind-btn' + (k === kind ? " active" : "") + '" data-action="' + ACTION.kind + '" data-pos="' + pos + '" data-kind="' + k + '"' +
       (k === kind ? ' aria-pressed="true"' : "") + ">" + KIND_LABEL[k] + "</button>").join("") +
     "</span>";
 }
@@ -78,10 +79,10 @@ function kindSwitch(pos, kind) {
  * (the whole library for a block, the away-eligible set for the Holiday Session). */
 function editSession(r, loc, exList) {
   const groups = (r.groups || []).map((g, gi) => editGroup(g, gi, loc, exList)).join("");
-  return '<input class="compose-input" data-fh="compose" data-target="title" ' + loc + ' value="' + esc(r.title || "") + '" placeholder="Session name" aria-label="Session name" maxlength="40">' +
-    '<input class="compose-input" data-fh="compose" data-target="focus" ' + loc + ' value="' + esc(r.focus || "") + '" placeholder="Focus (optional)" aria-label="Session focus" maxlength="60">' +
+  return '<input class="compose-input" data-fh="' + FH.compose + '" data-target="' + TARGET.title + '" ' + loc + ' value="' + esc(r.title || "") + '" placeholder="Session name" aria-label="Session name" maxlength="40">' +
+    '<input class="compose-input" data-fh="' + FH.compose + '" data-target="' + TARGET.focus + '" ' + loc + ' value="' + esc(r.focus || "") + '" placeholder="Focus (optional)" aria-label="Session focus" maxlength="60">' +
     '<div class="groups-edit">' + groups + "</div>" +
-    '<button type="button" class="add-btn" data-action="add-group" ' + loc + ">＋ Add group</button>";
+    '<button type="button" class="add-btn" data-action="' + ACTION.addGroup + '" ' + loc + ">＋ Add group</button>";
 }
 
 function editGroup(g, gi, loc, exList) {
@@ -91,10 +92,10 @@ function editGroup(g, gi, loc, exList) {
     '<div class="group-edit-head">' +
       '<span class="group-edit-title">Group ' + (gi + 1) + "</span>" +
       '<span class="group-move">' +
-        '<button type="button" class="mini" data-action="group-up"' + a + (gi === 0 ? " disabled" : "") + ' aria-label="Move group up">↑</button>' +
-        '<button type="button" class="mini" data-action="group-down"' + a + ' aria-label="Move group down">↓</button>' +
+        '<button type="button" class="mini" data-action="' + ACTION.groupUp + '"' + a + (gi === 0 ? " disabled" : "") + ' aria-label="Move group up">↑</button>' +
+        '<button type="button" class="mini" data-action="' + ACTION.groupDown + '"' + a + ' aria-label="Move group down">↓</button>' +
       "</span>" +
-      '<button type="button" class="remove" data-action="remove-group"' + a + ' aria-label="Remove group">×</button>' +
+      '<button type="button" class="remove" data-action="' + ACTION.removeGroup + '"' + a + ' aria-label="Remove group">×</button>' +
     "</div>" +
     '<div class="group-config">' +
       cfgNum("rounds", "rounds", g.rounds, 1, a) +
@@ -120,34 +121,34 @@ function editItem(it, ii, loc, gi) {
     const isSteady = itemLogMode(it, ex) === "steady";
     const val = isSteady ? Number(it.time) / 60 : Number(it.time);
     controls = '<span class="time-edit">' +
-      '<input type="number" min="0" inputmode="decimal" class="cfg-input" data-fh="compose" data-target="item-time" data-unit="' + (isSteady ? "min" : "sec") + '"' + a +
+      '<input type="number" min="0" inputmode="decimal" class="cfg-input" data-fh="' + FH.compose + '" data-target="' + TARGET.itemTime + '" data-unit="' + (isSteady ? "min" : "sec") + '"' + a +
       ' value="' + (val === "" || val == null ? "" : esc(String(val))) + '" aria-label="Duration"> ' + (isSteady ? "min" : "s") + "</span>";
   }
   return '<div class="item-edit"><span class="item-name">' + name + "</span>" + controls +
-    '<button type="button" class="remove" data-action="remove-item"' + a + ' aria-label="Remove exercise">×</button></div>';
+    '<button type="button" class="remove" data-action="' + ACTION.removeItem + '"' + a + ' aria-label="Remove exercise">×</button></div>';
 }
 
 function itemAddSelect(loc, gi, exList) {
   const opts = exList.map((e) => '<option value="' + esc(e.id) + '">' + esc(e.name) + "</option>").join("");
-  return '<select class="item-add" data-fh="item-add" ' + loc + ' data-g="' + gi + '" aria-label="Add exercise">' +
+  return '<select class="item-add" data-fh="' + FH.itemAdd + '" ' + loc + ' data-g="' + gi + '" aria-label="Add exercise">' +
     '<option value="">＋ Add exercise…</option>' + opts + "</select>";
 }
 
 /* ---- Class editor ---- */
 function editClass(r, pos) {
   const opts = classList().map((c) => '<option value="' + esc(c.id) + '"' + (c.id === r.classType ? " selected" : "") + ">" + esc(c.name) + "</option>").join("");
-  return '<label class="cfg">Type <select class="compose-input" data-fh="compose" data-target="class-type" data-pos="' + pos + '">' + opts + "</select></label>" +
-    '<label class="cfg">Duration <input type="number" min="0" inputmode="numeric" class="cfg-input" data-fh="compose" data-target="class-dur" data-pos="' + pos + '" value="' + esc(String(r.durationMin || "")) + '"> min</label>';
+  return '<label class="cfg">Type <select class="compose-input" data-fh="' + FH.compose + '" data-target="' + TARGET.classType + '" data-pos="' + pos + '">' + opts + "</select></label>" +
+    '<label class="cfg">Duration <input type="number" min="0" inputmode="numeric" class="cfg-input" data-fh="' + FH.compose + '" data-target="' + TARGET.classDur + '" data-pos="' + pos + '" value="' + esc(String(r.durationMin || "")) + '"> min</label>';
 }
 
 /* ---- shared little inputs ---- */
 function cfgNum(label, target, val, min, attrs, unit) {
   return '<label class="cfg">' + label + " " +
-    '<input type="number" min="' + min + '" inputmode="numeric" class="cfg-input" data-fh="compose" data-target="' + target + '"' + attrs +
+    '<input type="number" min="' + min + '" inputmode="numeric" class="cfg-input" data-fh="' + FH.compose + '" data-target="' + target + '"' + attrs +
     ' value="' + esc(String(val)) + '">' + (unit ? esc(unit) : "") + "</label>";
 }
 
 function railInput(target, val, attrs) {
-  return '<input type="number" min="1" inputmode="numeric" class="cfg-input rail-input" data-fh="compose" data-target="' + target + '"' + attrs +
+  return '<input type="number" min="1" inputmode="numeric" class="cfg-input rail-input" data-fh="' + FH.compose + '" data-target="' + target + '"' + attrs +
     ' value="' + esc(String(val)) + '" aria-label="' + (target === "rail-floor" ? "Rep floor" : "Rep ceiling") + '">';
 }

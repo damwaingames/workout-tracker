@@ -15,6 +15,7 @@ import {
   e1rm, zoneOf, loadMode, railZones, doubleProgression, guideLoadKg, snapDownDumbbellKg, rirNudge, fitsKit,
 } from "./helpers.js";
 import { migrateToV6 } from "./migrate.js";
+import { EX_FIELD } from "./actions.js";
 
 /* ---------------------------------------------------------------------- *
  * Seed data — a starter catalogue for a fresh install.                   *
@@ -423,13 +424,13 @@ export function logAttendance(classTypeId, ctx, data) {
 // keep the metric they were logged with (loadKg reads the performance's own load, not the record —
 // rewriting history would falsify a real logged set, the thing ADR-0020 protects). The editable set
 // is an allow-list so a stray target can't write an arbitrary record field (the composeTargets idiom).
-const EX_EDITABLE = new Set(["name", "setup", "cue", "loadMode", "loadMetric"]);
+const EX_EDITABLE = new Set([EX_FIELD.name, EX_FIELD.setup, EX_FIELD.cue, EX_FIELD.loadMode, EX_FIELD.loadMetric]);
 export function updateExercise(exId, field, value) {
   const ex = state.library[exId];
   if (!ex) return;
-  if (field === "rail-floor" || field === "rail-ceiling") {
+  if (field === EX_FIELD.railFloor || field === EX_FIELD.railCeiling) {
     if (!Array.isArray(ex.defaultRail)) ex.defaultRail = DEFAULT_RAIL.slice();
-    ex.defaultRail[field === "rail-floor" ? 0 : 1] = clampMin(value, 1);
+    ex.defaultRail[field === EX_FIELD.railFloor ? 0 : 1] = clampMin(value, 1);
   } else if (EX_EDITABLE.has(field)) {
     ex[field] = value;
   }

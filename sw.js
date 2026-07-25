@@ -17,6 +17,7 @@ const ASSETS = [
   "./io.js",
   "./render.js",
   "./compose.js",
+  "./actions.js",
   "./slot.js",
   "./state.js",
   "./migrate.js",
