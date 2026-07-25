@@ -141,5 +141,7 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 // v5.7.0 adds the Wind-down — the daily mobility habit tracked outside any block as weekly adherence;
 // v5.8.0 logs Class attendances (minutes / wearable burn / note) + gives the Library exercise editing
 // and retire/un-retire — the last v6-rework slice; v5.8.1 makes the service worker network-first, so a
-// new deploy shows up on the next launch instead of stranding a device on the cached old shell.
-export const APP_VERSION = "5.8.1";
+// new deploy shows up on the next launch instead of stranding a device on the cached old shell;
+// v5.8.2 gives the slot ctx contract its own module (slot.js) — the render→handler agreement is built
+// and read in one place instead of being spelled independently on both sides (#62).
+export const APP_VERSION = "5.8.2";

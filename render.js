@@ -20,6 +20,7 @@ import {
   windDownWeek, windDownAdherence, attendanceAt,
 } from "./state.js";
 import { renderEditRoutine, renderBlockConfig, renderHolidayEditor } from "./compose.js";
+import { slotAttrs, classSlotAttrs, fieldAttr, DONE_FIELD } from "./slot.js";
 
 export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); renderWinddown(); applyView(); }
 
@@ -121,7 +122,7 @@ function renderRoutine(block, r, wk, position) {
     title = "Rest";
     body = '<p class="rest-note">Rest day.</p>';
   }
-  return '<div class="routine ' + r.kind + (logged ? " logged" : "") + '">' +
+  return '<div class="routine ' + r.kind + (logged ? " logged" : "") + '" data-routine-card="1">' +
     '<div class="routine-head"><span class="routine-when">' + when + "</span>" +
       '<span class="routine-title">' + title + "</span>" + holidayToggle(position, false) + "</div>" +
     body + extra + "</div>";
@@ -134,13 +135,13 @@ function renderRoutine(block, r, wk, position) {
 function renderClassLog(block, r, wk, position, a) {
   if (!r.classType || !state.classes[r.classType]) return "";
   const num = (field, val, label) =>
-    '<input type="number" inputmode="numeric" min="0" class="log-input" data-fh="class-log" data-field="' + field +
-    '" value="' + (val == null || val === "" ? "" : esc(String(val))) + '" placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
-  return '<div class="class-log" data-class="' + esc(r.classType) + '" data-block="' + esc(block.id) +
-    '" data-week="' + wk + '" data-routine="' + position + '">' +
+    '<input type="number" inputmode="numeric" min="0" class="log-input" data-fh="class-log"' + fieldAttr(field) +
+    ' value="' + (val == null || val === "" ? "" : esc(String(val))) + '" placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
+  return '<div class="class-log" data-class-slot="1" data-class="' + esc(r.classType) + '"' +
+    classSlotAttrs({ block: block.id, week: wk, routine: position }) + ">" +
     num("mins", a ? a.mins : "", "min") +
     num("kcal", a ? a.kcal : "", "kcal") +
-    '<input type="text" class="log-input class-note" data-fh="class-log" data-field="note" value="' + esc(a && a.note ? a.note : "") +
+    '<input type="text" class="log-input class-note" data-fh="class-log"' + fieldAttr("note") + ' value="' + esc(a && a.note ? a.note : "") +
     '" placeholder="Note" aria-label="Class note" maxlength="120">' +
     "</div>";
 }
@@ -165,12 +166,12 @@ function renderSessionCard(block, r, wk, position, when) {
     '<button class="routine-collapse" type="button" data-action="toggle-collapse" data-pos="' + position +
       '" aria-expanded="' + (!collapsed) + '" aria-label="' + (collapsed ? "Expand session" : "Collapse session") + '">▾</button></div>';
   const cls = "routine session" + (holiday ? " is-holiday" : "");
-  if (collapsed) return '<div class="' + cls + ' is-collapsed">' + head + sessionSummary(r, rpe, tonnage) + "</div>";
+  if (collapsed) return '<div class="' + cls + ' is-collapsed" data-routine-card="1">' + head + sessionSummary(r, rpe, tonnage) + "</div>";
   const body = (r.focus ? '<div class="routine-focus">' + esc(r.focus) + "</div>" : "") +
     '<div class="routine-body">' +
     (Array.isArray(r.groups) ? r.groups.map((g, gi) => renderGroup(g, gi, block.id, wk, position)).join("") : "") +
     "</div>" + sessionMeta(cell, rpe, tonnage);
-  return '<div class="' + cls + '">' + head + body + "</div>";
+  return '<div class="' + cls + '" data-routine-card="1">' + head + body + "</div>";
 }
 
 // The expanded session footer: the Session-RPE input (a per-occurrence scalar keyed by cell — the
@@ -289,14 +290,12 @@ function renderItemLog(it, ex, c) {
 
 // One round's slot: the full ctx baked into data-* so the input handler can find the Performance to
 // upsert without re-deriving it, plus the mode-specific inputs pre-filled from any logged Performance.
+// The ctx goes out through slot.js and comes back through it, so the render→handler contract lives in
+// one module rather than being spelled independently on both sides (#62).
 function renderSlot(it, ex, mode, ctx, label) {
   const perf = performanceAt(it.exId, ctx);
-  // The ctx is baked into data-* under the SAME names logField reads back (block/week/routine/
-  // group/item/round), so the render→handler contract can't drift into a silent abbreviation.
-  return '<div class="log-slot' + (perf ? " logged" : "") + '"' +
-    ' data-ex="' + esc(it.exId) + '" data-mode="' + mode + '"' +
-    ' data-block="' + esc(ctx.block) + '" data-week="' + ctx.week + '" data-routine="' + ctx.routine +
-    '" data-group="' + ctx.group + '" data-item="' + ctx.item + '" data-round="' + ctx.round + '">' +
+  return '<div class="log-slot' + (perf ? " logged" : "") + '" data-slot="1"' +
+    ' data-ex="' + esc(it.exId) + '" data-mode="' + mode + '"' + slotAttrs(ctx) + ">" +
     (label ? '<span class="slot-n">' + esc(label) + "</span>" : "") +
     slotInputs(mode, ex, it, perf) + "</div>";
 }
@@ -318,10 +317,10 @@ function slotInputs(mode, ex, it, perf) {
       // duration — rounding here would resave e.g. 12.5 min as 13 the next time the slot is touched.
       return numInput("mins", perf ? Number(perf.volume.val) / 60 : "", "min") +
         numInput("level", perf && perf.load.mag != null ? perf.load.mag : "", "level");
-    case "station": {
-      const t = it.time != null ? it.time : 0;
-      return '<label class="done-tick"><input type="checkbox" data-fh="log" data-field="done" data-time="' + t + '"' + (perf ? " checked" : "") + "> Done</label>";
-    }
+    case "station":
+      // No duration attribute: the handler reads the station's planned time from the Item in the
+      // plan, which owns it — echoing it through the DOM made the document the source of truth (#62).
+      return '<label class="done-tick"><input type="checkbox" data-fh="log"' + fieldAttr(DONE_FIELD) + (perf ? " checked" : "") + "> Done</label>";
     // Unreachable — renderItemLog only draws a slot for a mode itemLogMode returned; a throw makes
     // any future drift between the classifier and this renderer loud instead of a blank slot.
     default: throw new Error("Unknown log mode: " + mode);
@@ -332,13 +331,13 @@ function slotInputs(mode, ex, it, perf) {
 function numInput(field, val, label) {
   const decimal = field === "w" || field === "mins";
   return '<input type="number" inputmode="' + (decimal ? "decimal" : "numeric") + '" min="0" class="log-input"' +
-    ' data-fh="log" data-field="' + field + '" value="' + (val === "" || val == null ? "" : esc(String(val))) + '"' +
+    ' data-fh="log"' + fieldAttr(field) + ' value="' + (val === "" || val == null ? "" : esc(String(val))) + '"' +
     ' placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
 }
 
 // The band-tier picker for a banded set (ADR-0029): the shared x-light→x-heavy ladder.
 function tierSelect(tier) {
-  return '<select class="log-select" data-fh="log" data-field="tier" aria-label="Band tier">' +
+  return '<select class="log-select" data-fh="log"' + fieldAttr("tier") + ' aria-label="Band tier">' +
     BAND_TIERS.map((t) => '<option value="' + t.id + '"' + (t.id === tier ? " selected" : "") + ">" + esc(t.label) + " band</option>").join("") +
     "</select>";
 }
@@ -347,7 +346,7 @@ function tierSelect(tier) {
 // Blank = unset (most sets carry none). Routes through the log path (data-fh="log"), so choosing it
 // re-logs the set carrying its rir — which then nudges the next target, never gates it.
 function rirSelect(rir) {
-  return '<select class="log-select rir-select" data-fh="log" data-field="rir" aria-label="Reps in reserve">' +
+  return '<select class="log-select rir-select" data-fh="log"' + fieldAttr("rir") + ' aria-label="Reps in reserve">' +
     '<option value="">RIR?</option>' +
     RIR_BUCKETS.map((b) => '<option value="' + b.id + '"' + (b.id === rir ? " selected" : "") + ">" + esc(b.label) + "</option>").join("") +
     "</select>";
@@ -388,9 +387,9 @@ function renderLibraryExercise(ex) {
   const timeline = perfs.length
     ? perfs.slice().reverse().map(perfRow).join("")
     : '<p class="muted small">No performances logged yet.</p>';
-  return '<details class="lib-ex" data-ex="' + esc(ex.id) + '">' +
+  return '<details class="lib-ex" data-lib-ex="1" data-ex="' + esc(ex.id) + '">' +
     "<summary>" +
-      '<span class="lib-ex-name">' + esc(ex.name) + "</span>" +
+      '<span class="lib-ex-name" data-lib-ex-name="1">' + esc(ex.name) + "</span>" +
       (ex.retired ? '<span class="tag">retired</span>' : "") +
       '<span class="lib-ex-count">' + perfs.length + " logged</span>" +
     "</summary>" +
@@ -588,11 +587,11 @@ export function hydrateNotes() {
 function renderMeasureAddZone() {
   return '<div class="add-zone" data-picker="measure">' +
     '<button class="add-btn" type="button" data-action="picker-open">＋ Add measurement</button>' +
-    '<div class="picker" hidden>' +
+    '<div class="picker" data-picker-panel="1" hidden>' +
       '<input type="text" class="picker-search" data-fh="picker-search" placeholder="Search measurements…">' +
       '<div class="picker-list"></div>' +
       '<button class="link" type="button" data-action="form-open">＋ Create a new measurement</button>' +
-      '<form class="picker-form" hidden>' +
+      '<form class="picker-form" data-picker-form="1" hidden>' +
         '<input name="name" placeholder="Measurement name" required>' +
         '<select name="unit"><option value="cm">cm</option><option value="kg">kg</option></select>' +
         '<div class="form-actions"><button type="submit">Add</button>' +

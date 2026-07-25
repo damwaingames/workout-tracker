@@ -187,7 +187,16 @@ separate and deliberately not redefined here.
 
 - **Dispatch by `data-*` tag → map.** Every event routes through a lookup map keyed by a
   data attribute, never a class scan: `data-action` (clicks → `handleClick`), `data-fh`
-  (special field handlers → `fieldByName`), `data-refresh` (which running total a logged
-  field re-patches live → `refreshBy`), `data-after` (which post-toggle effect a stateful
-  checkbox runs → `afterCheck`). CSS classes are for styling and test selection
-  only — they don't route behaviour.
+  (special field handlers → `fieldByName`), `data-target` (which plan field a compose input
+  sets → `composeTargets`), `data-refresh` (which running total a logged field re-patches
+  live → `refreshBy`). CSS classes are for styling and test selection only — they don't route
+  behaviour, so an element a handler must *find* carries a marker attribute of its own
+  (`data-slot`, `data-class-slot`, `data-routine-card`, `data-picker`, `data-picker-panel`,
+  `data-picker-form`, `data-lib-ex`, `data-lib-ex-name`).
+- **The slot ctx contract.** A **Performance**'s six-part ctx (**Cell** plus group/item/round,
+  ADR-0020) and an **Attendance**'s coarser three-part one (ADR-0030) are emitted and read back
+  through `slot.js` — the attribute names live there and nowhere else, so the render→handler
+  agreement can't drift into a silent mismatch. A ctx that doesn't read yields nothing rather
+  than a ctx carrying `NaN`, making a broken locator a loud no-op instead of a **Performance**
+  written to a slot that doesn't exist. The in-slot field names a handler gathers by
+  (`LOG_FIELDS` / `CLASS_FIELDS`) are shared from the same module.
