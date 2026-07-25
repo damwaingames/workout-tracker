@@ -20,7 +20,7 @@ import {
   windDownWeek, windDownAdherence, attendanceAt,
 } from "./state.js";
 import { renderEditRoutine, renderBlockConfig, renderHolidayEditor } from "./compose.js";
-import { slotAttrs, classSlotAttrs, fieldAttr, DONE_FIELD } from "./slot.js";
+import { slotAttrs, classSlotAttrs, fieldAttr, FIELD, DONE_FIELD } from "./slot.js";
 import { ACTION, FH, EX_FIELD } from "./actions.js";
 
 export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); renderWinddown(); applyView(); }
@@ -140,9 +140,9 @@ function renderClassLog(block, r, wk, position, a) {
     ' value="' + (val == null || val === "" ? "" : esc(String(val))) + '" placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
   return '<div class="class-log" data-class-slot="1" data-class="' + esc(r.classType) + '"' +
     classSlotAttrs({ block: block.id, week: wk, routine: position }) + ">" +
-    num("mins", a ? a.mins : "", "min") +
-    num("kcal", a ? a.kcal : "", "kcal") +
-    '<input type="text" class="log-input class-note" data-fh="' + FH.classLog + '"' + fieldAttr("note") + ' value="' + esc(a && a.note ? a.note : "") +
+    num(FIELD.mins, a ? a.mins : "", "min") +
+    num(FIELD.kcal, a ? a.kcal : "", "kcal") +
+    '<input type="text" class="log-input class-note" data-fh="' + FH.classLog + '"' + fieldAttr(FIELD.note) + ' value="' + esc(a && a.note ? a.note : "") +
     '" placeholder="Note" aria-label="Class note" maxlength="120">' +
     "</div>";
 }
@@ -307,17 +307,17 @@ function slotInputs(mode, ex, it, perf) {
   switch (mode) {
     case "load-reps": {
       const m = loadMode(ex);
-      return numInput("w", perf ? perf.load.mag : "", m.wUnit || "kg") + numInput("r", perf ? perf.volume.val : "", repsLabel(m)) + rir();
+      return numInput(FIELD.w, perf ? perf.load.mag : "", m.wUnit || "kg") + numInput(FIELD.r, perf ? perf.volume.val : "", repsLabel(m)) + rir();
     }
     case "band-reps":
-      return tierSelect(perf ? perf.load.mag : DEFAULT_BAND_TIER) + numInput("r", perf ? perf.volume.val : "", repsLabel(loadMode(ex))) + rir();
+      return tierSelect(perf ? perf.load.mag : DEFAULT_BAND_TIER) + numInput(FIELD.r, perf ? perf.volume.val : "", repsLabel(loadMode(ex))) + rir();
     case "reps":
-      return numInput("r", perf ? perf.volume.val : "", "reps") + rir();
+      return numInput(FIELD.r, perf ? perf.volume.val : "", "reps") + rir();
     case "steady":
       // Prefill the exact minutes (seconds / 60, un-rounded) so a re-save can't drift the stored
       // duration — rounding here would resave e.g. 12.5 min as 13 the next time the slot is touched.
-      return numInput("mins", perf ? Number(perf.volume.val) / 60 : "", "min") +
-        numInput("level", perf && perf.load.mag != null ? perf.load.mag : "", "level");
+      return numInput(FIELD.mins, perf ? Number(perf.volume.val) / 60 : "", "min") +
+        numInput(FIELD.level, perf && perf.load.mag != null ? perf.load.mag : "", "level");
     case "station":
       // No duration attribute: the handler reads the station's planned time from the Item in the
       // plan, which owns it — echoing it through the DOM made the document the source of truth (#62).
@@ -330,7 +330,7 @@ function slotInputs(mode, ex, it, perf) {
 
 // A number field for a logged value: reps/level are whole (numeric), weight/minutes decimal.
 function numInput(field, val, label) {
-  const decimal = field === "w" || field === "mins";
+  const decimal = field === FIELD.w || field === FIELD.mins;
   return '<input type="number" inputmode="' + (decimal ? "decimal" : "numeric") + '" min="0" class="log-input"' +
     ' data-fh="' + FH.log + '"' + fieldAttr(field) + ' value="' + (val === "" || val == null ? "" : esc(String(val))) + '"' +
     ' placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
@@ -338,7 +338,7 @@ function numInput(field, val, label) {
 
 // The band-tier picker for a banded set (ADR-0029): the shared x-light→x-heavy ladder.
 function tierSelect(tier) {
-  return '<select class="log-select" data-fh="' + FH.log + '"' + fieldAttr("tier") + ' aria-label="Band tier">' +
+  return '<select class="log-select" data-fh="' + FH.log + '"' + fieldAttr(FIELD.tier) + ' aria-label="Band tier">' +
     BAND_TIERS.map((t) => '<option value="' + t.id + '"' + (t.id === tier ? " selected" : "") + ">" + esc(t.label) + " band</option>").join("") +
     "</select>";
 }
@@ -347,7 +347,7 @@ function tierSelect(tier) {
 // Blank = unset (most sets carry none). Routes through the log path (data-fh="' + FH.log + '"), so choosing it
 // re-logs the set carrying its rir — which then nudges the next target, never gates it.
 function rirSelect(rir) {
-  return '<select class="log-select rir-select" data-fh="' + FH.log + '"' + fieldAttr("rir") + ' aria-label="Reps in reserve">' +
+  return '<select class="log-select rir-select" data-fh="' + FH.log + '"' + fieldAttr(FIELD.rir) + ' aria-label="Reps in reserve">' +
     '<option value="">RIR?</option>' +
     RIR_BUCKETS.map((b) => '<option value="' + b.id + '"' + (b.id === rir ? " selected" : "") + ">" + esc(b.label) + "</option>").join("") +
     "</select>";
@@ -542,7 +542,7 @@ export function renderBmi() {
 const WD_INITIALS = ["S", "M", "T", "W", "T", "F", "S"];
 function adherenceHtml() {
   const a = windDownAdherence();
-  return '<p class="winddown-adherence' + (a.met ? " met" : "") + '">' +
+  return '<p class="winddown-adherence' + (a.met ? " met" : "") + '" data-winddown-adherence="1">' +
     "<strong>" + a.done + " / " + a.target + "</strong> nights this week" + (a.met ? " ✓" : "") + "</p>";
 }
 function renderWinddown() {
@@ -573,7 +573,7 @@ function renderWinddown() {
 export function renderWinddownAdherence() {
   const card = document.getElementById("winddown-card");
   if (!card) return;
-  const line = card.querySelector(".winddown-adherence");
+  const line = card.querySelector("[data-winddown-adherence]");
   if (line) line.outerHTML = adherenceHtml();
 }
 

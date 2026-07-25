@@ -17,14 +17,21 @@ const declared = (o) => new Set(Object.values(o));
 
 verify(async ({ page, ck, reset }) => {
   const ACTIONS = declared(ACTION), FHS = declared(FH);
-  const TARGETS = new Set([...declared(TARGET), ...declared(EX_FIELD)]);
+  // data-target is one attribute serving two vocabularies, picked apart by the element's data-fh:
+  // FH.compose sets a plan field, FH.exEdit sets an Exercise field. Checking against the union would
+  // let a compose target ride an ex-edit input — it'd pass the guard and then die silently in
+  // updateExercise's allow-list, which is the exact failure this is meant to catch.
+  const TARGETS_BY_FH = { [FH.compose]: declared(TARGET), [FH.exEdit]: declared(EX_FIELD) };
 
   // Scrape both modes: the log view + Library carry one set of controls, Edit mode renders the whole
   // compose surface (kind switch, group/item editors, rails, block config, Holiday editor) and the
   // Library's exercise editors. Together they cover every emitter in the app.
   const scrape = () => page.evaluate(() => {
     const vals = (attr) => [...document.querySelectorAll("[" + attr + "]")].map((e) => e.getAttribute(attr));
-    return { action: vals("data-action"), fh: vals("data-fh"), target: vals("data-target") };
+    // A target is only meaningful with the handler that reads it, so they travel together.
+    const target = [...document.querySelectorAll("[data-target]")]
+      .map((e) => ({ fh: e.getAttribute("data-fh"), target: e.getAttribute("data-target") }));
+    return { action: vals("data-action"), fh: vals("data-fh"), target };
   });
   const merge = (a, b) => ({ action: [...a.action, ...b.action], fh: [...a.fh, ...b.fh], target: [...a.target, ...b.target] });
 
@@ -43,7 +50,12 @@ verify(async ({ page, ck, reset }) => {
   const undeclared = (list, set) => [...new Set(list)].filter((v) => !set.has(v));
   const badActions = undeclared(found.action, ACTIONS);
   const badFh = undeclared(found.fh, FHS);
-  const badTargets = undeclared(found.target, TARGETS);
+  const badTargets = [...new Set(found.target.map((t) => t.fh + "/" + t.target))]
+    .filter((pair) => {
+      const [fh, target] = pair.split("/");
+      const set = TARGETS_BY_FH[fh];
+      return !set || !set.has(target); // a target under an unexpected handler is as broken as an unknown one
+    });
 
   ck("every data-action in the DOM is declared in actions.js" + (badActions.length ? " — stray: " + badActions.join(", ") : ""), badActions.length === 0);
   ck("every data-fh in the DOM is declared in actions.js" + (badFh.length ? " — stray: " + badFh.join(", ") : ""), badFh.length === 0);

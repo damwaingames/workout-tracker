@@ -83,7 +83,14 @@ export const TARGET = Object.freeze({
 // data-target under FH.exEdit → updateExercise's allow-list: which Exercise field a Library editor
 // input sets. Shares the data-target attribute with TARGET (and deliberately reuses the two rail
 // names — a plan Item's rail and an exercise's *default* rail are the same concept at two levels);
-// the data-fh is what picks the dispatch, so the two vocabularies never collide.
+// the data-fh is what picks the dispatch, so the two vocabularies never collide. verify-actions
+// checks a target against the set its own data-fh selects, not the union, so a compose target riding
+// an ex-edit input fails rather than dying quietly in the allow-list.
+//
+// ⚠ These five values are also **Exercise record property names** — updateExercise does
+// `ex[field] = value`. So unlike every other name here, the *value* is load-bearing beyond the DOM:
+// renaming a constant is free, but changing its string renames a stored field. The two rail names are
+// the exception, mapped explicitly onto `defaultRail` rather than assigned.
 export const EX_FIELD = Object.freeze({
   name: "name",
   setup: "setup",

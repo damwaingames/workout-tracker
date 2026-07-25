@@ -65,9 +65,14 @@ export const classSlotCtx = (dataset) => ctxFor(CLASS_SLOT_KEYS, dataset);
  * (weight, reps, band tier, minutes, machine level, RIR), gathered by value; the done tick is a
  * checkbox rather than a value, so it's named apart. CLASS_FIELDS is an Attendance's actuals
  * (ADR-0030/0014). */
-export const LOG_FIELDS = ["w", "r", "tier", "mins", "level", "rir"];
-export const DONE_FIELD = "done";
-export const CLASS_FIELDS = ["mins", "kcal", "note"];
+export const FIELD = Object.freeze({
+  w: "w", r: "r", tier: "tier", mins: "mins", level: "level", rir: "rir", // a Session slot's inputs
+  done: "done", // the station tick — a checkbox, so gathered apart from the value fields
+  kcal: "kcal", note: "note", // an Attendance's other two actuals
+});
+export const LOG_FIELDS = [FIELD.w, FIELD.r, FIELD.tier, FIELD.mins, FIELD.level, FIELD.rir];
+export const DONE_FIELD = FIELD.done;
+export const CLASS_FIELDS = [FIELD.mins, FIELD.kcal, FIELD.note];
 
 // Name an input (renderer) and find it again (handler) — the two sides of one name.
 export const fieldAttr = (name) => ' data-field="' + name + '"';

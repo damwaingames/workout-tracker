@@ -13,7 +13,7 @@ import {
   currentBlock, currentCell, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
   blankRoutine, blankGroup, newItem, swapDays, toggleWinddown, setWinddownField, effectiveRoutine,
 } from "./state.js";
-import { ACTION, FH, TARGET } from "./actions.js";
+import { ACTION, FH, TARGET, EX_FIELD } from "./actions.js";
 import { slotCtx, classSlotCtx, fieldSelector, LOG_FIELDS, CLASS_FIELDS, DONE_FIELD } from "./slot.js";
 import { render, renderBmi, renderWinddownAdherence, repopulate, hydrateNotes } from "./render.js";
 import { exportBackup, importBackup, drivePush, drivePull } from "./io.js";
@@ -172,7 +172,7 @@ const fieldByName = {
   // summary name is hand-patched, like the block-name input patches its select option.
   [FH.exEdit](el) {
     updateExercise(el.dataset.ex, el.dataset.target, el.value);
-    if (el.dataset.target === "name") {
+    if (el.dataset.target === EX_FIELD.name) {
       // data-lib-ex marks the Library entry; data-ex names the exercise (a log slot carries one too,
       // hence both). The exercise id is the app's own slug, so it needs no attribute-value escaping.
       const nm = document.querySelector('[data-lib-ex][data-ex="' + el.dataset.ex + '"] [data-lib-ex-name]');

@@ -4,10 +4,9 @@
  * renderEditRoutine when `editing`; events.js owns the matching mutators (add/remove/move/set), so the
  * module graph stays acyclic (render → compose → state/helpers; events → compose is not needed).
  *
- * DOM contract: structural changes are data-action clicks (add-group, remove-group, group-up/down,
- * remove-item, kind, day-up/down, weeks-inc/dec); scalar edits carry data-fh="' + FH.compose + '" + data-target
- * (title/focus/rounds/rw/ra/rail-floor/rail-ceiling/item-time/class-type/class-dur) and don't re-render
- * (focus stays mid-type); adding an exercise is a data-fh="' + FH.itemAdd + '" select. data-pos/g/i locate the
+ * DOM contract: every routing name comes from actions.js, never a literal — structural changes are
+ * `ACTION` clicks, scalar edits carry `FH.compose` + a `TARGET`, and adding an exercise is an
+ * `FH.itemAdd` select. Scalar edits don't re-render, so focus stays mid-type. data-pos/g/i locate the
  * routine / group / item, matching the plan indices. */
 
 import { esc, fmtWeekday, scheduledDate, itemLogMode } from "./helpers.js";
@@ -98,9 +97,9 @@ function editGroup(g, gi, loc, exList) {
       '<button type="button" class="remove" data-action="' + ACTION.removeGroup + '"' + a + ' aria-label="Remove group">×</button>' +
     "</div>" +
     '<div class="group-config">' +
-      cfgNum("rounds", "rounds", g.rounds, 1, a) +
-      cfgNum("rest within", "rw", g.restWithin || 0, 0, a, "s") +
-      cfgNum("rest after", "ra", g.restAfter || 0, 0, a, "s") +
+      cfgNum("rounds", TARGET.rounds, g.rounds, 1, a) +
+      cfgNum("rest within", TARGET.rw, g.restWithin || 0, 0, a, "s") +
+      cfgNum("rest after", TARGET.ra, g.restAfter || 0, 0, a, "s") +
     "</div>" +
     '<div class="items-edit">' + items + "</div>" +
     itemAddSelect(loc, gi, exList) +
@@ -114,7 +113,7 @@ function editItem(it, ii, loc, gi) {
   let controls = "";
   if (Array.isArray(it.rail)) {
     controls = '<span class="rail-edit">' +
-      railInput("rail-floor", it.rail[0], a) + " – " + railInput("rail-ceiling", it.rail[1], a) + " reps</span>";
+      railInput(TARGET.railFloor, it.rail[0], a) + " – " + railInput(TARGET.railCeiling, it.rail[1], a) + " reps</span>";
   } else if (it.time != null) {
     // A steady effort is edited in minutes (its natural unit), a station in seconds — read through the
     // one itemLogMode classifier so "what is steady" stays defined in a single place (ADR-0019).
@@ -150,5 +149,5 @@ function cfgNum(label, target, val, min, attrs, unit) {
 
 function railInput(target, val, attrs) {
   return '<input type="number" min="1" inputmode="numeric" class="cfg-input rail-input" data-fh="' + FH.compose + '" data-target="' + target + '"' + attrs +
-    ' value="' + esc(String(val)) + '" aria-label="' + (target === "rail-floor" ? "Rep floor" : "Rep ceiling") + '">';
+    ' value="' + esc(String(val)) + '" aria-label="' + (target === TARGET.railFloor ? "Rep floor" : "Rep ceiling") + '">';
 }
