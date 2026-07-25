@@ -588,8 +588,8 @@ function renderMeasureAddZone() {
   return '<div class="add-zone" data-picker="measure">' +
     '<button class="add-btn" type="button" data-action="picker-open">＋ Add measurement</button>' +
     '<div class="picker" data-picker-panel="1" hidden>' +
-      '<input type="text" class="picker-search" data-fh="picker-search" placeholder="Search measurements…">' +
-      '<div class="picker-list"></div>' +
+      '<input type="text" class="picker-search" data-picker-search="1" data-fh="picker-search" placeholder="Search measurements…">' +
+      '<div class="picker-list" data-picker-list="1"></div>' +
       '<button class="link" type="button" data-action="form-open">＋ Create a new measurement</button>' +
       '<form class="picker-form" data-picker-form="1" hidden>' +
         '<input name="name" placeholder="Measurement name" required>' +
@@ -602,7 +602,7 @@ function renderMeasureAddZone() {
 
 // Re-render the measurement picker's list, minus already-tracked measurements, name-filtered.
 export function repopulate(zone, query) {
-  const picker = zone.querySelector(".picker");
+  const picker = zone.querySelector("[data-picker-panel]");
   if (!picker) return;
   const on = {};
   state.tracked.forEach((id) => (on[id] = true));
@@ -610,7 +610,7 @@ export function repopulate(zone, query) {
   const items = Object.values(state.measurements)
     .filter((m) => !on[m.id] && (!q || m.name.toLowerCase().indexOf(q) >= 0))
     .sort((a, b) => a.name.localeCompare(b.name));
-  picker.querySelector(".picker-list").innerHTML = items.length
+  picker.querySelector("[data-picker-list]").innerHTML = items.length
     ? items.map((m) => '<button class="pick" type="button" data-action="m-add" data-m="' + m.id + '">' + esc(m.name) + ' <span class="tag">' + esc(m.unit) + "</span></button>").join("")
     : '<p class="muted small">No matches — create a new one below.</p>';
 }

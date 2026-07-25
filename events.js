@@ -13,7 +13,7 @@ import {
   currentBlock, currentCell, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
   blankRoutine, blankGroup, newItem, swapDays, toggleWinddown, setWinddownField, effectiveRoutine,
 } from "./state.js";
-import { slotCtx, classSlotCtx, fieldSelector, LOG_FIELDS, DONE_FIELD } from "./slot.js";
+import { slotCtx, classSlotCtx, fieldSelector, LOG_FIELDS, CLASS_FIELDS, DONE_FIELD } from "./slot.js";
 import { render, renderBmi, renderWinddownAdherence, repopulate, hydrateNotes } from "./render.js";
 import { exportBackup, importBackup, drivePush, drivePull } from "./io.js";
 
@@ -68,7 +68,7 @@ export function handleClick(e) {
       picker.hidden = !picker.hidden;
       if (!picker.hidden) {
         repopulate(zone, "");
-        const s = picker.querySelector('[data-fh="picker-search"]');
+        const s = picker.querySelector("[data-picker-search]");
         if (s) s.focus();
       }
       break;
@@ -184,10 +184,12 @@ const fieldByName = {
 
 // The Item a Session-slot ctx points at — the planned Item, or the Holiday Session's when that day is
 // swapped (ADR-0025), read through effectiveRoutine so the swap is honoured exactly as it is on
-// render. Only the station mode needs it (for its planned duration); #64 will move this plan
-// resolution into the plan-verbs module alongside the other locators.
+// render. Null when the ctx doesn't resolve, including an unknown block: falling back to the current
+// block would read a *different* block's Item, which is the coercion slotCtx exists to remove. Only
+// the station mode needs this; #64 moves the plan resolution into the plan-verbs module.
 function itemForCtx(ctx) {
-  const block = state.blocks.find((b) => b.id === ctx.block) || currentBlock();
+  const block = state.blocks.find((b) => b.id === ctx.block);
+  if (!block) return null;
   const r = effectiveRoutine(block, ctx.week, ctx.routine);
   const g = r && r.groups && r.groups[ctx.group];
   return (g && g.items && g.items[ctx.item]) || null;
@@ -202,7 +204,8 @@ function classLogField(el) {
   const ctx = classSlotCtx(box.dataset);
   if (!ctx) return; // a slot whose locator didn't read is a no-op, never a write to a guessed slot
   const val = (f) => { const n = box.querySelector(fieldSelector(f)); return n ? n.value : ""; };
-  const mins = Number(val("mins")) || 0, kcal = Number(val("kcal")) || 0, note = val("note").trim();
+  const raw = Object.fromEntries(CLASS_FIELDS.map((f) => [f, val(f)]));
+  const mins = Number(raw.mins) || 0, kcal = Number(raw.kcal) || 0, note = raw.note.trim();
   const data = (mins > 0 || kcal > 0 || note) ? { mins, kcal, note } : null;
   logAttendance(box.dataset.class, ctx, data);
   const card = box.closest("[data-routine-card]");

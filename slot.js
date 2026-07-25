@@ -11,8 +11,9 @@
  * el.dataset is) rather than an element, which keeps the contract a pure function of its arguments
  * and testable without a browser.
  *
- * Pure, like helpers.js: imports nothing, reads no state. That's what keeps the graph acyclic
- * (render / compose / events import this; it imports nobody). */
+ * Pure, like helpers.js: a function of its arguments, reading no state and importing only `helpers`
+ * (for escaping). That's what keeps the graph acyclic — render and events import this; it imports
+ * nothing that imports back. */
 
 import { esc } from "./helpers.js";
 

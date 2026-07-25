@@ -54,15 +54,15 @@ const datasetOf = (attrs) => Object.fromEntries(
  * ---------------------------------------------------------------------- */
 (() => {
   const good = { block: "b1", week: 1, routine: 0, group: 0, item: 0, round: 0 };
-  const with_ = (over) => slotCtx(Object.assign(datasetOf(slotAttrs(good)), over));
+  const brokenAt = (over) => slotCtx(Object.assign(datasetOf(slotAttrs(good)), over));
 
-  ck("a missing part → null", with_({ group: undefined }) === null);
-  ck("a blank part → null", with_({ item: "" }) === null);
-  ck("a whitespace part → null (Number(' ') is 0 — the trap)", with_({ round: " " }) === null);
-  ck("a non-numeric part → null, never a ctx carrying NaN", with_({ routine: "two" }) === null);
-  ck("a fractional index → null", with_({ group: "1.5" }) === null);
-  ck("a negative index → null", with_({ item: "-1" }) === null);
-  ck("a missing block → null", with_({ block: "" }) === null);
+  ck("a missing part → null", brokenAt({ group: undefined }) === null);
+  ck("a blank part → null", brokenAt({ item: "" }) === null);
+  ck("a whitespace part → null (Number(' ') is 0 — the trap)", brokenAt({ round: " " }) === null);
+  ck("a non-numeric part → null, never a ctx carrying NaN", brokenAt({ routine: "two" }) === null);
+  ck("a fractional index → null", brokenAt({ group: "1.5" }) === null);
+  ck("a negative index → null", brokenAt({ item: "-1" }) === null);
+  ck("a missing block → null", brokenAt({ block: "" }) === null);
   ck("no dataset at all → null", slotCtx(null) === null && slotCtx(undefined) === null);
   ck("a Class ctx rejects a broken part the same way", classSlotCtx({ block: "b1", week: "x", routine: "0" }) === null);
 })();
