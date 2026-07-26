@@ -15,7 +15,7 @@
  * (for escaping). That's what keeps the graph acyclic — render and events import this; it imports
  * nothing that imports back. */
 
-import { esc } from "./helpers.js";
+import { attr } from "./helpers.js";
 
 // The six parts of a Session slot's ctx, in the order they're emitted (ADR-0020), and the three of
 // a Class slot's coarser ctx (ADR-0030 — a class isn't composed of group/item/round). `block` is the
@@ -23,10 +23,17 @@ import { esc } from "./helpers.js";
 const SLOT_KEYS = ["block", "week", "routine", "group", "item", "round"];
 const CLASS_SLOT_KEYS = ["block", "week", "routine"];
 
-// Emit `keys` of a ctx as data-* attributes, escaped and ready to interpolate into an HTML tag.
-// Leading space so a caller can concatenate it straight after an attribute.
+// Emit `keys` of a ctx as data-* attributes, ready to interpolate into an HTML tag. Validates on the
+// way out as strictly as ctxFor validates on the way in: an incomplete ctx would otherwise emit
+// `data-group="undefined"`, which the reader dutifully rejects — leaving a dead input and putting the
+// noise on the far side of the seam. This is the single emit point, so it's the right place to be
+// loud, matching slotInputs' throw-on-unknown-mode idiom.
 function attrsFor(keys, ctx) {
-  return keys.map((k) => ' data-' + k + '="' + esc(String(ctx[k])) + '"').join("");
+  for (const k of keys) {
+    if (ctx == null || ctx[k] == null || ctx[k] === "") throw new Error("slot ctx missing " + k);
+    if (k !== "block" && !INDEX.test(String(ctx[k]))) throw new Error("slot ctx " + k + " is not an index: " + ctx[k]);
+  }
+  return keys.map((k) => attr(k, ctx[k])).join("");
 }
 
 // A plan index as it arrives from a dataset: digits and nothing else. Deliberately stricter than
@@ -70,10 +77,11 @@ export const FIELD = Object.freeze({
   done: "done", // the station tick — a checkbox, so gathered apart from the value fields
   kcal: "kcal", note: "note", // an Attendance's other two actuals
 });
+// The value fields a filled slot is gathered from — exactly the raw set buildPerformance
+// destructures. FIELD.done isn't among them: it's a checkbox, read by checked-ness rather than value.
 export const LOG_FIELDS = [FIELD.w, FIELD.r, FIELD.tier, FIELD.mins, FIELD.level, FIELD.rir];
-export const DONE_FIELD = FIELD.done;
 export const CLASS_FIELDS = [FIELD.mins, FIELD.kcal, FIELD.note];
 
 // Name an input (renderer) and find it again (handler) — the two sides of one name.
-export const fieldAttr = (name) => ' data-field="' + name + '"';
+export const fieldAttr = (name) => attr("field", name);
 export const fieldSelector = (name) => '[data-field="' + name + '"]';

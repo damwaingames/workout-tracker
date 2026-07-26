@@ -12,7 +12,7 @@ import {
   esc, fmt, fmtVolume, fmtLoad, fmtRail, fmtTarget, fmtTonnage, zoneLabel, scheduledDate, fmtWeekday,
   measureKey, cellKey, cellScalarKey, itemLogMode, loadMode, repsLabel,
 } from "./helpers.js";
-import { BAND_TIERS, DEFAULT_BAND_TIER, RIR_BUCKETS, LOAD_METRICS, LOAD_MODES, EQUIPMENT } from "./constants.js";
+import { BAND_TIERS, DEFAULT_BAND_TIER, RIR_BUCKETS, LOAD_METRICS, LOAD_MODES, EQUIPMENT, EX_FIELDS } from "./constants.js";
 import {
   state, editing,
   currentBlock, currentBlockIndex, libraryList, classList, performancesOf, performanceAt, prsOf,
@@ -20,8 +20,8 @@ import {
   windDownWeek, windDownAdherence, attendanceAt,
 } from "./state.js";
 import { renderEditRoutine, renderBlockConfig, renderHolidayEditor } from "./compose.js";
-import { slotAttrs, classSlotAttrs, fieldAttr, FIELD, DONE_FIELD } from "./slot.js";
-import { ACTION, FH, EX_FIELD } from "./actions.js";
+import { slotAttrs, classSlotAttrs, fieldAttr, FIELD } from "./slot.js";
+import { ACTION, FH, MARK, TARGET, markSelector, actionAttr, fhAttr, targetAttr, markAttr } from "./actions.js";
 
 export function render() { renderTabs(); renderHeader(); renderWeek(); renderLibrary(); renderMeasurements(); renderWinddown(); applyView(); }
 
@@ -37,7 +37,7 @@ function renderTabs() {
   const el = document.getElementById("view-tabs");
   if (!el) return;
   const v = state.ui.view;
-  const tab = (id, label) => '<button class="view-tab' + (v === id ? " active" : "") + '" data-action="' + ACTION.view + '" data-view="' + id + '" aria-pressed="' + (v === id) + '">' + label + "</button>";
+  const tab = (id, label) => '<button class="view-tab' + (v === id ? " active" : "") + '"' + actionAttr(ACTION.view) + ' data-view="' + id + '" aria-pressed="' + (v === id) + '">' + label + "</button>";
   el.innerHTML = tab("plan", "Plan") + tab("library", "Library");
 }
 // Show only the active view's container. Membership is structural — Plan-scoped sections live inside
@@ -61,11 +61,11 @@ function renderHeader() {
   const block = currentBlock();
   let html = "";
   for (let w = 1; w <= block.weeks; w++) {
-    html += '<button data-action="' + ACTION.week + '" data-week="' + w + '" class="week-btn' + (w === state.ui.week ? " active" : "") + '">Week ' + w + "</button>";
+    html += '<button' + actionAttr(ACTION.week) + ' data-week="' + w + '" class="week-btn' + (w === state.ui.week ? " active" : "") + '">Week ' + w + "</button>";
   }
   // Deleting a block is a plan-only delete now (performances survive — ADR-0020), offered in Edit.
   if (editing && state.blocks.length > 1) {
-    html += '<button data-action="' + ACTION.deleteBlock + '" class="week-btn danger">Delete block</button>';
+    html += '<button' + actionAttr(ACTION.deleteBlock) + ' class="week-btn danger">Delete block</button>';
   }
   document.getElementById("week-nav").innerHTML = html;
 }
@@ -101,7 +101,7 @@ function renderWeek() {
 
 // The 🏝 toggle sits on every day (log view): swap the Holiday Session in for a travel day, or out.
 function holidayToggle(position, active) {
-  return '<button class="holiday-toggle' + (active ? " active" : "") + '" type="button" data-action="' + ACTION.holidaySwap + '" data-pos="' + position +
+  return '<button class="holiday-toggle' + (active ? " active" : "") + '" type="button"' + actionAttr(ACTION.holidaySwap) + ' data-pos="' + position +
     '" aria-pressed="' + active + '" aria-label="' + (active ? "Restore the planned day" : "Swap in the Holiday Session") + '" title="Holiday Session">🏝</button>';
 }
 
@@ -123,7 +123,7 @@ function renderRoutine(block, r, wk, position) {
     title = "Rest";
     body = '<p class="rest-note">Rest day.</p>';
   }
-  return '<div class="routine ' + r.kind + (logged ? " logged" : "") + '" data-routine-card="1">' +
+  return '<div class="routine ' + r.kind + (logged ? " logged" : "") + '"' + markAttr(MARK.routineCard) + '>' +
     '<div class="routine-head"><span class="routine-when">' + when + "</span>" +
       '<span class="routine-title">' + title + "</span>" + holidayToggle(position, false) + "</div>" +
     body + extra + "</div>";
@@ -136,13 +136,13 @@ function renderRoutine(block, r, wk, position) {
 function renderClassLog(block, r, wk, position, a) {
   if (!r.classType || !state.classes[r.classType]) return "";
   const num = (field, val, label) =>
-    '<input type="number" inputmode="numeric" min="0" class="log-input" data-fh="' + FH.classLog + '"' + fieldAttr(field) +
+    '<input type="number" inputmode="numeric" min="0" class="log-input"' + fhAttr(FH.classLog) + fieldAttr(field) +
     ' value="' + (val == null || val === "" ? "" : esc(String(val))) + '" placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
-  return '<div class="class-log" data-class-slot="1" data-class="' + esc(r.classType) + '"' +
+  return '<div class="class-log"' + markAttr(MARK.classSlot) + ' data-class="' + esc(r.classType) + '"' +
     classSlotAttrs({ block: block.id, week: wk, routine: position }) + ">" +
     num(FIELD.mins, a ? a.mins : "", "min") +
     num(FIELD.kcal, a ? a.kcal : "", "kcal") +
-    '<input type="text" class="log-input class-note" data-fh="' + FH.classLog + '"' + fieldAttr(FIELD.note) + ' value="' + esc(a && a.note ? a.note : "") +
+    '<input type="text" class="log-input class-note"' + fhAttr(FH.classLog) + fieldAttr(FIELD.note) + ' value="' + esc(a && a.note ? a.note : "") +
     '" placeholder="Note" aria-label="Class note" maxlength="120">' +
     "</div>";
 }
@@ -164,15 +164,15 @@ function renderSessionCard(block, r, wk, position, when) {
     '<span class="routine-when">' + when + "</span>" +
     '<span class="routine-title">' + esc(r.title || "Session") + (holiday ? ' <span class="holiday-badge">Holiday</span>' : "") + "</span>" +
     holidayToggle(position, holiday) +
-    '<button class="routine-collapse" type="button" data-action="' + ACTION.toggleCollapse + '" data-pos="' + position +
+    '<button class="routine-collapse" type="button"' + actionAttr(ACTION.toggleCollapse) + ' data-pos="' + position +
       '" aria-expanded="' + (!collapsed) + '" aria-label="' + (collapsed ? "Expand session" : "Collapse session") + '">▾</button></div>';
   const cls = "routine session" + (holiday ? " is-holiday" : "");
-  if (collapsed) return '<div class="' + cls + ' is-collapsed" data-routine-card="1">' + head + sessionSummary(r, rpe, tonnage) + "</div>";
+  if (collapsed) return '<div class="' + cls + ' is-collapsed"' + markAttr(MARK.routineCard) + '>' + head + sessionSummary(r, rpe, tonnage) + "</div>";
   const body = (r.focus ? '<div class="routine-focus">' + esc(r.focus) + "</div>" : "") +
     '<div class="routine-body">' +
     (Array.isArray(r.groups) ? r.groups.map((g, gi) => renderGroup(g, gi, block.id, wk, position)).join("") : "") +
     "</div>" + sessionMeta(cell, rpe, tonnage);
-  return '<div class="' + cls + '" data-routine-card="1">' + head + body + "</div>";
+  return '<div class="' + cls + '"' + markAttr(MARK.routineCard) + '>' + head + body + "</div>";
 }
 
 // The expanded session footer: the Session-RPE input (a per-occurrence scalar keyed by cell — the
@@ -295,8 +295,11 @@ function renderItemLog(it, ex, c) {
 // one module rather than being spelled independently on both sides (#62).
 function renderSlot(it, ex, mode, ctx, label) {
   const perf = performanceAt(it.exId, ctx);
-  return '<div class="log-slot' + (perf ? " logged" : "") + '" data-slot="1"' +
-    ' data-ex="' + esc(it.exId) + '" data-mode="' + mode + '"' + slotAttrs(ctx) + ">" +
+  // No mode attribute: the handler classifies the Item it resolves from the ctx, exactly as this does
+  // — echoing a derived value through the DOM made the document the source of truth for something the
+  // plan already answers (#62, same reasoning that removed the station's duration).
+  return '<div class="log-slot' + (perf ? " logged" : "") + '"' + markAttr(MARK.slot) +
+    ' data-ex="' + esc(it.exId) + '"' + slotAttrs(ctx) + ">" +
     (label ? '<span class="slot-n">' + esc(label) + "</span>" : "") +
     slotInputs(mode, ex, it, perf) + "</div>";
 }
@@ -321,7 +324,7 @@ function slotInputs(mode, ex, it, perf) {
     case "station":
       // No duration attribute: the handler reads the station's planned time from the Item in the
       // plan, which owns it — echoing it through the DOM made the document the source of truth (#62).
-      return '<label class="done-tick"><input type="checkbox" data-fh="' + FH.log + '"' + fieldAttr(DONE_FIELD) + (perf ? " checked" : "") + "> Done</label>";
+      return '<label class="done-tick"><input type="checkbox"' + fhAttr(FH.log) + fieldAttr(FIELD.done) + (perf ? " checked" : "") + "> Done</label>";
     // Unreachable — renderItemLog only draws a slot for a mode itemLogMode returned; a throw makes
     // any future drift between the classifier and this renderer loud instead of a blank slot.
     default: throw new Error("Unknown log mode: " + mode);
@@ -332,22 +335,22 @@ function slotInputs(mode, ex, it, perf) {
 function numInput(field, val, label) {
   const decimal = field === FIELD.w || field === FIELD.mins;
   return '<input type="number" inputmode="' + (decimal ? "decimal" : "numeric") + '" min="0" class="log-input"' +
-    ' data-fh="' + FH.log + '"' + fieldAttr(field) + ' value="' + (val === "" || val == null ? "" : esc(String(val))) + '"' +
+    '' + fhAttr(FH.log) + fieldAttr(field) + ' value="' + (val === "" || val == null ? "" : esc(String(val))) + '"' +
     ' placeholder="' + esc(label) + '" aria-label="' + esc(label) + '">';
 }
 
 // The band-tier picker for a banded set (ADR-0029): the shared x-light→x-heavy ladder.
 function tierSelect(tier) {
-  return '<select class="log-select" data-fh="' + FH.log + '"' + fieldAttr(FIELD.tier) + ' aria-label="Band tier">' +
+  return '<select class="log-select"' + fhAttr(FH.log) + fieldAttr(FIELD.tier) + ' aria-label="Band tier">' +
     BAND_TIERS.map((t) => '<option value="' + t.id + '"' + (t.id === tier ? " selected" : "") + ">" + esc(t.label) + " band</option>").join("") +
     "</select>";
 }
 
 // The optional RIR marker for a rep set (ADR-0027): how close to failure it was, advisory only.
-// Blank = unset (most sets carry none). Routes through the log path (data-fh="' + FH.log + '"), so choosing it
+// Blank = unset (most sets carry none). Routes through the log path (FH.log), so choosing it
 // re-logs the set carrying its rir — which then nudges the next target, never gates it.
 function rirSelect(rir) {
-  return '<select class="log-select rir-select" data-fh="' + FH.log + '"' + fieldAttr(FIELD.rir) + ' aria-label="Reps in reserve">' +
+  return '<select class="log-select rir-select"' + fhAttr(FH.log) + fieldAttr(FIELD.rir) + ' aria-label="Reps in reserve">' +
     '<option value="">RIR?</option>' +
     RIR_BUCKETS.map((b) => '<option value="' + b.id + '"' + (b.id === rir ? " selected" : "") + ">" + esc(b.label) + "</option>").join("") +
     "</select>";
@@ -365,7 +368,7 @@ function renderLibrary() {
   // editing an exercise from the Library needs its own — driving the same shared `editing` flag.
   card.innerHTML =
     '<div class="lib-head"><h2>Library</h2>' +
-      '<button data-action="' + ACTION.editBlock + '" class="ghost lib-edit-toggle' + (editing ? " active" : "") + '">' + (editing ? "Done" : "Edit") + "</button></div>" +
+      '<button' + actionAttr(ACTION.editBlock) + ' class="ghost lib-edit-toggle' + (editing ? " active" : "") + '">' + (editing ? "Done" : "Edit") + "</button></div>" +
     '<p class="muted small">Every exercise owns its performance history — progression and PRs follow the movement, not a block, so deleting a block never loses them (ADR-0020).' +
       (editing ? " Hit Edit on an exercise to correct its fields or retire it." : "") + "</p>" +
     '<div class="lib-list">' + exs + "</div>" +
@@ -388,9 +391,9 @@ function renderLibraryExercise(ex) {
   const timeline = perfs.length
     ? perfs.slice().reverse().map(perfRow).join("")
     : '<p class="muted small">No performances logged yet.</p>';
-  return '<details class="lib-ex" data-lib-ex="1" data-ex="' + esc(ex.id) + '">' +
+  return '<details class="lib-ex"' + markAttr(MARK.libEx) + ' data-ex="' + esc(ex.id) + '">' +
     "<summary>" +
-      '<span class="lib-ex-name" data-lib-ex-name="1">' + esc(ex.name) + "</span>" +
+      '<span class="lib-ex-name"' + markAttr(MARK.libExName) + '>' + esc(ex.name) + "</span>" +
       (ex.retired ? '<span class="tag">retired</span>' : "") +
       '<span class="lib-ex-count">' + perfs.length + " logged</span>" +
     "</summary>" +
@@ -403,34 +406,34 @@ function renderLibraryExercise(ex) {
 
 // The exercise editor (#50, ADR-0020) — shown in Edit mode in place of the read-only meta line. Every
 // field is a correction to the record itself, so anything a derived figure reads (loadMode → tonnage)
-// reflects across the whole history for free. Scalar edits route data-fh="' + FH.exEdit + '" + data-target (no
-// re-render, keeping focus, like the compose inputs); equipment toggles route data-fh="' + FH.exEquip + '";
+// reflects across the whole history for free. Scalar edits route' + fhAttr(FH.exEdit) + ' + data-target (no
+// re-render, keeping focus, like the compose inputs); equipment toggles route' + fhAttr(FH.exEquip) + ';
 // retire is a data-action. Rail is only shown for a rep exercise (a timed move has none).
 function renderExerciseEdit(ex) {
   const f = (target, val, label, type) =>
     '<label class="ex-field"><span>' + label + "</span>" +
-    '<input type="' + (type || "text") + '" class="ex-input" data-fh="' + FH.exEdit + '" data-target="' + target + '" data-ex="' + esc(ex.id) +
+    '<input type="' + (type || "text") + '" class="ex-input"' + fhAttr(FH.exEdit) + targetAttr(target) + ' data-ex="' + esc(ex.id) +
     '" value="' + esc(val == null ? "" : String(val)) + '"' + (type === "number" ? ' inputmode="numeric" min="1"' : "") + "></label>";
   const sel = (target, val, options, label) =>
-    '<label class="ex-field"><span>' + label + '</span><select class="ex-input" data-fh="' + FH.exEdit + '" data-target="' + target + '" data-ex="' + esc(ex.id) + '">' +
+    '<label class="ex-field"><span>' + label + '</span><select class="ex-input"' + fhAttr(FH.exEdit) + targetAttr(target) + ' data-ex="' + esc(ex.id) + '">' +
     options.map((o) => '<option value="' + o + '"' + (o === val ? " selected" : "") + ">" + esc(o) + "</option>").join("") + "</select></label>";
   const equip = '<div class="ex-field ex-equip"><span>Equipment</span><div class="ex-equip-tags">' +
-    EQUIPMENT.map((tag) => '<label class="equip-tag"><input type="checkbox" data-fh="' + FH.exEquip + '" data-ex="' + esc(ex.id) + '" data-equip="' + tag + '"' +
+    EQUIPMENT.map((tag) => '<label class="equip-tag"><input type="checkbox"' + fhAttr(FH.exEquip) + ' data-ex="' + esc(ex.id) + '" data-equip="' + tag + '"' +
       ((ex.equipment || []).includes(tag) ? " checked" : "") + "> " + esc(tag) + "</label>").join("") + "</div></div>";
   const rail = ex.volume === "reps"
     ? '<div class="ex-field ex-rail"><span>Default rail</span>' +
-        f(EX_FIELD.railFloor, Array.isArray(ex.defaultRail) ? ex.defaultRail[0] : "", "", "number") +
+        f(TARGET.railFloor, Array.isArray(ex.defaultRail) ? ex.defaultRail[0] : "", "", "number") +
         '<span class="rail-dash">–</span>' +
-        f(EX_FIELD.railCeiling, Array.isArray(ex.defaultRail) ? ex.defaultRail[1] : "", "", "number") + "</div>"
+        f(TARGET.railCeiling, Array.isArray(ex.defaultRail) ? ex.defaultRail[1] : "", "", "number") + "</div>"
     : "";
   return '<div class="lib-edit">' +
-    f(EX_FIELD.name, ex.name, "Name") +
-    f(EX_FIELD.setup, ex.setup, "Setup") +
-    f(EX_FIELD.cue, ex.cue, "Cue") +
-    sel(EX_FIELD.loadMode, ex.loadMode || "standard", LOAD_MODES.map((m) => m.id), "Loading mode") +
-    sel(EX_FIELD.loadMetric, ex.loadMetric, LOAD_METRICS, "Load metric") +
+    f(EX_FIELDS.name, ex.name, "Name") +
+    f(EX_FIELDS.setup, ex.setup, "Setup") +
+    f(EX_FIELDS.cue, ex.cue, "Cue") +
+    sel(EX_FIELDS.loadMode, ex.loadMode || "standard", LOAD_MODES.map((m) => m.id), "Loading mode") +
+    sel(EX_FIELDS.loadMetric, ex.loadMetric, LOAD_METRICS, "Load metric") +
     equip + rail +
-    '<button type="button" class="link ex-retire-btn" data-action="' + ACTION.exRetire + '" data-ex="' + esc(ex.id) + '">' +
+    '<button type="button" class="link ex-retire-btn"' + actionAttr(ACTION.exRetire) + ' data-ex="' + esc(ex.id) + '">' +
       (ex.retired ? "Un-retire" : "Retire") + "</button>" +
     "</div>";
 }
@@ -507,7 +510,7 @@ function renderMeasurements() {
       '<span class="measure-name">' + esc(m.name) + "</span>" +
       '<input type="number" inputmode="decimal" class="measure-val" data-k="' + k + '" data-type="text" data-refresh="bmi" aria-label="' + esc(m.name) + " (" + esc(m.unit) + ')" value="' + esc(val) + '" placeholder="' + (prev != null ? esc(String(prev)) : "—") + '">' +
       '<span class="unit">' + esc(m.unit) + "</span>" +
-      (editing ? '<button class="remove" type="button" data-action="' + ACTION.mRemove + '" data-m="' + mId + '" aria-label="Remove">×</button>' : "") +
+      (editing ? '<button class="remove" type="button"' + actionAttr(ACTION.mRemove) + ' data-m="' + mId + '" aria-label="Remove">×</button>' : "") +
       "</div>";
   }).join("");
 
@@ -542,7 +545,7 @@ export function renderBmi() {
 const WD_INITIALS = ["S", "M", "T", "W", "T", "F", "S"];
 function adherenceHtml() {
   const a = windDownAdherence();
-  return '<p class="winddown-adherence' + (a.met ? " met" : "") + '" data-winddown-adherence="1">' +
+  return '<p class="winddown-adherence' + (a.met ? " met" : "") + '"' + markAttr(MARK.winddownAdherence) + '>' +
     "<strong>" + a.done + " / " + a.target + "</strong> nights this week" + (a.met ? " ✓" : "") + "</p>";
 }
 function renderWinddown() {
@@ -550,7 +553,7 @@ function renderWinddown() {
   if (!card) return;
   const cells = windDownWeek().map((d) => {
     const cls = "wd-day" + (d.done ? " done" : "") + (d.isToday ? " today" : "") + (d.future ? " future" : "");
-    return '<button class="' + cls + '" type="button" data-action="' + ACTION.winddownToggle + '" data-date="' + d.iso + '"' +
+    return '<button class="' + cls + '" type="button"' + actionAttr(ACTION.winddownToggle) + ' data-date="' + d.iso + '"' +
       (d.future ? " disabled" : "") + ' aria-pressed="' + d.done + '" aria-label="' + esc(fmtWeekday(d.date)) + '">' +
       '<span class="wd-dow">' + WD_INITIALS[d.date.getDay()] + "</span>" +
       '<span class="wd-num">' + d.date.getDate() + "</span></button>";
@@ -573,7 +576,7 @@ function renderWinddown() {
 export function renderWinddownAdherence() {
   const card = document.getElementById("winddown-card");
   if (!card) return;
-  const line = card.querySelector("[data-winddown-adherence]");
+  const line = card.querySelector(markSelector(MARK.winddownAdherence));
   if (line) line.outerHTML = adherenceHtml();
 }
 
@@ -586,24 +589,24 @@ export function hydrateNotes() {
  * Measurement picker (the one add-zone that survives this slice)         *
  * ---------------------------------------------------------------------- */
 function renderMeasureAddZone() {
-  return '<div class="add-zone" data-picker="measure">' +
-    '<button class="add-btn" type="button" data-action="' + ACTION.pickerOpen + '">＋ Add measurement</button>' +
-    '<div class="picker" data-picker-panel="1" hidden>' +
-      '<input type="text" class="picker-search" data-picker-search="1" data-fh="' + FH.pickerSearch + '" placeholder="Search measurements…">' +
-      '<div class="picker-list" data-picker-list="1"></div>' +
-      '<button class="link" type="button" data-action="' + ACTION.formOpen + '">＋ Create a new measurement</button>' +
-      '<form class="picker-form" data-picker-form="1" hidden>' +
+  return '<div class="add-zone"' + markAttr(MARK.picker) + '>' +
+    '<button class="add-btn" type="button"' + actionAttr(ACTION.pickerOpen) + '>＋ Add measurement</button>' +
+    '<div class="picker"' + markAttr(MARK.pickerPanel) + ' hidden>' +
+      '<input type="text" class="picker-search"' + markAttr(MARK.pickerSearch) + fhAttr(FH.pickerSearch) + ' placeholder="Search measurements…">' +
+      '<div class="picker-list"' + markAttr(MARK.pickerList) + '></div>' +
+      '<button class="link" type="button"' + actionAttr(ACTION.formOpen) + '>＋ Create a new measurement</button>' +
+      '<form class="picker-form"' + markAttr(MARK.pickerForm) + ' hidden>' +
         '<input name="name" placeholder="Measurement name" required>' +
         '<select name="unit"><option value="cm">cm</option><option value="kg">kg</option></select>' +
         '<div class="form-actions"><button type="submit">Add</button>' +
-        '<button type="button" class="link" data-action="' + ACTION.formCancel + '">Cancel</button></div>' +
+        '<button type="button" class="link"' + actionAttr(ACTION.formCancel) + '>Cancel</button></div>' +
       "</form>" +
     "</div></div>";
 }
 
 // Re-render the measurement picker's list, minus already-tracked measurements, name-filtered.
 export function repopulate(zone, query) {
-  const picker = zone.querySelector("[data-picker-panel]");
+  const picker = zone.querySelector(markSelector(MARK.pickerPanel));
   if (!picker) return;
   const on = {};
   state.tracked.forEach((id) => (on[id] = true));
@@ -611,7 +614,7 @@ export function repopulate(zone, query) {
   const items = Object.values(state.measurements)
     .filter((m) => !on[m.id] && (!q || m.name.toLowerCase().indexOf(q) >= 0))
     .sort((a, b) => a.name.localeCompare(b.name));
-  picker.querySelector("[data-picker-list]").innerHTML = items.length
-    ? items.map((m) => '<button class="pick" type="button" data-action="' + ACTION.mAdd + '" data-m="' + m.id + '">' + esc(m.name) + ' <span class="tag">' + esc(m.unit) + "</span></button>").join("")
+  picker.querySelector(markSelector(MARK.pickerList)).innerHTML = items.length
+    ? items.map((m) => '<button class="pick" type="button"' + actionAttr(ACTION.mAdd) + ' data-m="' + m.id + '">' + esc(m.name) + ' <span class="tag">' + esc(m.unit) + "</span></button>").join("")
     : '<p class="muted small">No matches — create a new one below.</p>';
 }

@@ -12,7 +12,7 @@
 
 import {
   slotAttrs, slotCtx, classSlotAttrs, classSlotCtx,
-  LOG_FIELDS, CLASS_FIELDS, DONE_FIELD, fieldAttr, fieldSelector,
+  FIELD, LOG_FIELDS, CLASS_FIELDS, fieldAttr, fieldSelector,
 } from "../slot.js";
 
 let pass = 0, fail = 0;
@@ -99,6 +99,23 @@ const datasetOf = (attrs) => Object.fromEntries(
 })();
 
 /* ---------------------------------------------------------------------- *
+ * The emitter is as strict as the reader. An incomplete ctx would emit    *
+ * data-group="undefined", which the reader dutifully rejects — leaving a  *
+ * dead input and putting the noise on the far side of the seam. This is   *
+ * the single emit point, so it's where the drift should be loud.          *
+ * ---------------------------------------------------------------------- */
+(() => {
+  const threw = (fn) => { try { fn(); return false; } catch { return true; } };
+  const good = { block: "b1", week: 1, routine: 0, group: 0, item: 0, round: 0 };
+  ck("emitting a ctx missing a part throws rather than writing 'undefined'",
+    threw(() => slotAttrs({ ...good, group: undefined })));
+  ck("emitting a ctx with a non-index part throws", threw(() => slotAttrs({ ...good, round: "two" })));
+  ck("emitting nothing at all throws", threw(() => slotAttrs(null)));
+  ck("a complete ctx still emits", !threw(() => slotAttrs(good)));
+  ck("the Class emitter is strict the same way", threw(() => classSlotAttrs({ block: "b1", week: 1 })));
+})();
+
+/* ---------------------------------------------------------------------- *
  * The in-slot field vocabulary — the other half of the contract. The      *
  * renderer names an input and the handler looks it up; both go through    *
  * here, so adding a logged field is one edit rather than two that can     *
@@ -108,7 +125,7 @@ const datasetOf = (attrs) => Object.fromEntries(
   ck("every log field's emitted attribute is found by its own selector",
     LOG_FIELDS.every((f) => datasetOf(fieldAttr(f)).field === f));
   ck("the done tick and the class fields agree the same way",
-    datasetOf(fieldAttr(DONE_FIELD)).field === DONE_FIELD && CLASS_FIELDS.every((f) => datasetOf(fieldAttr(f)).field === f));
+    datasetOf(fieldAttr(FIELD.done)).field === FIELD.done && CLASS_FIELDS.every((f) => datasetOf(fieldAttr(f)).field === f));
   ck("a selector targets the field its attribute emits",
     LOG_FIELDS.every((f) => fieldSelector(f) === '[data-field="' + f + '"]'));
   ck("the log vocabulary is the set buildPerformance reads",

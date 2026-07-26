@@ -7,15 +7,19 @@
  * composeField does `if (set)` and returns — so a plan edit quietly stops saving. A `data-action`
  * mismatch is louder (a dead button), but shares the fix.
  *
- * So the emitter interpolates a constant and the dispatch map is keyed by the same constant. Rename
- * a constant and both sides move together; mistype one and it's `undefined` at both ends rather
- * than a name that matches on one side only.
+ * So the emitter calls this module's builder and the dispatch map is keyed by the same constant.
+ * Rename a constant and both sides move together; mistype one and it's `undefined` at both ends
+ * rather than a name that matches on one side only. Nothing spells a `data-` prefix inline — which
+ * also means a name can't sit inside a string literal where a sweep would mistake prose for code.
  *
  * The app shell (index.html) authors six of these as literals — HTML can't import — so the
  * vocabulary alone can't protect them. verify-actions.mjs closes that: it scrapes every routing
  * attribute out of the live DOM and asserts each value is declared here.
  *
- * Pure data. Imports nothing, so it sits at the root of the graph beside constants.js. */
+ * Names + the emitters/selectors that spell them. Imports only `helpers` (for the shared attribute
+ * builder), so it sits near the root of the graph beside constants.js. */
+
+import { attr } from "./helpers.js";
 
 // data-action → handleClick (the app-level switch) and composeActions (the plan-authoring
 // delegation). One namespace, one attribute, so one map — which of the two dispatches handles a
@@ -80,23 +84,33 @@ export const TARGET = Object.freeze({
   itemTime: "item-time",
 });
 
-// data-target under FH.exEdit → updateExercise's allow-list: which Exercise field a Library editor
-// input sets. Shares the data-target attribute with TARGET (and deliberately reuses the two rail
-// names — a plan Item's rail and an exercise's *default* rail are the same concept at two levels);
-// the data-fh is what picks the dispatch, so the two vocabularies never collide. verify-actions
-// checks a target against the set its own data-fh selects, not the union, so a compose target riding
-// an ex-edit input fails rather than dying quietly in the allow-list.
-//
-// ⚠ These five values are also **Exercise record property names** — updateExercise does
-// `ex[field] = value`. So unlike every other name here, the *value* is load-bearing beyond the DOM:
-// renaming a constant is free, but changing its string renames a stored field. The two rail names are
-// the exception, mapped explicitly onto `defaultRail` rather than assigned.
-export const EX_FIELD = Object.freeze({
-  name: "name",
-  setup: "setup",
-  cue: "cue",
-  loadMode: "loadMode",
-  loadMetric: "loadMetric",
-  railFloor: "rail-floor",
-  railCeiling: "rail-ceiling",
+// Marker attributes — an element a handler must *find*. CSS classes are for styling and test
+// selection and don't route behaviour (CONTEXT), so anything reached by `closest`/`querySelector`
+// carries one of these instead. Same silent-failure class as the rest: a marker that stops matching
+// leaves the handler's `if (el)` guard returning quietly, so they're declared here like everything
+// else rather than spelled at both ends.
+// The prefix is what makes a marker self-describing: verify-actions scrapes `data-mark-*` and knows
+// it has found exactly the markers, with no list of payload attributes to keep in step.
+const MARK_PREFIX = "mark-";
+
+export const MARK = Object.freeze({
+  slot: "slot",                             // one round's log slot (carries a Session ctx)
+  classSlot: "class-slot",                  // a Class card's actuals (carries an Attendance ctx)
+  routineCard: "routine-card",              // the day card a logged flag toggles on
+  picker: "picker",                         // an add-zone: the disclosure + its panel
+  pickerPanel: "picker-panel",
+  pickerSearch: "picker-search",
+  pickerList: "picker-list",
+  pickerForm: "picker-form",
+  libEx: "lib-ex",                          // a Library entry (paired with data-ex for the id)
+  libExName: "lib-ex-name",                 // its summary label, live-patched on rename
+  winddownAdherence: "winddown-adherence",  // the adherence line, live-patched on target change
 });
+
+/* ---- Emitting a name, and finding it again ---- */
+export const actionAttr = (a) => attr("action", a);
+export const fhAttr = (h) => attr("fh", h);
+export const targetAttr = (t) => attr("target", t);
+export const markAttr = (m) => attr(MARK_PREFIX + m, true); // bare + prefixed: `data-mark-slot`
+export const markSelector = (m) => "[data-" + MARK_PREFIX + m + "]";
+export const actionSelector = (a) => '[data-action="' + a + '"]';

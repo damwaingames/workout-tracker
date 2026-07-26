@@ -6,15 +6,16 @@
  * exercise. The measurements card + footer backups are untouched infra. Composing the plan (#45)
  * brings its authoring handlers on top. */
 
-import { slugify, uniqueId, buildPerformance, validYMD, cellScalarKey } from "./helpers.js";
+import { slugify, uniqueId, buildPerformance, validYMD, cellScalarKey, itemLogMode } from "./helpers.js";
 import {
   state, editing, setState, setEditing, save, setLog, logPerformance, logAttendance,
-  updateExercise, toggleExerciseEquip, setExerciseRetired,
+  updateExercise, setExerciseRailBound, toggleExerciseEquip, setExerciseRetired,
   currentBlock, currentCell, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
-  blankRoutine, blankGroup, newItem, swapDays, toggleWinddown, setWinddownField, effectiveRoutine,
+  blankRoutine, blankGroup, newItem, swapDays, toggleWinddown, setWinddownField, itemAtCtx,
 } from "./state.js";
-import { ACTION, FH, TARGET, EX_FIELD } from "./actions.js";
-import { slotCtx, classSlotCtx, fieldSelector, LOG_FIELDS, CLASS_FIELDS, DONE_FIELD } from "./slot.js";
+import { ACTION, FH, TARGET, MARK, markSelector, actionSelector } from "./actions.js";
+import { EX_FIELDS } from "./constants.js";
+import { slotCtx, classSlotCtx, fieldSelector, FIELD, LOG_FIELDS, CLASS_FIELDS } from "./slot.js";
 import { render, renderBmi, renderWinddownAdherence, repopulate, hydrateNotes } from "./render.js";
 import { exportBackup, importBackup, drivePush, drivePull } from "./io.js";
 
@@ -63,13 +64,13 @@ export function handleClick(e) {
       state.tracked = state.tracked.filter((x) => x !== el.dataset.m);
       save(); render(); break;
     case ACTION.pickerOpen: {
-      const zone = el.closest("[data-picker]");
-      const picker = zone && zone.querySelector("[data-picker-panel]");
+      const zone = el.closest(markSelector(MARK.picker));
+      const picker = zone && zone.querySelector(markSelector(MARK.pickerPanel));
       if (!picker) break;
       picker.hidden = !picker.hidden;
       if (!picker.hidden) {
         repopulate(zone, "");
-        const s = picker.querySelector("[data-picker-search]");
+        const s = picker.querySelector(markSelector(MARK.pickerSearch));
         if (s) s.focus();
       }
       break;
@@ -86,7 +87,7 @@ export function handleClick(e) {
     case ACTION.formCancel: {
       const form = el.closest("form");
       form.hidden = true; form.reset();
-      const trigger = form.parentNode.querySelector('[data-action="' + ACTION.formOpen + '"]');
+      const trigger = form.parentNode.querySelector(actionSelector(ACTION.formOpen));
       if (trigger) trigger.hidden = false;
       break;
     }
@@ -101,7 +102,7 @@ export function handleClick(e) {
  * Submits — only the measurement create form this slice                  *
  * ---------------------------------------------------------------------- */
 export function handleSubmit(e) {
-  const form = e.target.closest("[data-picker-form]");
+  const form = e.target.closest(markSelector(MARK.pickerForm));
   if (!form) return;
   e.preventDefault();
   const fd = new FormData(form);
@@ -156,7 +157,7 @@ const refreshBy = { bmi: renderBmi };
 // change isn't a plain logged scalar but drives its own effect — the picker search filter, and a
 // Session log input (gathers its slot → a Performance).
 const fieldByName = {
-  [FH.pickerSearch](el) { const zone = el.closest("[data-picker]"); if (zone) repopulate(zone, el.value); },
+  [FH.pickerSearch](el) { const zone = el.closest(markSelector(MARK.picker)); if (zone) repopulate(zone, el.value); },
   [FH.log]: logField,
   // Scalar plan edits (title/focus/rounds/rests/rail/duration) mutate + save but DON'T re-render, so
   // the field keeps focus mid-type — like the block-name input and the measurement values.
@@ -171,11 +172,18 @@ const fieldByName = {
   // Edit an exercise field in the Library (#50). Scalar mutate + save, no re-render (keeps focus); the
   // summary name is hand-patched, like the block-name input patches its select option.
   [FH.exEdit](el) {
-    updateExercise(el.dataset.ex, el.dataset.target, el.value);
-    if (el.dataset.target === EX_FIELD.name) {
-      // data-lib-ex marks the Library entry; data-ex names the exercise (a log slot carries one too,
+    const target = el.dataset.target;
+    // Translate the DOM target into a domain call — the two rail bounds map onto `defaultRail`, every
+    // other target is an Exercise field name. state.js knows nothing about data-target either way.
+    if (target === TARGET.railFloor || target === TARGET.railCeiling) {
+      setExerciseRailBound(el.dataset.ex, target === TARGET.railFloor ? 0 : 1, el.value);
+    } else {
+      updateExercise(el.dataset.ex, target, el.value);
+    }
+    if (target === EX_FIELDS.name) {
+      // MARK.libEx marks the Library entry; data-ex names the exercise (a log slot carries one too,
       // hence both). The exercise id is the app's own slug, so it needs no attribute-value escaping.
-      const nm = document.querySelector('[data-lib-ex][data-ex="' + el.dataset.ex + '"] [data-lib-ex-name]');
+      const nm = document.querySelector(markSelector(MARK.libEx) + '[data-ex="' + el.dataset.ex + '"] ' + markSelector(MARK.libExName));
       if (nm) nm.textContent = el.value;
     }
   },
@@ -183,24 +191,11 @@ const fieldByName = {
   [FH.exEquip](el) { toggleExerciseEquip(el.dataset.ex, el.dataset.equip); },
 };
 
-// The Item a Session-slot ctx points at — the planned Item, or the Holiday Session's when that day is
-// swapped (ADR-0025), read through effectiveRoutine so the swap is honoured exactly as it is on
-// render. Null when the ctx doesn't resolve, including an unknown block: falling back to the current
-// block would read a *different* block's Item, which is the coercion slotCtx exists to remove. Only
-// the station mode needs this; #64 moves the plan resolution into the plan-verbs module.
-function itemForCtx(ctx) {
-  const block = state.blocks.find((b) => b.id === ctx.block);
-  if (!block) return null;
-  const r = effectiveRoutine(block, ctx.week, ctx.routine);
-  const g = r && r.groups && r.groups[ctx.group];
-  return (g && g.items && g.items[ctx.item]) || null;
-}
-
 // Log (or clear) a Class occurrence's actuals at its plan slot (#50, ADR-0030): gather the card's
 // minutes, wearable kcal, and note → an Attendance on the class type (null when all empty — honest
 // under-completion). A full render would steal focus mid-type, so it reflects the logged state in place.
 function classLogField(el) {
-  const box = el.closest("[data-class-slot]");
+  const box = el.closest(markSelector(MARK.classSlot));
   if (!box) return;
   const ctx = classSlotCtx(box.dataset);
   if (!ctx) return; // a slot whose locator didn't read is a no-op, never a write to a guessed slot
@@ -209,7 +204,7 @@ function classLogField(el) {
   const mins = Number(raw.mins) || 0, kcal = Number(raw.kcal) || 0, note = raw.note.trim();
   const data = (mins > 0 || kcal > 0 || note) ? { mins, kcal, note } : null;
   logAttendance(box.dataset.class, ctx, data);
-  const card = box.closest("[data-routine-card]");
+  const card = box.closest(markSelector(MARK.routineCard));
   if (card) card.classList.toggle("logged", !!data);
 }
 
@@ -217,24 +212,26 @@ function classLogField(el) {
 // mode records (or null to clear), write it onto the exercise, and reflect the logged state in place.
 // A full render would steal focus mid-type — the measurements card avoids it the same way.
 function logField(el) {
-  const slot = el.closest("[data-slot]");
+  const slot = el.closest(markSelector(MARK.slot));
   if (!slot) return;
   const d = slot.dataset;
   const ex = state.library[d.ex];
   if (!ex) return;
   const ctx = slotCtx(d);
   if (!ctx) return; // ditto: a broken locator writes nothing rather than a Performance to nowhere
+  // The plan answers what was planned — the log mode and a station's duration are both classified
+  // from the Item, not read back off attributes the renderer echoed (#62). A ctx that no longer
+  // resolves to an Item can't be logged against meaningfully, so it's a no-op like a broken locator.
+  const it = itemAtCtx(ctx);
+  if (!it) return;
   const val = (f) => { const n = slot.querySelector(fieldSelector(f)); return n ? n.value : ""; };
   const raw = Object.fromEntries(LOG_FIELDS.map((f) => [f, val(f)]));
-  const done = slot.querySelector(fieldSelector(DONE_FIELD));
+  const done = slot.querySelector(fieldSelector(FIELD.done));
   if (done) {
     raw.done = done.checked;
-    // The station's planned duration comes from the Item that owns it, not from an attribute the
-    // renderer echoed back (#62) — the plan is the source of truth for what was planned.
-    const it = itemForCtx(ctx);
-    raw.time = it && it.time != null ? it.time : 0;
+    raw.time = it.time != null ? it.time : 0;
   }
-  const data = buildPerformance(d.mode, ex, raw);
+  const data = buildPerformance(itemLogMode(it, ex), ex, raw);
   logPerformance(d.ex, ctx, data);
   slot.classList.toggle("logged", !!data);
 }

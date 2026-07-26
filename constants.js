@@ -28,6 +28,16 @@ export const ZONES = [
 ];
 // A rep-item's default rail (the [floor, ceiling] range double progression works between).
 export const DEFAULT_RAIL = [8, 12];
+
+// The Exercise record fields the Library editor may write. A domain fact, not a routing name: these
+// are property names on the record itself (updateExercise does `ex[field] = value`), so the strings
+// are load-bearing beyond the DOM. The editor uses them as its data-target values, which is why they
+// live here rather than in actions.js — the allow-list derives from this, so adding a field is one
+// edit. An exercise's *default rail* isn't here: it's a two-input pair mapped onto `defaultRail`
+// rather than assigned, so it reuses the plan's own rail targets.
+export const EX_FIELDS = Object.freeze({
+  name: "name", setup: "setup", cue: "cue", loadMode: "loadMode", loadMetric: "loadMetric",
+});
 // The achievable per-dumbbell weights (kg) across the user's dumbbells — the discrete-load ladder the
 // double-progression "add load" step snaps to (ADR-0031), so a kg target is always a weight you can
 // actually pick up. Ascending. Mostly the adjustable dumbbells' settings, plus the fixed 3 kg moulded
