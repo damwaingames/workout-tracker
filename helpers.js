@@ -260,6 +260,14 @@ export function esc(s) {
 }
 export function fmt(n) { return Math.round(n).toLocaleString(); }
 
+// One `data-*` attribute, escaped and ready to concatenate into a tag (leading space included). Every
+// routing attribute in the app emits through this rather than through a bare quote-plus-concat, so the
+// quoting can't be got wrong at ~60 call sites — and a name can't be spelled inside a string literal
+// where a find/replace would mistake prose for code.
+export function attr(name, value) {
+  return " data-" + name + '="' + esc(String(value)) + '"';
+}
+
 // A rail [lo, hi] as "8–12" (a bare "12" when lo === hi).
 export function fmtRail(rail) {
   if (!Array.isArray(rail) || !rail.length) return "";

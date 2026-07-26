@@ -5,7 +5,7 @@
  * the service-worker update cycle), refreshing the cache with what it gets; the cache is the OFFLINE
  * fallback, not the primary source. This replaced a cache-first handler that served the last-cached
  * shell until the SW fully cycled — which could strand a device on an old version (v5.8.1). */
-const CACHE = "workout-tracker-v5.8.1";
+const CACHE = "workout-tracker-v5.8.2";
 const ASSETS = [
   "./",
   "./index.html",
@@ -17,6 +17,8 @@ const ASSETS = [
   "./io.js",
   "./render.js",
   "./compose.js",
+  "./actions.js",
+  "./slot.js",
   "./state.js",
   "./migrate.js",
   "./helpers.js",

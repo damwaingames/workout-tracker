@@ -28,6 +28,16 @@ export const ZONES = [
 ];
 // A rep-item's default rail (the [floor, ceiling] range double progression works between).
 export const DEFAULT_RAIL = [8, 12];
+
+// The Exercise record fields the Library editor may write. A domain fact, not a routing name: these
+// are property names on the record itself (updateExercise does `ex[field] = value`), so the strings
+// are load-bearing beyond the DOM. The editor uses them as its data-target values, which is why they
+// live here rather than in actions.js — the allow-list derives from this, so adding a field is one
+// edit. An exercise's *default rail* isn't here: it's a two-input pair mapped onto `defaultRail`
+// rather than assigned, so it reuses the plan's own rail targets.
+export const EX_FIELDS = Object.freeze({
+  name: "name", setup: "setup", cue: "cue", loadMode: "loadMode", loadMetric: "loadMetric",
+});
 // The achievable per-dumbbell weights (kg) across the user's dumbbells — the discrete-load ladder the
 // double-progression "add load" step snaps to (ADR-0031), so a kg target is always a weight you can
 // actually pick up. Ascending. Mostly the adjustable dumbbells' settings, plus the fixed 3 kg moulded
@@ -141,5 +151,8 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 // v5.7.0 adds the Wind-down — the daily mobility habit tracked outside any block as weekly adherence;
 // v5.8.0 logs Class attendances (minutes / wearable burn / note) + gives the Library exercise editing
 // and retire/un-retire — the last v6-rework slice; v5.8.1 makes the service worker network-first, so a
-// new deploy shows up on the next launch instead of stranding a device on the cached old shell.
-export const APP_VERSION = "5.8.1";
+// new deploy shows up on the next launch instead of stranding a device on the cached old shell;
+// v5.8.2 gives the render→handler contract its own modules — slot.js builds and reads a slot's ctx in
+// one place, actions.js declares every name that routes an event — instead of both sides spelling the
+// same string literals independently (#62).
+export const APP_VERSION = "5.8.2";

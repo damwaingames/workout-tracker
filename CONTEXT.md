@@ -187,7 +187,25 @@ separate and deliberately not redefined here.
 
 - **Dispatch by `data-*` tag → map.** Every event routes through a lookup map keyed by a
   data attribute, never a class scan: `data-action` (clicks → `handleClick`), `data-fh`
-  (special field handlers → `fieldByName`), `data-refresh` (which running total a logged
-  field re-patches live → `refreshBy`), `data-after` (which post-toggle effect a stateful
-  checkbox runs → `afterCheck`). CSS classes are for styling and test selection
-  only — they don't route behaviour.
+  (special field handlers → `fieldByName`), `data-target` (which plan field a compose input
+  sets → `composeTargets`, or which **exercise** field a Library editor sets → `updateExercise`),
+  `data-refresh` (which running total a logged field re-patches live → `refreshBy`). Every one of
+  those names is declared once in `actions.js` and used by *both* sides — the emitter calls that
+  module's builder, the dispatch map is keyed by the same constant — so a rename moves both together
+  and nothing spells a `data-` prefix inline. A `data-fh` or `data-target` that stops matching its
+  handler is otherwise **silent** (the field dispatch falls through and returns), which is why the
+  vocabulary is shared rather than trusted. The app shell's own hand-written actions can't import it,
+  so `verify-actions` scrapes the live DOM and asserts every routing attribute it finds is declared.
+- **CSS classes don't route behaviour** — they are for styling and test selection only. An element a
+  handler must *find* carries a **marker**: a valueless `data-mark-*` attribute (`data-mark-slot`,
+  `data-mark-routine-card`, `data-mark-picker`, …), declared in `actions.js`'s `MARK` and spelled
+  through `markAttr`/`markSelector`. The prefix is what lets the guard scrape exactly the markers
+  without keeping a list of payload attributes in step. A marker that stops matching is as silent as
+  a `data-fh` — the handler's `if (el)` guard just returns — so it's held to the same standard.
+- **The slot ctx contract.** A **Performance**'s six-part ctx (**Cell** plus group/item/round,
+  ADR-0020) and an **Attendance**'s coarser three-part one (ADR-0030) are emitted and read back
+  through `slot.js` — the attribute names live there and nowhere else, so the render→handler
+  agreement can't drift into a silent mismatch. A ctx that doesn't read yields nothing rather
+  than a ctx carrying `NaN`, making a broken locator a loud no-op instead of a **Performance**
+  written to a slot that doesn't exist. The in-slot field names a handler gathers by
+  (`LOG_FIELDS` / `CLASS_FIELDS`) are shared from the same module.

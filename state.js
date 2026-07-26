@@ -8,7 +8,7 @@
 
 import {
   STORAGE_KEY, SUPPORTED_VERSIONS, STORE_VERSION, DEFAULT_WEEKS, DEFAULT_ROUNDS, DEFAULT_STATION_SEC,
-  DEFAULT_STEADY_MIN, STRAIGHT_SET_REST, DEFAULT_RAIL, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES, AWAY_KIT,
+  DEFAULT_STEADY_MIN, STRAIGHT_SET_REST, DEFAULT_RAIL, EX_FIELDS, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES, AWAY_KIT,
 } from "./constants.js";
 import {
   today, mondayOf, fmtYMD, scheduledDate, cellKey, cellScalarKey, measureKey, slugify, uniqueId, bandKg, isBandMetric,
@@ -358,6 +358,18 @@ function sameItemSlot(a, b) {
 }
 function sameSlot(a, b) { return sameItemSlot(a, b) && a.round === b.round; }
 
+// The Item a slot ctx points at, or null — the planned Item, or the Holiday Session's when that day
+// is swapped in (ADR-0025), resolved through effectiveRoutine so the swap is honoured exactly as it
+// is on render. The ctx-shaped plan query that mirrors performanceAt's ctx-shaped history query; an
+// unresolvable ctx yields null rather than falling back to a different block's Item.
+export function itemAtCtx(ctx) {
+  const block = state.blocks.find((b) => b.id === ctx.block);
+  if (!block) return null;
+  const r = effectiveRoutine(block, ctx.week, ctx.routine);
+  const g = r && r.groups && r.groups[ctx.group];
+  return (g && g.items && g.items[ctx.item]) || null;
+}
+
 // The Performance logged at a plan slot (or null) — what a logging input pre-fills from on render.
 export function performanceAt(exId, ctx) {
   const ex = state.library[exId];
@@ -423,16 +435,28 @@ export function logAttendance(classTypeId, ctx, data) {
 // keep the metric they were logged with (loadKg reads the performance's own load, not the record —
 // rewriting history would falsify a real logged set, the thing ADR-0020 protects). The editable set
 // is an allow-list so a stray target can't write an arbitrary record field (the composeTargets idiom).
-const EX_EDITABLE = new Set(["name", "setup", "cue", "loadMode", "loadMetric"]);
+// Takes a domain field name (EX_FIELDS), not a DOM target — the dispatch does that translation, so
+// this module carries no routing vocabulary.
+const EX_EDITABLE = new Set(Object.values(EX_FIELDS));
 export function updateExercise(exId, field, value) {
   const ex = state.library[exId];
   if (!ex) return;
-  if (field === "rail-floor" || field === "rail-ceiling") {
-    if (!Array.isArray(ex.defaultRail)) ex.defaultRail = DEFAULT_RAIL.slice();
-    ex.defaultRail[field === "rail-floor" ? 0 : 1] = clampMin(value, 1);
-  } else if (EX_EDITABLE.has(field)) {
-    ex[field] = value;
-  }
+  if (EX_EDITABLE.has(field)) ex[field] = value;
+  save();
+}
+
+// One bound of an exercise's default Rail (0 = floor, 1 = ceiling) — the pair the Library editor
+// writes. Separate from updateExercise because a rail bound isn't a record field you assign: it maps
+// onto `defaultRail`, seeding the array if the exercise has none yet.
+export function setExerciseRailBound(exId, index, value) {
+  const ex = state.library[exId];
+  if (!ex) return;
+  // Reject an out-of-range bound rather than coercing it. Returns rather than throwing (as slotAttrs
+  // does for the same class of programmer error) because a store mutator's neighbours all bail the
+  // same way on bad input — module-local idiom over cross-module uniformity.
+  if (index !== 0 && index !== 1) return;
+  if (!Array.isArray(ex.defaultRail)) ex.defaultRail = DEFAULT_RAIL.slice();
+  ex.defaultRail[index] = clampMin(value, 1);
   save();
 }
 
