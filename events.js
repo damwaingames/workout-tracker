@@ -153,13 +153,13 @@ const fieldById = {
 // emits correct totals; these only re-patch in place so the edited input keeps focus mid-type.
 const refreshBy = { bmi: renderBmi };
 
-// Special field handlers keyed by data-fh (the CONTEXT data-fh→fieldByName dispatch): a field whose
-// change isn't a plain logged scalar but drives its own effect — the picker search filter, and a
-// Session log input (gathers its slot → a Performance).
 // Which bound of an exercise's default Rail a Library-editor target writes (the plan's own rail
 // targets, reused — a default rail is the same concept one level up).
 const EX_RAIL_BOUND = { [TARGET.railFloor]: 0, [TARGET.railCeiling]: 1 };
 
+// Special field handlers keyed by data-fh (the CONTEXT data-fh→fieldByName dispatch): a field whose
+// change isn't a plain logged scalar but drives its own effect — the picker search filter, and a
+// Session log input (gathers its slot → a Performance).
 const fieldByName = {
   [FH.pickerSearch](el) { const zone = el.closest(markSelector(MARK.picker)); if (zone) repopulate(zone, el.value); },
   [FH.log]: logField,

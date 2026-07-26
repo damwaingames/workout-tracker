@@ -155,7 +155,7 @@ verify(async ({ page, ck, ls, reset, key }) => {
   const roundZero = (st) => perfsOf(st, "goblet-squats").find((p) => p.ctx && p.ctx.round === 0);
   const before = Number(roundZero(await ls()).volume.val);
   await page.evaluate((sel) => document.querySelector(sel).dataset.ex = "banded-clamshells", slot("goblet-squats", 0));
-  await page.fill('.log-slot[data-ex="banded-clamshells"][data-round="0"] [data-field="r"]', "99");
+  await page.fill(field("banded-clamshells", 0, "r"), "99");
   await page.waitForTimeout(50);
   s = await ls();
   ck("a slot whose data-ex disagrees with its ctx's Item logs nothing",

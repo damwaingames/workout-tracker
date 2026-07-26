@@ -451,7 +451,10 @@ export function updateExercise(exId, field, value) {
 export function setExerciseRailBound(exId, index, value) {
   const ex = state.library[exId];
   if (!ex) return;
-  if (index !== 0 && index !== 1) return; // reject an out-of-range bound rather than coercing it
+  // Reject an out-of-range bound rather than coercing it. Returns rather than throwing (as slotAttrs
+  // does for the same class of programmer error) because a store mutator's neighbours all bail the
+  // same way on bad input — module-local idiom over cross-module uniformity.
+  if (index !== 0 && index !== 1) return;
   if (!Array.isArray(ex.defaultRail)) ex.defaultRail = DEFAULT_RAIL.slice();
   ex.defaultRail[index] = clampMin(value, 1);
   save();
