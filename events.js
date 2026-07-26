@@ -156,6 +156,10 @@ const refreshBy = { bmi: renderBmi };
 // Special field handlers keyed by data-fh (the CONTEXT data-fh→fieldByName dispatch): a field whose
 // change isn't a plain logged scalar but drives its own effect — the picker search filter, and a
 // Session log input (gathers its slot → a Performance).
+// Which bound of an exercise's default Rail a Library-editor target writes (the plan's own rail
+// targets, reused — a default rail is the same concept one level up).
+const EX_RAIL_BOUND = { [TARGET.railFloor]: 0, [TARGET.railCeiling]: 1 };
+
 const fieldByName = {
   [FH.pickerSearch](el) { const zone = el.closest(markSelector(MARK.picker)); if (zone) repopulate(zone, el.value); },
   [FH.log]: logField,
@@ -175,11 +179,10 @@ const fieldByName = {
     const target = el.dataset.target;
     // Translate the DOM target into a domain call — the two rail bounds map onto `defaultRail`, every
     // other target is an Exercise field name. state.js knows nothing about data-target either way.
-    if (target === TARGET.railFloor || target === TARGET.railCeiling) {
-      setExerciseRailBound(el.dataset.ex, target === TARGET.railFloor ? 0 : 1, el.value);
-    } else {
-      updateExercise(el.dataset.ex, target, el.value);
-    }
+    // A target→bound map rather than a ternary, matching composeTargets right below.
+    const bound = EX_RAIL_BOUND[target];
+    if (bound != null) setExerciseRailBound(el.dataset.ex, bound, el.value);
+    else updateExercise(el.dataset.ex, target, el.value);
     if (target === EX_FIELDS.name) {
       // MARK.libEx marks the Library entry; data-ex names the exercise (a log slot carries one too,
       // hence both). The exercise id is the app's own slug, so it needs no attribute-value escaping.
@@ -215,8 +218,6 @@ function logField(el) {
   const slot = el.closest(markSelector(MARK.slot));
   if (!slot) return;
   const d = slot.dataset;
-  const ex = state.library[d.ex];
-  if (!ex) return;
   const ctx = slotCtx(d);
   if (!ctx) return; // ditto: a broken locator writes nothing rather than a Performance to nowhere
   // The plan answers what was planned — the log mode and a station's duration are both classified
@@ -224,6 +225,14 @@ function logField(el) {
   // resolves to an Item can't be logged against meaningfully, so it's a no-op like a broken locator.
   const it = itemAtCtx(ctx);
   if (!it) return;
+  // Before this, the mode and the exercise id were baked together at render, so they agreed by
+  // construction; now the ctx and the id are two independent lookups. data-ex survives as the slot's
+  // test-selection handle, so assert rather than assume — disagreement means the markup has drifted
+  // from the plan, and classifying one exercise's Item as another's is exactly the silent write the
+  // module exists to prevent. The plan's exId is the one that counts from here.
+  if (it.exId !== d.ex) return;
+  const ex = state.library[it.exId];
+  if (!ex) return;
   const val = (f) => { const n = slot.querySelector(fieldSelector(f)); return n ? n.value : ""; };
   const raw = Object.fromEntries(LOG_FIELDS.map((f) => [f, val(f)]));
   const done = slot.querySelector(fieldSelector(FIELD.done));
@@ -232,7 +241,7 @@ function logField(el) {
     raw.time = it.time != null ? it.time : 0;
   }
   const data = buildPerformance(itemLogMode(it, ex), ex, raw);
-  logPerformance(d.ex, ctx, data);
+  logPerformance(it.exId, ctx, data);
   slot.classList.toggle("logged", !!data);
 }
 

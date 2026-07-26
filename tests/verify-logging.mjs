@@ -143,6 +143,27 @@ verify(async ({ page, ck, ls, reset, key }) => {
   s = await ls();
   ck("editing a steady slot after reload keeps its exact duration", Number(perfsOf(s, "seated-elliptical")[0].volume.val) === 750);
 
+  // --- 8b. a slot whose markup disagrees with the plan writes nothing (#62) ---
+  // The ctx and the exercise id are two independent lookups now: the ctx resolves an Item from the
+  // plan, data-ex names the exercise the markup claims. They agree by construction today, so force a
+  // divergence to prove the guard is load-bearing — classifying one exercise's Item as another's
+  // would be exactly the silent mis-write the slot module exists to prevent.
+  // Everything downstream reads the plan's exId, so a divergence would write to the *right* exercise
+  // — which is precisely why the assertion has to be that the write didn't happen at all. Stale
+  // markup means you're looking at one exercise's name while the plan holds another; recording
+  // against what you can't see is the failure, not recording against the wrong record.
+  const roundZero = (st) => perfsOf(st, "goblet-squats").find((p) => p.ctx && p.ctx.round === 0);
+  const before = Number(roundZero(await ls()).volume.val);
+  await page.evaluate((sel) => document.querySelector(sel).dataset.ex = "banded-clamshells", slot("goblet-squats", 0));
+  await page.fill('.log-slot[data-ex="banded-clamshells"][data-round="0"] [data-field="r"]', "99");
+  await page.waitForTimeout(50);
+  s = await ls();
+  ck("a slot whose data-ex disagrees with its ctx's Item logs nothing",
+    Number(roundZero(s).volume.val) === before && before !== 99 &&
+    perfsOf(s, "banded-clamshells").every((p) => Number(p.volume.val) !== 99));
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(120);
+
   // --- 9. it shows in the Library timeline (the exercise owns the history — ADR-0020) ---
   await page.click('[data-action="view"][data-view="library"]');
   await page.waitForTimeout(50);

@@ -111,6 +111,8 @@ export const MARK = Object.freeze({
 export const actionAttr = (a) => attr("action", a);
 export const fhAttr = (h) => attr("fh", h);
 export const targetAttr = (t) => attr("target", t);
-export const markAttr = (m) => attr(MARK_PREFIX + m, true); // bare + prefixed: `data-mark-slot`
+// A marker is presence, not a value, so it emits bare — no builder needed, and no `true` sentinel
+// threaded through the shared one to select a second behaviour.
+export const markAttr = (m) => " data-" + MARK_PREFIX + m;
 export const markSelector = (m) => "[data-" + MARK_PREFIX + m + "]";
 export const actionSelector = (a) => '[data-action="' + a + '"]';

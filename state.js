@@ -451,8 +451,9 @@ export function updateExercise(exId, field, value) {
 export function setExerciseRailBound(exId, index, value) {
   const ex = state.library[exId];
   if (!ex) return;
+  if (index !== 0 && index !== 1) return; // reject an out-of-range bound rather than coercing it
   if (!Array.isArray(ex.defaultRail)) ex.defaultRail = DEFAULT_RAIL.slice();
-  ex.defaultRail[index === 0 ? 0 : 1] = clampMin(value, 1);
+  ex.defaultRail[index] = clampMin(value, 1);
   save();
 }
 
