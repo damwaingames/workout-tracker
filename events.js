@@ -11,11 +11,16 @@ import {
   state, editing, setState, setEditing, save, setLog, logPerformance, logAttendance,
   updateExercise, setExerciseRailBound, toggleExerciseEquip, setExerciseRetired,
   currentBlock, currentCell, deleteBlock, nextBlockNumber, blockIdTaken, defaultState, newBlockTemplate, M,
-  blankRoutine, blankGroup, newItem, swapDays, toggleWinddown, setWinddownField, itemAtCtx,
+  toggleWinddown, setWinddownField, itemAtCtx,
 } from "./state.js";
+import {
+  atRoutine, atHoliday, routineOf, addGroup, addItem, moveGroup, removeGroup, removeItem, setRoutineKind,
+  swapDays, setBlockWeeks, setRoutineField, setGroupField, setItemRailBound, setItemTime,
+  orphansOfRoutine, orphansOfGroup, orphansOfItem,
+} from "./plan.js";
 import { ACTION, FH, TARGET, MARK, markSelector, actionSelector } from "./actions.js";
 import { EX_FIELDS } from "./constants.js";
-import { slotCtx, classSlotCtx, fieldSelector, FIELD, LOG_FIELDS, CLASS_FIELDS } from "./slot.js";
+import { slotCtx, classSlotCtx, planIndex, fieldSelector, FIELD, LOG_FIELDS, CLASS_FIELDS } from "./slot.js";
 import { render, renderBmi, renderWinddownAdherence, repopulate, hydrateNotes } from "./render.js";
 import { exportBackup, importBackup, drivePush, drivePull } from "./io.js";
 
@@ -26,10 +31,11 @@ export function handleClick(e) {
   const el = e.target.closest("[data-action]");
   if (!el) return;
   // Plan-authoring clicks (#45) all mutate the current block's template, then save + re-render — one
-  // delegation instead of a case each, so handleClick stays about the app-level actions below.
+  // delegation instead of a case each, so handleClick stays about the app-level actions below. Each
+  // returns whether its verb changed anything: a declined confirm or a move off the end writes and
+  // re-renders nothing.
   if (Object.prototype.hasOwnProperty.call(composeActions, el.dataset.action)) {
-    composeActions[el.dataset.action](el);
-    save(); render();
+    if (composeActions[el.dataset.action](el)) { save(); render(); }
     return;
   }
   switch (el.dataset.action) {
@@ -168,8 +174,7 @@ const fieldByName = {
   [FH.compose]: composeField,
   // Adding an exercise to a Group IS structural (a new Item row), so it re-renders.
   [FH.itemAdd](el) {
-    const g = groupAt(el);
-    if (g && el.value) { g.items.push(newItem(el.value)); save(); render(); }
+    if (addItem(planLoc(el), gIdx(el), el.value)) { save(); render(); }
   },
   // Log a Class occurrence (#50): gather the card's minutes / kcal / note → an Attendance on the type.
   [FH.classLog]: classLogField,
@@ -261,47 +266,66 @@ export function handleField(e) {
 /* ---------------------------------------------------------------------- *
  * Plan authoring (#45) — compose the current block's weekly template.     *
  * ---------------------------------------------------------------------- */
-// Locate the routine / group / item a compose control points at, from its data-pos/g/i — or the
-// app-level Holiday Session singleton when the control carries data-holiday (#48). Its Groups/Items
-// then compose through the same mutators, since they only ever go through routineAt/groupAt/itemAt.
-const routineAt = (el) => (el.dataset.holiday ? state.holiday : currentBlock().template[Number(el.dataset.pos)]);
-const groupAt = (el) => { const r = routineAt(el); return r && r.groups && r.groups[Number(el.dataset.g)]; };
-const itemAt = (el) => { const g = groupAt(el); return g && g.items && g.items[Number(el.dataset.i)]; };
-// Swap array element i with its neighbour in `dir` (±1), if that neighbour exists.
-function swapBy(arr, i, dir) { const j = i + dir; if (arr && arr[i] && arr[j] !== undefined) { const t = arr[i]; arr[i] = arr[j]; arr[j] = t; } }
-// A non-negative integer field value clamped to a floor (blank / garbage → the floor).
-const clampNum = (v, min) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(min, n) : min; };
+// Resolve a compose control to the plan location its verb takes: a position in the current block's
+// weekly template, or the app-level Holiday Session singleton when the control carries data-holiday
+// (#48). Locating the target is all the dispatch does here — the edit itself, and the history repair
+// it owes, belong to plan.js (#64), which is why these handlers are calls rather than logic.
+const planLoc = (el) => (el.dataset.holiday ? atHoliday() : atRoutine(currentBlock(), planIndex(el.dataset.pos)));
+const gIdx = (el) => planIndex(el.dataset.g);
+const iIdx = (el) => planIndex(el.dataset.i);
 
-// Structural authoring clicks — each mutates the current block's template; handleClick saves + renders.
+// Ask before an edit that would retire logged work (ADR-0032). The sets stay on the exercise and keep
+// counting towards PRs and ghosts, but they stop filling the slot — worth being told rather than
+// discovering later. An edit with no history under it asks nothing.
+function confirmOrphans(n) {
+  return !n || window.confirm(n + (n === 1 ? " logged entry" : " logged entries") +
+    " will stay in your history but stop filling this plan slot. Continue?");
+}
+
+// Structural authoring clicks — each resolves a target and calls one verb, and returns whether it
+// changed anything, so handleClick saves + renders only when it did (a declined confirm is a true
+// no-op rather than a pointless write + full re-render).
 const composeActions = {
-  [ACTION.addGroup](el) { const r = routineAt(el); if (r && r.groups) r.groups.push(blankGroup()); },
-  [ACTION.removeGroup](el) { const r = routineAt(el); if (r && r.groups) r.groups.splice(Number(el.dataset.g), 1); },
-  [ACTION.groupUp](el) { const r = routineAt(el); if (r) swapBy(r.groups, Number(el.dataset.g), -1); },
-  [ACTION.groupDown](el) { const r = routineAt(el); if (r) swapBy(r.groups, Number(el.dataset.g), 1); },
-  [ACTION.removeItem](el) { const g = groupAt(el); if (g) g.items.splice(Number(el.dataset.i), 1); },
-  // Switch a day's kind — a fresh Routine of that kind (only when it actually changes, so an accidental
-  // re-click of the active kind doesn't wipe the day's content).
-  [ACTION.kind](el) { const b = currentBlock(); const pos = Number(el.dataset.pos); if (b.template[pos] && b.template[pos].kind !== el.dataset.kind) b.template[pos] = blankRoutine(el.dataset.kind); },
-  [ACTION.dayUp](el) { const b = currentBlock(); const p = Number(el.dataset.pos); swapDays(b, p, p - 1); },
-  [ACTION.dayDown](el) { const b = currentBlock(); const p = Number(el.dataset.pos); swapDays(b, p, p + 1); },
-  [ACTION.weeksInc]() { currentBlock().weeks += 1; },
-  [ACTION.weeksDec]() { const b = currentBlock(); b.weeks = Math.max(1, b.weeks - 1); if (state.ui.week > b.weeks) state.ui.week = b.weeks; },
+  [ACTION.addGroup](el) { return addGroup(planLoc(el)); },
+  [ACTION.removeGroup](el) {
+    const loc = planLoc(el), gi = gIdx(el);
+    return confirmOrphans(orphansOfGroup(loc, gi)) && removeGroup(loc, gi);
+  },
+  [ACTION.groupUp](el) { return moveGroup(planLoc(el), gIdx(el), -1); },
+  [ACTION.groupDown](el) { return moveGroup(planLoc(el), gIdx(el), 1); },
+  [ACTION.removeItem](el) {
+    const loc = planLoc(el), gi = gIdx(el), ii = iIdx(el);
+    return confirmOrphans(orphansOfItem(loc, gi, ii)) && removeItem(loc, gi, ii);
+  },
+  // Switch a day's kind. Compare the kinds here so an accidental re-click of the *active* kind neither
+  // prompts nor acts — the verb refuses it too, but only a real change is worth asking about.
+  [ACTION.kind](el) {
+    const loc = planLoc(el), r = routineOf(loc);
+    if (!r || r.kind === el.dataset.kind) return false;
+    return confirmOrphans(orphansOfRoutine(loc)) && setRoutineKind(loc, el.dataset.kind);
+  },
+  [ACTION.dayUp](el) { const p = planIndex(el.dataset.pos); return swapDays(currentBlock(), p, p - 1); },
+  [ACTION.dayDown](el) { const p = planIndex(el.dataset.pos); return swapDays(currentBlock(), p, p + 1); },
+  [ACTION.weeksInc]() { const b = currentBlock(); return setBlockWeeks(b, b.weeks + 1); },
+  [ACTION.weeksDec]() { const b = currentBlock(); return setBlockWeeks(b, b.weeks - 1); },
 };
 
 // Scalar plan edits keyed by data-target — the CONTEXT data-*→map dispatch (like fieldByName). Each
-// handler locates its own level (routine / group / item) off the input's data-pos/g/i and sets one
-// field from the value, so all ten read the same way.
+// entry names the plan field its control sets and hands the verb the value; the clamping and the
+// allow-list live with the verbs, so these ten stay a translation table.
 const composeTargets = {
-  [TARGET.title]: (el, v) => { const r = routineAt(el); if (r) r.title = v; },
-  [TARGET.focus]: (el, v) => { const r = routineAt(el); if (r) r.focus = v; },
-  [TARGET.classType]: (el, v) => { const r = routineAt(el); if (r) r.classType = v; },
-  [TARGET.classDur]: (el, v) => { const r = routineAt(el); if (r) r.durationMin = clampNum(v, 0); },
-  [TARGET.rounds]: (el, v) => { const g = groupAt(el); if (g) g.rounds = clampNum(v, 1); },
-  [TARGET.rw]: (el, v) => { const g = groupAt(el); if (g) g.restWithin = clampNum(v, 0); },
-  [TARGET.ra]: (el, v) => { const g = groupAt(el); if (g) g.restAfter = clampNum(v, 0); },
-  [TARGET.railFloor]: (el, v) => { const it = itemAt(el); if (it && it.rail) it.rail[0] = clampNum(v, 1); },
-  [TARGET.railCeiling]: (el, v) => { const it = itemAt(el); if (it && it.rail) it.rail[1] = clampNum(v, 1); },
-  [TARGET.itemTime]: (el, v) => { const it = itemAt(el); if (it) it.time = clampNum(v, 0) * (el.dataset.unit === "min" ? 60 : 1); },
+  [TARGET.title]: (el, v) => setRoutineField(planLoc(el), "title", v),
+  [TARGET.focus]: (el, v) => setRoutineField(planLoc(el), "focus", v),
+  [TARGET.classType]: (el, v) => setRoutineField(planLoc(el), "classType", v),
+  [TARGET.classDur]: (el, v) => setRoutineField(planLoc(el), "durationMin", v),
+  [TARGET.rounds]: (el, v) => setGroupField(planLoc(el), gIdx(el), "rounds", v),
+  [TARGET.rw]: (el, v) => setGroupField(planLoc(el), gIdx(el), "restWithin", v),
+  [TARGET.ra]: (el, v) => setGroupField(planLoc(el), gIdx(el), "restAfter", v),
+  [TARGET.railFloor]: (el, v) => setItemRailBound(planLoc(el), gIdx(el), iIdx(el), 0, v),
+  [TARGET.railCeiling]: (el, v) => setItemRailBound(planLoc(el), gIdx(el), iIdx(el), 1, v),
+  // The composer edits a steady effort in minutes and a station in seconds (ADR-0019); the verb
+  // stores seconds, so the unit the control declares is converted here.
+  [TARGET.itemTime]: (el, v) => setItemTime(planLoc(el), gIdx(el), iIdx(el), Number(v) * (el.dataset.unit === "min" ? 60 : 1)),
 };
 // Set the field a compose input names, then save — no render, so the edited input keeps focus mid-type
 // (like the block-name + measurement inputs). An unknown target is ignored, as the field dispatch does.

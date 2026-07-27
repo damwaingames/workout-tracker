@@ -12,8 +12,9 @@ import { fitsKit } from "../helpers.js";
 import { AWAY_KIT } from "../constants.js";
 import {
   normalise, setState, state, awayEligible, isHolidayCell, effectiveRoutine,
-  logPerformance, ghostFor, performancesOf, swapDays,
+  logPerformance, ghostFor, performancesOf,
 } from "../state.js";
+import { swapDays } from "../plan.js";
 
 let pass = 0, fail = 0;
 const ck = (label, cond) => { (cond ? pass++ : fail++); console.log((cond ? "ok  " : "FAIL") + "  " + label); };

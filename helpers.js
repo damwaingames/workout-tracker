@@ -45,6 +45,16 @@ export function fmtWeekday(date) {
   return WEEKDAY_NAMES[date.getDay()] + " " + date.getDate() + " " + MONTH_NAMES[date.getMonth()];
 }
 
+// The one numeric clamp the app edits through: a whole number no lower than `floor`, with junk
+// (blank, NaN, a fraction) landing on the floor. Rounds, rests, rail bounds, block weeks, durations —
+// every editable count is "a whole number, no lower than this". The Store and the plan-authoring
+// dispatch each carried their own implementation of it (#64); one invariant, so one function.
+// Distinct from *defaulting* a garbage saved value to a seeded default, which is normalise's job.
+export const intAtLeast = (value, floor) => {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.max(floor, n) : floor;
+};
+
 /* ---------------------------------------------------------------------- *
  * Log-key grammar — the SLIM occurrence log.                             *
  * Exercise performance history no longer lives in the log (it re-homed   *
@@ -59,6 +69,28 @@ export function fmtWeekday(date) {
 export const cellKey = (blockId, wk, position) => blockId + ".w" + wk + ".d" + position;
 // A cell's per-session flat scalar — Session RPE, the done flag, a rest-day note — keyed by field.
 export const cellScalarKey = (cell, field) => cell + "." + field;
+// The inverse: which week and which field a log key holds for one block at one template position, or
+// null if it isn't a cell scalar of that block+position at all. It exists because a plan edit has to
+// sweep or move a scalar in EVERY week the log holds one — not merely the weeks the block currently
+// spans, since shortening a block leaves the later weeks' scalars in place for when it is lengthened
+// again (#64).
+//
+// It answers "what IS this key" rather than "is this key that specific scalar", so a caller makes one
+// pass over the log instead of a pass per field — and an unrecognised field comes back to be dealt
+// with rather than being silently skipped by a loop that never asked about it.
+export function parseCellScalar(key, blockId, position) {
+  const head = blockId + ".w", mid = ".d" + position + ".";
+  if (!key.startsWith(head)) return null;
+  const at = key.indexOf(mid, head.length);
+  if (at < 0) return null;
+  const wk = key.slice(head.length, at), field = key.slice(at + mid.length);
+  // A digits-only week is what separates a real cell key from one that merely shares the prefix. The
+  // field is whatever trails the position segment, not checked against any list of known fields:
+  // everything keyed this way is position-keyed by construction, and a caller that moves a scalar
+  // with its day should move one it has never heard of too.
+  if (!/^\d+$/.test(wk) || !field) return null;
+  return { week: Number(wk), field };
+}
 // Weekly body measurement (one value per block/week/measurement). The block.id prefix means
 // deleteBlock's sweep collects these too.
 export const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mId;

@@ -58,6 +58,12 @@ function ctxFor(keys, dataset) {
   return ctx;
 }
 
+// A single plan index read off a control that isn't a log slot — the Edit-mode composer's routine /
+// group / item locators (#64). Same strictness as a ctx part, for the same reason: `Number(" ")` is
+// 0, so a blank or malformed locator would otherwise resolve to the FIRST group and edit it. -1 is
+// the answer instead, an index no array holds, so the verb's bounds guard turns it into a no-op.
+export const planIndex = (raw) => (INDEX.test(String(raw == null ? "" : raw)) ? Number(raw) : -1);
+
 /* ---- A Session slot: the six-part Performance ctx (ADR-0020) ---- */
 export const slotAttrs = (ctx) => attrsFor(SLOT_KEYS, ctx);
 export const slotCtx = (dataset) => ctxFor(SLOT_KEYS, dataset);

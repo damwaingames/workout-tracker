@@ -1,13 +1,13 @@
 /* Pure-Node test (no browser) for the #47 maths + queries — the RIR marker on a Performance, the
- * advisory RIR nudge, the tonnage volume-load readout (loading-mode-honest), and the swapDays
- * extension that moves per-occurrence log scalars (Session RPE / collapsed) with a reordered day.
- * These are pure/deterministic, so they're tested here rather than through the UI (which
- * verify-rir-rpe drives). Prior art: verify-progression / verify-migration.
+ * advisory RIR nudge, and the tonnage volume-load readout (loading-mode-honest). These are
+ * pure/deterministic, so they're tested here rather than through the UI (which verify-rir-rpe
+ * drives). Prior art: verify-progression / verify-migration. The day-reorder assertions that used to
+ * live here moved to verify-plan with the verb itself (#64).
  *
  * Run standalone (`node verify-tonnage.mjs`) or via run.mjs — it never launches Playwright. */
 
 import { buildPerformance, rirNudge, fmtTonnage } from "../helpers.js";
-import { normalise, setState, state, sessionTonnageKg, blockTonnageKg, swapDays, performancesOf } from "../state.js";
+import { normalise, setState, state, sessionTonnageKg, blockTonnageKg } from "../state.js";
 
 let pass = 0, fail = 0;
 const ck = (label, cond) => { (cond ? pass++ : fail++); console.log((cond ? "ok  " : "FAIL") + "  " + label); };
@@ -86,23 +86,6 @@ ck("bodyweight (0 kg) adds no tonnage", (() => {
 ck("a Rest day has no tonnage", sessionTonnageKg(block, 1, 1) === 0);
 ck("a week with no logged sets has no tonnage", sessionTonnageKg(block, 2, 0) === 0);
 ck("block tonnage sums every week × day (only week 1 logged → 682.5)", near(blockTonnageKg(block), 682.5));
-
-/* ---------------------------------------------------------------------- *
- * swapDays now moves per-occurrence log scalars too (#47 carried defer). *
- * ---------------------------------------------------------------------- */
-// Reorder day 0 ↔ day 1 after logging: RPE / collapsed keyed by template position must follow the
-// day across EVERY week, and a set's ctx.routine still swaps (ADR-0020). Day 0 has an RPE+collapsed
-// (week 1) and day 1 has an RPE (week 2) — the one-side-present case.
-setState(store());
-const b = state.blocks[0];
-state.log["b1.w1.d0.rpe"] = "7";
-state.log["b1.w1.d0.collapsed"] = true;
-state.log["b1.w2.d1.rpe"] = "9";
-swapDays(b, 0, 1);
-ck("RPE follows the day to its new position (w1 d0 → d1)", state.log["b1.w1.d1.rpe"] === "7" && state.log["b1.w1.d0.rpe"] === undefined);
-ck("the collapsed flag follows the day too", state.log["b1.w1.d1.collapsed"] === true && state.log["b1.w1.d0.collapsed"] === undefined);
-ck("scalars swap across EVERY week (w2 d1 RPE → d0)", state.log["b1.w2.d0.rpe"] === "9" && state.log["b1.w2.d1.rpe"] === undefined);
-ck("a logged set's ctx.routine still swaps with the day", performancesOf("gs")[0].ctx.routine === 1);
 
 console.log("\n" + (fail === 0 ? "PASS" : "FAIL") + ` (${pass} ok, ${fail} failed)`);
 process.exit(fail === 0 ? 0 : 1);
