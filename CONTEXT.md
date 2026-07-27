@@ -177,6 +177,9 @@ separate and deliberately not redefined here.
   `cellScalarKey`, `measureKey`) and nowhere else. A position-keyed scalar follows its routine when a
   day is reordered (`swapDays`), and a **Session RPE** is retired with the **Session** a kind switch
   replaces (ADR-0032) — `collapsed` and `holiday` belong to the **Cell**, not the routine, and stay.
+  A reorder moves *every* scalar the log holds at that position, declared or not (they are all
+  position-keyed by construction); only the narrower "does this die with the **Routine**?" question
+  consults a table, and an unrecognised field is kept rather than deleted.
 - **Cell** — a `block/week/position` coordinate (`cellKey`), the prefix an occurrence-scalar key
   hangs off; `.d{position}` is the routine's 0-based slot in the weekly template. The `block.id`
   prefix is load-bearing: deleting a block sweeps its occurrence + measurement keys in one prefix

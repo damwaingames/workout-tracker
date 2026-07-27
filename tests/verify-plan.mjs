@@ -230,6 +230,24 @@ ck("scalars swap across EVERY week (w2 d1 RPE → d0)",
 ck("a logged set's ctx.routine swaps with the day", performancesOf("gs").every((p) => p.ctx.routine === 1));
 ck("...so it still pre-fills its slot, at the day's new position", fills("gs", atWeek(1, 1, 0, 0)) === 20);
 
+// Every cell scalar is position-keyed by construction, so a reorder moves whatever the log holds
+// rather than a declared list — a scalar added in a later slice follows its day without anyone
+// remembering to declare it here.
+setState(store());
+state.log[scalar(1, 0, "notyetinvented")] = "x";
+swapDays(state.blocks[0], 0, 1);
+ck("a scalar this module has never heard of still follows its day",
+  state.log[scalar(1, 1, "notyetinvented")] === "x" && state.log[scalar(1, 0, "notyetinvented")] === undefined);
+
+// ...but the kind switch, which DELETES, only touches what it recognises as the Routine's.
+setState(store());
+state.log[scalar(1, 0, "notyetinvented")] = "x";
+state.log[scalar(1, 0, "rpe")] = "8";
+setRoutineKind(target(), "rest");
+ck("a kind switch deletes the RPE it knows is the Routine's", state.log[scalar(1, 0, "rpe")] === undefined);
+ck("...and keeps an unrecognised scalar rather than deleting data it can't classify",
+  state.log[scalar(1, 0, "notyetinvented")] === "x");
+
 /* ---------------------------------------------------------------------- *
  * Scalar plan edits — no ctx consequence, but the same clamp as the Store. *
  * ---------------------------------------------------------------------- */

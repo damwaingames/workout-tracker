@@ -18,7 +18,7 @@
  * - **Domain arguments only.** No `data-*`, no elements. events.js resolves a control to a location
  *   and calls a verb, exactly as it translates a DOM target into a Store call. */
 
-import { cellKey, cellScalarKey, cellScalarWeek, intAtLeast } from "./helpers.js";
+import { cellKey, cellScalarKey, parseCellScalar, intAtLeast } from "./helpers.js";
 import { state, isHolidayCell, blankGroup, blankRoutine, newItem } from "./state.js";
 
 /* ---------------------------------------------------------------------- *
@@ -179,13 +179,11 @@ export function setRoutineKind(loc, kind) {
   b.template[loc.position] = blankRoutine(kind);
   performancesIn(loc).forEach(retire);
   attendancesIn(loc).forEach(retireAttendance);
-  routineScalars().forEach((field) => {
-    Object.keys(state.log).forEach((k) => {
-      const wk = cellScalarWeek(k, b.id, loc.position, field);
-      // Every week the log holds one, not just the weeks the Block currently spans — and never a
-      // swapped week's, which belongs to the Holiday Session that was actually done there.
-      if (wk != null && !isHolidayCell(b, wk, loc.position)) delete state.log[k];
-    });
+  // Every week the log holds one, not just the weeks the Block currently spans — and never a
+  // swapped week's, which belongs to the Holiday Session that was actually done there.
+  Object.keys(state.log).forEach((k) => {
+    const s = parseCellScalar(k, b.id, loc.position);
+    if (s && belongsToRoutine(s.field) && !isHolidayCell(b, s.week, loc.position)) delete state.log[k];
   });
   return true;
 }
@@ -199,8 +197,10 @@ export function setRoutineKind(loc, kind) {
  * is the swap flag (ADR-0025), both properties of the cell. One table rather than two overlapping
  * lists, so adding a scalar is one edit that can't half-land. */
 const CELL_SCALAR = Object.freeze({ rpe: "routine", collapsed: "cell", holiday: "cell" });
-const allScalars = () => Object.keys(CELL_SCALAR);
-const routineScalars = () => allScalars().filter((f) => CELL_SCALAR[f] === "routine");
+// The table's only question is the narrow one — does this scalar die with the Routine? A reorder
+// doesn't consult it at all (every cell scalar is position-keyed by construction), and a field the
+// table doesn't know is treated as the Cell's: an unrecognised key is kept, never deleted.
+const belongsToRoutine = (field) => CELL_SCALAR[field] === "routine";
 
 // Swap two weekdays within a block's template (ADR-0024) — a true swap of the two positions, correct
 // for ANY pair (the up/down UI passes neighbours; it is not a splice-and-shift). Each day's logged
@@ -230,28 +230,30 @@ export function swapDays(block, a, b) {
   });
   // Every week the log actually holds a scalar for either day — not weeks 1..block.weeks, which
   // would strand the scalars beyond a shortened Block while the ctxs above moved regardless.
-  scalarWeeks(block.id, [a, b]).forEach((wk) => {
-    allScalars().forEach((field) => {
-      const ka = cellScalarKey(cellKey(block.id, wk, a), field);
-      const kb = cellScalarKey(cellKey(block.id, wk, b), field);
-      const va = state.log[ka], vb = state.log[kb]; // read both before writing either
-      if (vb === undefined) delete state.log[ka]; else state.log[ka] = vb;
-      if (va === undefined) delete state.log[kb]; else state.log[kb] = va;
-    });
+  scalarSlots(block.id, [a, b]).forEach(({ week, field }) => {
+    const ka = cellScalarKey(cellKey(block.id, week, a), field);
+    const kb = cellScalarKey(cellKey(block.id, week, b), field);
+    const va = state.log[ka], vb = state.log[kb]; // read both before writing either
+    if (vb === undefined) delete state.log[ka]; else state.log[ka] = vb;
+    if (va === undefined) delete state.log[kb]; else state.log[kb] = va;
   });
   return true;
 }
 
-// The weeks the log holds a position-keyed scalar for any of `positions` in this block.
-function scalarWeeks(blockId, positions) {
-  const weeks = new Set();
+// Every (week, field) either day actually holds a scalar at — one pass over the log, and deliberately
+// NOT filtered against CELL_SCALAR: the key grammar makes every one of these position-keyed, so a
+// reorder moves whatever it finds. A scalar added later follows its day without having to be declared
+// here, which is the half of the old two-list problem that could strand real data. Deduped, since a
+// pair found under both positions must be swapped once, not twice (which would swap it back).
+function scalarSlots(blockId, positions) {
+  const slots = new Map();
   Object.keys(state.log).forEach((k) => {
-    positions.forEach((pos) => allScalars().forEach((field) => {
-      const wk = cellScalarWeek(k, blockId, pos, field);
-      if (wk != null) weeks.add(wk);
-    }));
+    positions.forEach((pos) => {
+      const s = parseCellScalar(k, blockId, pos);
+      if (s) slots.set(s.week + "." + s.field, s);
+    });
   });
-  return weeks;
+  return [...slots.values()];
 }
 
 // Set a Block's length in real weeks (ADR-0024), and clamp the viewed week to it — the clamp lives
