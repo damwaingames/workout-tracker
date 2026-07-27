@@ -9,6 +9,11 @@ verify(async ({ page, ck, ls, reset }) => {
   const cur = (s) => s.blocks.find((b) => b.id === s.ui.block);
   const T = (s, pos) => cur(s).template[pos];
 
+  // A plan edit that would retire logged work confirms first (#64/ADR-0032), so the run has to answer
+  // the dialog — and can then assert on what it said, and on cancel leaving the plan untouched.
+  let dialogs = [], answer = "accept";
+  page.on("dialog", (d) => { dialogs.push(d.message()); d[answer](); });
+
   await reset();
   await page.waitForTimeout(60);
 
@@ -138,8 +143,27 @@ verify(async ({ page, ck, ls, reset }) => {
   s = await ls();
   ck("a day can be set to a Class with a type + duration", T(s, 2).kind === "class" && T(s, 2).classType === "box-fit" && T(s, 2).durationMin === 45);
 
+  // --- switching a LOGGED day's kind confirms first, and retires rather than strands (#64) ---
+  // Position 0 is the Session the set above was logged against, so this edit orphans real work.
+  dialogs = []; answer = "dismiss";
+  await page.click('[data-action="kind"][data-kind="rest"][data-pos="0"]');
+  await page.waitForTimeout(50);
+  s = await ls();
+  ck("switching a logged day's kind warns what it would retire", /1 logged entry/.test(dialogs[0] || ""));
+  ck("cancelling that warning leaves the Session and its history alone",
+    T(s, 0).kind === "session" && s.library["goblet-squats"].performances.some((p) => p.ctx.group === 0));
+
+  answer = "accept";
   await page.click('[data-action="kind"][data-kind="rest"][data-pos="0"]');
   await page.waitForTimeout(50);
   s = await ls();
   ck("a Session day can be changed back to Rest", T(s, 0).kind === "rest");
+  ck("...and the set logged against it is retired, not lost (ADR-0032)",
+    s.library["goblet-squats"].performances.some((p) => p.load.mag === 50 && p.ctx.group == null));
+
+  // A Rest day has nothing logged under it, so its edits ask nothing.
+  dialogs = [];
+  await page.click('[data-action="kind"][data-kind="session"][data-pos="0"]');
+  await page.waitForTimeout(50);
+  ck("an edit with no logged work under it asks nothing", dialogs.length === 0);
 });

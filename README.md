@@ -64,13 +64,14 @@ The app is plain ES modules (no build step), loaded from `index.html` via `<scri
 - `render.js` — turns the store into DOM (the read/log week grid, Library, measurements) plus the focus-preserving live patchers; delegates each routine card to `compose.js` in Edit mode.
 - `actions.js` — the dispatch vocabulary: every `data-action` / `data-fh` / `data-target` name that routes an event, plus the valueless `data-mark-*` markers a handler locates elements by. Declared once, emitted through this module's own builders and used as the dispatch maps' keys, so the two sides can't drift. Imports only `helpers` (the shared attribute builder).
 - `slot.js` — the slot ctx contract: builds a **Performance**'s six-part ctx (and an **Attendance**'s coarser one) into `data-*` and reads it back off a dataset, plus the in-slot field-name vocabulary. Pure (imports only `helpers`); imported by `render.js` and `events.js` so the render→handler agreement lives in one module.
+- `plan.js` — the plan-editing verbs: add / remove / move a **Group** or **Item**, switch a **Routine**'s kind, reorder the days, set the **Block**'s length, and the scalar edits beside them. Each takes a plan location (a block position, or the Holiday Session singleton) and indices — never a DOM element — and repairs or retires the **Performances** whose slot back-reference it just invalidated (ADR-0032). Mutates and returns; the caller saves.
 - `compose.js` — the Edit-mode authoring UI (compose a block in the UI, no JSON): the Session/Class/Rest kind switch, Group/Item editors, rails, rounds/rests, day reorder, the block config, and the Holiday Session editor (the same Session composer, restricted to away-eligible exercises). Pure rendering, imported by `render.js`.
 - `events.js` — click / submit / field handlers, the plan-authoring mutators (#45), and the block, backup & Drive operations.
 - `io.js` — data I/O: file export / import (wholesale restore) and the Drive backup transport, lifted out of `events.js`.
 - `drive.js` — the Google Drive backup transport. Imports only constants and is imported by `events.js` / `io.js`.
 - `main.js` — entry point: load, wire listeners, first render, register the service worker.
 
-Imports flow one way (`constants ← helpers ← migrate ← state ← render ← events ← main`, with `slot` and `actions` both hanging off `helpers` into `render`/`compose`/`events`, and `drive`/`io` as leaves into `events`), so there are no circular dependencies. The store never imports the routing vocabulary — `events.js` translates a DOM target into a domain call, so `state.js` carries no DOM names.
+Imports flow one way (`constants ← helpers ← migrate ← state ← render ← events ← main`, with `slot` and `actions` both hanging off `helpers` into `render`/`compose`/`events`, `plan` sitting on `state` and imported by `events`, and `drive`/`io` as leaves into `events`), so there are no circular dependencies. The store never imports the routing vocabulary — `events.js` translates a DOM target into a domain call, so `state.js` carries no DOM names.
 
 ## Tests
 

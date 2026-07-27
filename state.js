@@ -11,7 +11,7 @@ import {
   DEFAULT_STEADY_MIN, STRAIGHT_SET_REST, DEFAULT_RAIL, EX_FIELDS, WINDDOWN_DEFAULTS, DEFAULT_CLASS_TYPES, AWAY_KIT,
 } from "./constants.js";
 import {
-  today, mondayOf, fmtYMD, scheduledDate, cellKey, cellScalarKey, measureKey, slugify, uniqueId, bandKg, isBandMetric,
+  today, mondayOf, fmtYMD, scheduledDate, cellKey, cellScalarKey, measureKey, slugify, uniqueId, bandKg, isBandMetric, intAtLeast,
   e1rm, zoneOf, loadMode, railZones, doubleProgression, guideLoadKg, snapDownDumbbellKg, rirNudge, fitsKit,
 } from "./helpers.js";
 import { migrateToV6 } from "./migrate.js";
@@ -161,39 +161,6 @@ export function newItem(exId) {
   return { exId, time: ex.loadMetric === "machine-level" ? DEFAULT_STEADY_MIN * 60 : DEFAULT_STATION_SEC };
 }
 
-// The per-occurrence log scalars keyed by a routine's template position — they must follow a day
-// when it is reordered (#47/#48), else a swapped day mis-associates its RPE / holiday state with the
-// wrong routine. (Session RPE, collapsed flag, Holiday-Session swap.)
-const CELL_SCALARS = ["rpe", "collapsed", "holiday"];
-
-// Swap two weekdays within a block's template (ADR-0024) — a true swap of the two positions, correct
-// for ANY pair (the up/down UI passes neighbours; it is not a splice-and-shift). Each day's logged
-// history follows it: (1) swap ctx.routine a↔b on this block's performances, so a set logged for a
-// routine stays with it (the effort stays on its exercise — ADR-0020; only its slot back-reference
-// moves); (2) swap the per-occurrence log scalars (Session RPE, collapsed) at positions a↔b across
-// EVERY week, since those are keyed by template position (#47 — carried from #45's day-reorder).
-export function swapDays(block, a, b) {
-  const t = block.template;
-  if (!t || !t[a] || !t[b] || a === b) return;
-  [t[a], t[b]] = [t[b], t[a]];
-  Object.values(state.library).forEach((ex) => {
-    (ex.performances || []).forEach((p) => {
-      if (!p.ctx || p.ctx.block !== block.id) return;
-      if (p.ctx.routine === a) p.ctx.routine = b;
-      else if (p.ctx.routine === b) p.ctx.routine = a;
-    });
-  });
-  for (let wk = 1; wk <= block.weeks; wk++) {
-    CELL_SCALARS.forEach((field) => {
-      const ka = cellScalarKey(cellKey(block.id, wk, a), field);
-      const kb = cellScalarKey(cellKey(block.id, wk, b), field);
-      const va = state.log[ka], vb = state.log[kb]; // read both before writing either
-      if (vb === undefined) delete state.log[ka]; else state.log[ka] = vb;
-      if (va === undefined) delete state.log[kb]; else state.log[kb] = va;
-    });
-  }
-}
-
 /* ---------------------------------------------------------------------- *
  * Store                                                                  *
  * ---------------------------------------------------------------------- */
@@ -202,7 +169,10 @@ export let editing = false;
 export function setState(s) { state = s; }
 export function setEditing(v) { editing = v; }
 
-const clampMin = (v, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? n : d; };
+// A saved count that survived to here, or the seeded default if it is missing or nonsense. This is
+// *defaulting*, not clamping — a legitimately small saved value (a one-week block) is kept as-is,
+// where a clamp would raise it to the default. Editing a count is the clamp (helpers.intAtLeast).
+const orDefault = (v, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) && n > 0 ? n : d; };
 
 // Re-home legacy per-cell `.winddown` ticks onto the date-keyed habit (#49, ADR-0028). Pre-#49 the
 // wind-down was a per-routine cool-down whose done-tick lived on the cell scalar (and the v6
@@ -248,14 +218,14 @@ function normalise(s) {
   s.holiday = (s.holiday && Array.isArray(s.holiday.groups)) ? s.holiday : seedHoliday();
   const wd = (s.winddown && typeof s.winddown === "object") ? s.winddown : {};
   s.winddown = {
-    durationMin: clampMin(wd.durationMin, WINDDOWN_DEFAULTS.durationMin),
-    weeklyTarget: clampMin(wd.weeklyTarget, WINDDOWN_DEFAULTS.weeklyTarget),
+    durationMin: orDefault(wd.durationMin, WINDDOWN_DEFAULTS.durationMin),
+    weeklyTarget: orDefault(wd.weeklyTarget, WINDDOWN_DEFAULTS.weeklyTarget),
     done: (wd.done && typeof wd.done === "object") ? { ...wd.done } : {},
   };
 
   s.blocks.forEach((b) => {
     if (!b.startDate) b.startDate = mondayOf(today());
-    b.weeks = clampMin(b.weeks, DEFAULT_WEEKS);
+    b.weeks = orDefault(b.weeks, DEFAULT_WEEKS);
     if (!Array.isArray(b.template)) b.template = [];
     while (b.template.length < 7) b.template.push({ kind: "rest" });
     b.template.forEach((r, i) => { if (!r || !r.kind) b.template[i] = { kind: "rest" }; });
@@ -456,7 +426,7 @@ export function setExerciseRailBound(exId, index, value) {
   // same way on bad input — module-local idiom over cross-module uniformity.
   if (index !== 0 && index !== 1) return;
   if (!Array.isArray(ex.defaultRail)) ex.defaultRail = DEFAULT_RAIL.slice();
-  ex.defaultRail[index] = clampMin(value, 1);
+  ex.defaultRail[index] = intAtLeast(value, 1);
   save();
 }
 
@@ -687,6 +657,6 @@ export function toggleWinddown(iso) {
 // Set the weekly target / nightly duration (Edit mode) — each a positive integer, floored at 1
 // (the same clamp the store's other counts use).
 export function setWinddownField(field, value) {
-  state.winddown[field] = clampMin(value, 1);
+  state.winddown[field] = intAtLeast(value, 1);
   save();
 }

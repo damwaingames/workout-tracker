@@ -155,4 +155,4 @@ export const DRIVE_FILENAME = "workout-tracker-state.json";
 // v5.8.2 gives the render→handler contract its own modules — slot.js builds and reads a slot's ctx in
 // one place, actions.js declares every name that routes an event — instead of both sides spelling the
 // same string literals independently (#62).
-export const APP_VERSION = "5.8.2";
+export const APP_VERSION = "5.9.0";

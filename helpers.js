@@ -45,6 +45,16 @@ export function fmtWeekday(date) {
   return WEEKDAY_NAMES[date.getDay()] + " " + date.getDate() + " " + MONTH_NAMES[date.getMonth()];
 }
 
+// The one numeric clamp the app edits through: a whole number no lower than `floor`, with junk
+// (blank, NaN, a fraction) landing on the floor. Rounds, rests, rail bounds, block weeks, durations —
+// every editable count is "a whole number, no lower than this". The Store and the plan-authoring
+// dispatch each carried their own implementation of it (#64); one invariant, so one function.
+// Distinct from *defaulting* a garbage saved value to a seeded default, which is normalise's job.
+export const intAtLeast = (value, floor) => {
+  const n = Math.round(Number(value));
+  return Number.isFinite(n) ? Math.max(floor, n) : floor;
+};
+
 /* ---------------------------------------------------------------------- *
  * Log-key grammar — the SLIM occurrence log.                             *
  * Exercise performance history no longer lives in the log (it re-homed   *

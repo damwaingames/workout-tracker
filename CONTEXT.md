@@ -175,7 +175,8 @@ separate and deliberately not redefined here.
   position-keyed — plus weekly body **measurements**. Keys are built through the surviving key-grammar
   helpers (`cellKey`,
   `cellScalarKey`, `measureKey`) and nowhere else. A position-keyed scalar follows its routine when a
-  day is reordered (`swapDays`).
+  day is reordered (`swapDays`), and a **Session RPE** is retired with the **Session** a kind switch
+  replaces (ADR-0032) — `collapsed` and `holiday` belong to the **Cell**, not the routine, and stay.
 - **Cell** — a `block/week/position` coordinate (`cellKey`), the prefix an occurrence-scalar key
   hangs off; `.d{position}` is the routine's 0-based slot in the weekly template. The `block.id`
   prefix is load-bearing: deleting a block sweeps its occurrence + measurement keys in one prefix
@@ -209,3 +210,15 @@ separate and deliberately not redefined here.
   than a ctx carrying `NaN`, making a broken locator a loud no-op instead of a **Performance**
   written to a slot that doesn't exist. The in-slot field names a handler gathers by
   (`LOG_FIELDS` / `CLASS_FIELDS`) are shared from the same module.
+- **A plan edit repairs the history that points at it.** Every structural change to a plan is a verb
+  in `plan.js`, taking a **plan location** (a **Block** position, or the **Holiday Session**
+  singleton) and indices — never a DOM element — and each one repairs or **retires** the
+  **Performances** whose ctx it just invalidated (ADR-0032). A reorder remaps the indices it moved; a
+  removal or a kind switch retires what it orphaned, and confirms first. The verbs don't persist —
+  they mutate and return, the caller saves — which is what keeps them testable under plain Node
+  (`verify-plan`). Adding a plan-editing control means adding a verb, not a line in a dispatch map:
+  the dispatch resolves a control to a location and calls one verb, and nothing else.
+- **One clamp for an edited count.** Rounds, rests, rail bounds, **Block** weeks, durations — every
+  editable count goes through `helpers.intAtLeast` (a whole number, no lower than a floor). Distinct
+  from *defaulting* a nonsense saved value to a seeded default on load, which is `normalise`'s
+  `orDefault` and deliberately leaves a legitimately small saved value alone.
