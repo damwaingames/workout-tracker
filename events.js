@@ -15,7 +15,8 @@ import {
 } from "./state.js";
 import {
   atRoutine, atHoliday, routineOf, addGroup, addItem, moveGroup, removeGroup, removeItem, setRoutineKind,
-  swapDays, setBlockWeeks, setRoutineField, setGroupField, setItemRailBound, setItemTime, orphanCount,
+  swapDays, setBlockWeeks, setRoutineField, setGroupField, setItemRailBound, setItemTime,
+  orphansOfRoutine, orphansOfGroup, orphansOfItem,
 } from "./plan.js";
 import { ACTION, FH, TARGET, MARK, markSelector, actionSelector } from "./actions.js";
 import { EX_FIELDS } from "./constants.js";
@@ -30,10 +31,11 @@ export function handleClick(e) {
   const el = e.target.closest("[data-action]");
   if (!el) return;
   // Plan-authoring clicks (#45) all mutate the current block's template, then save + re-render — one
-  // delegation instead of a case each, so handleClick stays about the app-level actions below.
+  // delegation instead of a case each, so handleClick stays about the app-level actions below. Each
+  // returns whether its verb changed anything: a declined confirm or a move off the end writes and
+  // re-renders nothing.
   if (Object.prototype.hasOwnProperty.call(composeActions, el.dataset.action)) {
-    composeActions[el.dataset.action](el);
-    save(); render();
+    if (composeActions[el.dataset.action](el)) { save(); render(); }
     return;
   }
   switch (el.dataset.action) {
@@ -275,30 +277,37 @@ const iIdx = (el) => planIndex(el.dataset.i);
 // Ask before an edit that would retire logged work (ADR-0032). The sets stay on the exercise and keep
 // counting towards PRs and ghosts, but they stop filling the slot — worth being told rather than
 // discovering later. An edit with no history under it asks nothing.
-function confirmOrphans(loc, gi, ii) {
-  const n = orphanCount(loc, gi, ii);
+function confirmOrphans(n) {
   return !n || window.confirm(n + (n === 1 ? " logged entry" : " logged entries") +
     " will stay in your history but stop filling this plan slot. Continue?");
 }
 
-// Structural authoring clicks — each resolves a target and calls one verb; handleClick saves + renders.
+// Structural authoring clicks — each resolves a target and calls one verb, and returns whether it
+// changed anything, so handleClick saves + renders only when it did (a declined confirm is a true
+// no-op rather than a pointless write + full re-render).
 const composeActions = {
-  [ACTION.addGroup](el) { addGroup(planLoc(el)); },
-  [ACTION.removeGroup](el) { const loc = planLoc(el); if (confirmOrphans(loc, gIdx(el))) removeGroup(loc, gIdx(el)); },
-  [ACTION.groupUp](el) { moveGroup(planLoc(el), gIdx(el), -1); },
-  [ACTION.groupDown](el) { moveGroup(planLoc(el), gIdx(el), 1); },
-  [ACTION.removeItem](el) { const loc = planLoc(el); if (confirmOrphans(loc, gIdx(el), iIdx(el))) removeItem(loc, gIdx(el), iIdx(el)); },
+  [ACTION.addGroup](el) { return addGroup(planLoc(el)); },
+  [ACTION.removeGroup](el) {
+    const loc = planLoc(el), gi = gIdx(el);
+    return confirmOrphans(orphansOfGroup(loc, gi)) && removeGroup(loc, gi);
+  },
+  [ACTION.groupUp](el) { return moveGroup(planLoc(el), gIdx(el), -1); },
+  [ACTION.groupDown](el) { return moveGroup(planLoc(el), gIdx(el), 1); },
+  [ACTION.removeItem](el) {
+    const loc = planLoc(el), gi = gIdx(el), ii = iIdx(el);
+    return confirmOrphans(orphansOfItem(loc, gi, ii)) && removeItem(loc, gi, ii);
+  },
   // Switch a day's kind. Compare the kinds here so an accidental re-click of the *active* kind neither
   // prompts nor acts — the verb refuses it too, but only a real change is worth asking about.
   [ACTION.kind](el) {
     const loc = planLoc(el), r = routineOf(loc);
-    if (!r || r.kind === el.dataset.kind || !confirmOrphans(loc)) return;
-    setRoutineKind(loc, el.dataset.kind);
+    if (!r || r.kind === el.dataset.kind) return false;
+    return confirmOrphans(orphansOfRoutine(loc)) && setRoutineKind(loc, el.dataset.kind);
   },
-  [ACTION.dayUp](el) { const p = planIndex(el.dataset.pos); swapDays(currentBlock(), p, p - 1); },
-  [ACTION.dayDown](el) { const p = planIndex(el.dataset.pos); swapDays(currentBlock(), p, p + 1); },
-  [ACTION.weeksInc]() { const b = currentBlock(); setBlockWeeks(b, b.weeks + 1); },
-  [ACTION.weeksDec]() { const b = currentBlock(); setBlockWeeks(b, b.weeks - 1); },
+  [ACTION.dayUp](el) { const p = planIndex(el.dataset.pos); return swapDays(currentBlock(), p, p - 1); },
+  [ACTION.dayDown](el) { const p = planIndex(el.dataset.pos); return swapDays(currentBlock(), p, p + 1); },
+  [ACTION.weeksInc]() { const b = currentBlock(); return setBlockWeeks(b, b.weeks + 1); },
+  [ACTION.weeksDec]() { const b = currentBlock(); return setBlockWeeks(b, b.weeks - 1); },
 };
 
 // Scalar plan edits keyed by data-target — the CONTEXT data-*→map dispatch (like fieldByName). Each

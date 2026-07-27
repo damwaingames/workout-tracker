@@ -35,6 +35,11 @@ work it affects. Lossless edits (adding, reordering) ask nothing.
 - A **Session RPE** goes with the **Session** a kind switch replaces; `collapsed` and the `holiday`
   flag are properties of the cell, not the **Routine**, and stay.
 - Shortening a **Block** retires nothing. It destroys no structure and is undone by lengthening
-  again, so the weeks beyond the new end keep their history for when they come back.
+  again, so the weeks beyond the new end keep their history for when they come back. That only holds
+  if a repair covers **every week the history holds, not the weeks the Block currently spans** — an
+  edit made while a Block is shortened must still fix the weeks that return, or the defect above
+  comes back by another route. So a verb asks *"is this logged ctx keyed by my structure?"* of the
+  stored history, rather than generating the list of cells a routine occupies, which would need a
+  bound. The same applies to sweeping or moving a position-keyed log scalar.
 - **Stores** already mis-keyed by the defect this fixes are not repaired — a separate decision and a
   separate migration.

@@ -11,7 +11,7 @@
 
 import { normalise, setState, state, performanceAt, performancesOf, attendanceAt } from "../state.js";
 import { cellKey, cellScalarKey } from "../helpers.js";
-import { removeGroup, moveGroup, addGroup, removeItem, setRoutineKind, setBlockWeeks, swapDays, atHoliday, setRoutineField, setGroupField, setItemRailBound, setItemTime, orphanCount } from "../plan.js";
+import { removeGroup, moveGroup, addGroup, removeItem, setRoutineKind, setBlockWeeks, swapDays, atHoliday, setRoutineField, setGroupField, setItemRailBound, setItemTime, orphansOfRoutine, orphansOfGroup, orphansOfItem } from "../plan.js";
 
 let pass = 0, fail = 0;
 const ck = (label, cond) => { (cond ? pass++ : fail++); console.log((cond ? "ok  " : "FAIL") + "  " + label); };
@@ -261,11 +261,65 @@ ck("no scalar edit disturbed the logged history", fills("gs", at(0, 0, 0)) === 2
  * What an edit would orphan — what the dispatch confirms before calling.   *
  * ---------------------------------------------------------------------- */
 setState(store());
-ck("a Group's logged sets are counted before it is removed", orphanCount(target(), 0) === 1);
-ck("an Item's are counted the same way", orphanCount(target(), 2, 0) === 1);
-ck("a whole Routine's are counted for a kind switch", orphanCount(target()) === 3);
-ck("an unlogged Group counts nothing", (addGroup(target()), orphanCount(target(), 3) === 0));
-ck("a Rest day counts nothing", orphanCount({ block: state.blocks[0], position: 1 }) === 0);
+ck("a Group's logged sets are counted before it is removed", orphansOfGroup(target(), 0) === 1);
+ck("an Item's are counted the same way", orphansOfItem(target(), 2, 0) === 1);
+ck("a whole Routine's are counted for a kind switch", orphansOfRoutine(target()) === 3);
+ck("an unlogged Group counts nothing", (addGroup(target()), orphansOfGroup(target(), 3) === 0));
+ck("a Rest day counts nothing", orphansOfRoutine({ block: state.blocks[0], position: 1 }) === 0);
+
+/* ---------------------------------------------------------------------- *
+ * A repair covers every week the history holds, not the Block's length.   *
+ * ---------------------------------------------------------------------- */
+// Shortening a Block retires nothing, because it is reversible (ADR-0032). That only holds if an
+// edit made while the Block is short still repairs the weeks that come back — otherwise the reported
+// defect returns one path over: shorten, tidy a Group, lengthen, and the week-5 slot pre-fills the
+// removed Group's numbers. Both clicks are one button apart in the same composer.
+function longStore() {
+  return normalise({
+    version: 6,
+    library: {
+      gs: ex("gs", "Goblet", [
+        perf(atWeek(1, 0, 0, 0), 20, 10), perf(atWeek(1, 0, 1, 0), 40, 5),
+        perf(atWeek(5, 0, 0, 0), 21, 10), perf(atWeek(5, 0, 1, 0), 41, 5),
+      ]),
+    },
+    classes: {},
+    blocks: [{
+      id: "b1", name: "B1", startDate: "2026-06-29", weeks: 5,
+      template: [{ kind: "session", title: "Lift", groups: [group("gs"), group("gs")] }, { kind: "rest" }],
+    }],
+    log: { [scalar(5, 0, "rpe")]: "9" },
+    ui: { block: "b1", week: 1, view: "plan" },
+  });
+}
+setState(longStore());
+setBlockWeeks(state.blocks[0], 3);        // shorten
+removeGroup(target(), 0);                 // tidy the plan while it is short
+setBlockWeeks(state.blocks[0], 5);        // lengthen — the ADR says the history comes back
+
+ck("a week inside the shortened range is repaired (40kg)", fills("gs", atWeek(1, 0, 0, 0)) === 40);
+ck("a week BEYOND it is repaired too — not left pre-filling the removed Group's set (41kg, not 21kg)",
+  fills("gs", atWeek(5, 0, 0, 0)) === 41);
+ck("both weeks' removed sets are retired, not just the in-range one",
+  performancesOf("gs").filter((p) => p.ctx.group == null).length === 2);
+
+// The same bound applied to the day-reorder's scalar swap.
+setState(longStore());
+setBlockWeeks(state.blocks[0], 3);
+swapDays(state.blocks[0], 0, 1);
+setBlockWeeks(state.blocks[0], 5);
+ck("a scalar beyond the shortened range swaps with its day too",
+  state.log[scalar(5, 1, "rpe")] === "9" && state.log[scalar(5, 0, "rpe")] === undefined);
+
+// And to the kind switch's scalar sweep.
+setState(longStore());
+setBlockWeeks(state.blocks[0], 3);
+setRoutineKind(target(), "rest");
+setBlockWeeks(state.blocks[0], 5);
+ck("a replaced Session's RPE is swept in every week, not just the current span",
+  state.log[scalar(5, 0, "rpe")] === undefined);
+ck("...and its out-of-span sets are retired with it",
+  performancesOf("gs").every((p) => p.ctx.group == null));
 
 console.log("\n" + (fail === 0 ? "PASS" : `FAIL (${fail} checks)`) + `  [${pass}/${pass + fail}]`);
 process.exit(fail === 0 ? 0 : 1);

@@ -214,7 +214,10 @@ separate and deliberately not redefined here.
   in `plan.js`, taking a **plan location** (a **Block** position, or the **Holiday Session**
   singleton) and indices — never a DOM element — and each one repairs or **retires** the
   **Performances** whose ctx it just invalidated (ADR-0032). A reorder remaps the indices it moved; a
-  removal or a kind switch retires what it orphaned, and confirms first. The verbs don't persist —
+  removal or a kind switch retires what it orphaned, and confirms first. A repair covers every week
+  the *history* holds, not the weeks the **Block** currently spans — a verb asks "is this logged ctx
+  keyed by my structure?" rather than generating the cells it occupies, because a generated list needs
+  a bound and a shortened Block's later weeks come back. The verbs don't persist —
   they mutate and return, the caller saves — which is what keeps them testable under plain Node
   (`verify-plan`). Adding a plan-editing control means adding a verb, not a line in a dispatch map:
   the dispatch resolves a control to a location and calls one verb, and nothing else.

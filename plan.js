@@ -18,7 +18,7 @@
  * - **Domain arguments only.** No `data-*`, no elements. events.js resolves a control to a location
  *   and calls a verb, exactly as it translates a DOM target into a Store call. */
 
-import { cellKey, cellScalarKey, intAtLeast } from "./helpers.js";
+import { cellKey, cellScalarKey, cellScalarWeek, intAtLeast } from "./helpers.js";
 import { state, isHolidayCell, blankGroup, blankRoutine, newItem } from "./state.js";
 
 /* ---------------------------------------------------------------------- *
@@ -42,54 +42,43 @@ export function itemOf(loc, gi, ii) {
   return (g && Array.isArray(g.items) && g.items[ii]) || null;
 }
 
-// The plan cells whose logged Performances are keyed by THIS routine's structure (ADR-0024 — one
-// weekly template over N real weeks, so a routine occupies one cell per week).
+// Is this logged ctx keyed by THIS location's structure? Asked of the history rather than answered
+// by generating the cells a routine occupies, and deliberately so: a generated list has to be bounded
+// by the Block's current length, which silently skips the weeks beyond a shortened Block — and since
+// shortening retires nothing (it is reversible, ADR-0032), those weeks come back holding history an
+// edit never repaired. That is the original defect one path over. A predicate over what is actually
+// stored has no bound to get wrong.
 //
-// The Holiday swap (ADR-0025) is what makes this more than a loop: a holiday-swapped cell logs
+// The Holiday swap (ADR-0025) is what makes this more than an equality check: a swapped cell logs
 // against the Holiday Session's Groups, not the planned routine's. So a Block routine owns its
-// non-swapped cells only, and the singleton owns every swapped cell anywhere — which is exactly what
-// makes editing the Holiday Session repair the right history, and what keeps a kind switch from
-// retiring the away-workout sets logged on that day.
-function cellsOf(loc) {
-  const cells = [];
-  const add = (b, wk, pos) => cells.push({ block: b.id, week: wk, routine: pos });
-  if (loc.holiday) {
-    state.blocks.forEach((b) => {
-      for (let wk = 1; wk <= b.weeks; wk++)
-        b.template.forEach((r, pos) => { if (isHolidayCell(b, wk, pos)) add(b, wk, pos); });
-    });
-    return cells;
-  }
-  const b = loc.block;
-  if (!b) return cells;
-  for (let wk = 1; wk <= b.weeks; wk++) if (!isHolidayCell(b, wk, loc.position)) add(b, wk, loc.position);
-  return cells;
+// non-swapped cells only, and the singleton owns every swapped cell anywhere — which is what makes
+// editing the Holiday Session repair the right history, and what keeps a kind switch from retiring
+// the away-workout sets logged on that day.
+function owns(loc, ctx) {
+  if (!ctx) return false;
+  const b = loc.holiday ? state.blocks.find((x) => x.id === ctx.block) : loc.block;
+  if (!b || b.id !== ctx.block) return false;
+  const swapped = isHolidayCell(b, ctx.week, ctx.routine);
+  return loc.holiday ? swapped : (ctx.routine === loc.position && !swapped);
 }
 
-const cellSet = (cells) => new Set(cells.map((c) => cellKey(c.block, c.week, c.routine)));
-const inCells = (keys, ctx) => !!ctx && keys.has(cellKey(ctx.block, ctx.week, ctx.routine));
-
-// Every slot-keyed Performance logged in one of those cells. A Performance whose ctx is already
-// coarse (a migrated one, or one an earlier edit retired) is skipped: it keys no slot, so there is
-// nothing to shift and nothing left to retire.
-function performancesIn(cells) {
-  const keys = cellSet(cells);
+// Every slot-keyed Performance this location's structure keys. One whose ctx is already coarse (a
+// migrated one, or one an earlier edit retired) is skipped: it keys no slot, so there is nothing to
+// shift and nothing left to retire.
+function performancesIn(loc) {
   const found = [];
   Object.values(state.library).forEach((ex) => {
-    (ex.performances || []).forEach((p) => {
-      if (p.ctx && p.ctx.group != null && inCells(keys, p.ctx)) found.push(p);
-    });
+    (ex.performances || []).forEach((p) => { if (p.ctx && p.ctx.group != null && owns(loc, p.ctx)) found.push(p); });
   });
   return found;
 }
 
 // The Attendance sibling (ADR-0030): a class occurrence is keyed by the same cell, just without the
-// group/item/round a class has no notion of.
-function attendancesIn(cells) {
-  const keys = cellSet(cells);
+// group/item/round a class has no notion of — so a coarse ctx is all it ever has, and none is skipped.
+function attendancesIn(loc) {
   const found = [];
   Object.values(state.classes).forEach((ct) => {
-    (ct.attendances || []).forEach((a) => { if (inCells(keys, a.ctx)) found.push(a); });
+    (ct.attendances || []).forEach((a) => { if (owns(loc, a.ctx)) found.push(a); });
   });
   return found;
 }
@@ -140,7 +129,7 @@ export function moveGroup(loc, gi, dir) {
   const gj = gi + dir;
   if (!r || !Array.isArray(r.groups) || !r.groups[gi] || !r.groups[gj]) return false;
   [r.groups[gi], r.groups[gj]] = [r.groups[gj], r.groups[gi]];
-  performancesIn(cellsOf(loc)).forEach((p) => {
+  performancesIn(loc).forEach((p) => {
     if (p.ctx.group === gi) p.ctx.group = gj;
     else if (p.ctx.group === gj) p.ctx.group = gi;
   });
@@ -153,7 +142,7 @@ export function removeGroup(loc, gi) {
   const r = routineOf(loc);
   if (!r || !Array.isArray(r.groups) || !r.groups[gi]) return false;
   r.groups.splice(gi, 1);
-  performancesIn(cellsOf(loc)).forEach((p) => {
+  performancesIn(loc).forEach((p) => {
     if (p.ctx.group === gi) retire(p);
     else if (p.ctx.group > gi) p.ctx.group -= 1;
   });
@@ -167,7 +156,7 @@ export function removeItem(loc, gi, ii) {
   const g = groupOf(loc, gi);
   if (!g || !Array.isArray(g.items) || !g.items[ii]) return false;
   g.items.splice(ii, 1);
-  performancesIn(cellsOf(loc)).forEach((p) => {
+  performancesIn(loc).forEach((p) => {
     if (p.ctx.group !== gi) return;
     if (p.ctx.item === ii) retire(p);
     else if (p.ctx.item > ii) p.ctx.item -= 1;
@@ -178,28 +167,40 @@ export function removeItem(loc, gi, ii) {
 // The per-occurrence log scalar that belongs to the Routine itself rather than to the cell: a Session
 // RPE is that Session's fatigue reading (ADR-0012), so it goes when the Session does. `collapsed` is
 // UI state and `holiday` is the swap flag — both are properties of the cell, and both stay.
-const ROUTINE_SCALARS = ["rpe"];
-
+//
 // Switch a Routine's kind: a fresh Routine of that kind replaces it, so every Performance and
 // Attendance logged against the old one is orphaned outright — there is no index to shift, the slot
 // itself is gone. Re-picking the kind it already is changes nothing (an accidental re-click must not
-// wipe the day). Note which cells this covers: a Holiday-swapped week logged against the singleton,
-// not this Routine, so its sets and its RPE both survive the switch.
+// wipe the day). Note what this covers: a Holiday-swapped week logged against the singleton, not this
+// Routine, so its sets and its RPE both survive the switch.
 export function setRoutineKind(loc, kind) {
   const b = loc.block;
   if (!b || !b.template[loc.position] || b.template[loc.position].kind === kind) return false;
-  const cells = cellsOf(loc);
   b.template[loc.position] = blankRoutine(kind);
-  performancesIn(cells).forEach(retire);
-  attendancesIn(cells).forEach(retireAttendance);
-  cells.forEach((c) => ROUTINE_SCALARS.forEach((f) => { delete state.log[cellScalarKey(cellKey(c.block, c.week, c.routine), f)]; }));
+  performancesIn(loc).forEach(retire);
+  attendancesIn(loc).forEach(retireAttendance);
+  routineScalars().forEach((field) => {
+    Object.keys(state.log).forEach((k) => {
+      const wk = cellScalarWeek(k, b.id, loc.position, field);
+      // Every week the log holds one, not just the weeks the Block currently spans — and never a
+      // swapped week's, which belongs to the Holiday Session that was actually done there.
+      if (wk != null && !isHolidayCell(b, wk, loc.position)) delete state.log[k];
+    });
+  });
   return true;
 }
 
-// The per-occurrence log scalars keyed by a routine's template position — they must follow a day
-// when it is reordered (#47/#48), else a swapped day mis-associates its RPE / holiday state with the
-// wrong routine. (Session RPE, collapsed flag, Holiday-Session swap.)
-const CELL_SCALARS = ["rpe", "collapsed", "holiday"];
+/* ---- The position-keyed log scalars, and what each belongs to ----
+ * Every per-occurrence scalar is keyed by template position, so all of them follow a day when it is
+ * reordered (#47/#48) — else a swapped day mis-associates its RPE / holiday state with the wrong
+ * routine. What separates them is whether the scalar belongs to the **Routine** (and so dies with it
+ * when a kind switch replaces it) or to the **Cell** (and so outlives any routine that sits there):
+ * a Session RPE is that Session's fatigue reading (ADR-0012); `collapsed` is UI state and `holiday`
+ * is the swap flag (ADR-0025), both properties of the cell. One table rather than two overlapping
+ * lists, so adding a scalar is one edit that can't half-land. */
+const CELL_SCALAR = Object.freeze({ rpe: "routine", collapsed: "cell", holiday: "cell" });
+const allScalars = () => Object.keys(CELL_SCALAR);
+const routineScalars = () => allScalars().filter((f) => CELL_SCALAR[f] === "routine");
 
 // Swap two weekdays within a block's template (ADR-0024) — a true swap of the two positions, correct
 // for ANY pair (the up/down UI passes neighbours; it is not a splice-and-shift). Each day's logged
@@ -213,6 +214,13 @@ export function swapDays(block, a, b) {
   const t = block.template;
   if (!t || !t[a] || !t[b] || a === b) return false;
   [t[a], t[b]] = [t[b], t[a]];
+  // This walks the library itself rather than going through performancesIn, and must: that helper
+  // answers "whose structure keys this ctx", and both of its rules are wrong here. It excludes a
+  // Block routine's holiday-swapped cells — but the `holiday` flag is one of the scalars being
+  // swapped below, so those ctxs have to move with it or the flag and the sets it belongs to end up
+  // at different positions. And it skips coarse ctxs — but a retired set still records the day it
+  // happened on, and that day is what is moving. Tidying this onto performancesIn would break both,
+  // silently.
   Object.values(state.library).forEach((ex) => {
     (ex.performances || []).forEach((p) => {
       if (!p.ctx || p.ctx.block !== block.id) return;
@@ -220,16 +228,30 @@ export function swapDays(block, a, b) {
       else if (p.ctx.routine === b) p.ctx.routine = a;
     });
   });
-  for (let wk = 1; wk <= block.weeks; wk++) {
-    CELL_SCALARS.forEach((field) => {
+  // Every week the log actually holds a scalar for either day — not weeks 1..block.weeks, which
+  // would strand the scalars beyond a shortened Block while the ctxs above moved regardless.
+  scalarWeeks(block.id, [a, b]).forEach((wk) => {
+    allScalars().forEach((field) => {
       const ka = cellScalarKey(cellKey(block.id, wk, a), field);
       const kb = cellScalarKey(cellKey(block.id, wk, b), field);
       const va = state.log[ka], vb = state.log[kb]; // read both before writing either
       if (vb === undefined) delete state.log[ka]; else state.log[ka] = vb;
       if (va === undefined) delete state.log[kb]; else state.log[kb] = va;
     });
-  }
+  });
   return true;
+}
+
+// The weeks the log holds a position-keyed scalar for any of `positions` in this block.
+function scalarWeeks(blockId, positions) {
+  const weeks = new Set();
+  Object.keys(state.log).forEach((k) => {
+    positions.forEach((pos) => allScalars().forEach((field) => {
+      const wk = cellScalarWeek(k, blockId, pos, field);
+      if (wk != null) weeks.add(wk);
+    }));
+  });
+  return weeks;
 }
 
 // Set a Block's length in real weeks (ADR-0024), and clamp the viewed week to it — the clamp lives
@@ -284,13 +306,12 @@ export function setItemTime(loc, gi, ii, seconds) {
 }
 
 /* ---- What an edit would orphan ---- */
-// The logged work a removal or a kind switch would retire (ADR-0032): a Group's, an Item's, or —
-// with no indices — the whole Routine's, Attendances included. The dispatch asks before the
-// destructive edits so the answer can be put to the user, which is the difference between being told
-// and finding out later.
-export function orphanCount(loc, gi, ii) {
-  const cells = cellsOf(loc);
-  const perfs = performancesIn(cells).filter((p) =>
-    (gi == null || p.ctx.group === gi) && (ii == null || p.ctx.item === ii));
-  return perfs.length + (gi == null ? attendancesIn(cells).length : 0);
-}
+// How much logged work each destructive edit would retire (ADR-0032). The dispatch asks before it
+// acts, so the answer can be put to the user — the difference between being told and finding out
+// later. One function per question rather than one with optional indices: a Routine's count includes
+// its Attendances, a Group's and an Item's can't (an Attendance belongs to a Class Routine, which has
+// no Groups), and that rule reads better as three names than as a ternary on an absent argument.
+export const orphansOfRoutine = (loc) => performancesIn(loc).length + attendancesIn(loc).length;
+export const orphansOfGroup = (loc, gi) => performancesIn(loc).filter((p) => p.ctx.group === gi).length;
+export const orphansOfItem = (loc, gi, ii) =>
+  performancesIn(loc).filter((p) => p.ctx.group === gi && p.ctx.item === ii).length;

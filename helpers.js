@@ -69,6 +69,18 @@ export const intAtLeast = (value, floor) => {
 export const cellKey = (blockId, wk, position) => blockId + ".w" + wk + ".d" + position;
 // A cell's per-session flat scalar — Session RPE, the done flag, a rest-day note — keyed by field.
 export const cellScalarKey = (cell, field) => cell + "." + field;
+// The inverse, for one field at one template position: the week this log key holds `field` for, or
+// null if the key isn't that. It exists because a plan edit has to sweep or move a scalar in EVERY
+// week the log holds one — not merely the weeks the block currently spans, since shortening a block
+// leaves the later weeks' scalars in place for when it is lengthened again (#64). The leading dot on
+// the tail is what keeps the position exact — a template is seven days today so `d1` and `d11` can't
+// collide in practice, but the match shouldn't rest on that.
+export function cellScalarWeek(key, blockId, position, field) {
+  const head = blockId + ".w", tail = ".d" + position + "." + field;
+  if (!key.startsWith(head) || !key.endsWith(tail)) return null;
+  const wk = key.slice(head.length, key.length - tail.length);
+  return /^\d+$/.test(wk) ? Number(wk) : null;
+}
 // Weekly body measurement (one value per block/week/measurement). The block.id prefix means
 // deleteBlock's sweep collects these too.
 export const measureKey = (blockId, wk, mId) => blockId + ".w" + wk + ".m." + mId;
